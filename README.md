@@ -1,206 +1,193 @@
-# 🇳🇱 Dutch Adaptive Storyteller — Backend Engine
+# 🇳🇱 Dutch Adaptive Storyteller
 
-> **Vertical Prototype** · Research Project · Maastricht University  
-> A Knowledge-Based Recommender System (KRS) that generates **personalized Dutch reading texts** tailored to each learner's CEFR level, vocabulary state, and interests — powered by Gemini.
+An AI-powered personalised Dutch reading platform for language-learning research. The system generates CEFR-aligned Dutch texts with vocabulary highlighted by learning status (**Blue** = new, **Yellow** = currently learning), driven by each learner's profile and a Gemini-powered knowledge recommender.
 
 ---
 
-## How It Works
+## Table of Contents
+1. [Prerequisites](#1-prerequisites)
+2. [Clone & Project Structure](#2-clone--project-structure)
+3. [Environment Setup (.env)](#3-environment-setup-env)
+4. [Database Setup (MySQL)](#4-database-setup-mysql)
+5. [Running the Full Browser App](#5-running-the-full-browser-app)
+6. [Running the Terminal Prototype](#6-running-the-terminal-prototype)
+7. [Running the Integration Test](#7-running-the-integration-test)
+
+---
+
+## 1. Prerequisites
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| Python | 3.11+ | Backend engine |
+| Node.js | 18+ | React frontend |
+| MySQL | 8.0+ | Database server |
+| Google AI Studio account | — | Free Gemini API key |
+
+Get your free Gemini API key → **https://aistudio.google.com**
+
+---
+
+## 2. Clone & Project Structure
+
+```bash
+git clone <your-repo-url>
+cd personalized-reading-dutch
+```
 
 ```
-User Profile (DB)          Vocabulary Vector (DB)
-      │                            │
-      └────────────┬───────────────┘
-                   ▼
-          KRS Prompt Builder
-       (Blue Words + Yellow Words)
-                   │
-                   ▼
-          Gemini 2.5 Flash API
-                   │
-                   ▼
-    Adaptive Dutch Story  →  [[new]] · ((learning))
-                   │
-                   ▼
-       reading_sessions table (MySQL)
+personalized-reading-dutch/
+├── backend/
+│   ├── app/              # FastAPI routers, models, services
+│   ├── main.py           # API entry point
+│   ├── seed.py           # Populates DB with users & vocabulary
+│   ├── run_engine.py     # Terminal prototype (standalone)
+│   ├── test_integration.py  # API + Gemini sanity check
+│   ├── requirements.txt
+│   └── .env.example      # ← copy this to .env and fill in
+└── frontend/
+    ├── src/
+    │   ├── pages/        # LandingPage, InteractiveReader
+    │   └── api/client.js # Axios bridge to the backend
+    └── package.json
 ```
 
-- **Blue Words `[[word]]`** — CEFR-matched lexicon words the user has *never seen*  
-- **Yellow Words `((word))`** — words already in the user's active `LEARNING` list  
-- The system ensures every target word appears naturally in the generated text.
-
 ---
 
-## Prerequisites
+## 3. Environment Setup (.env)
 
-| Tool | Version |
-|------|---------|
-| Python | 3.11+ |
-| MySQL Server | 8.0+ (local or remote) |
-| Google AI Studio API Key | [aistudio.google.com](https://aistudio.google.com) |
+The backend reads secrets from a `.env` file. **This file is never committed to git.**
 
----
+```bash
+cd backend
+cp .env.example .env
+```
 
-## Environment Setup
-
-### 1. Create `.env` in `backend/`
+Now open `backend/.env` and fill in your values:
 
 ```env
-# Database
-DATABASE_URL=mysql+pymysql://root:YOUR_PASSWORD@localhost/reading_db
+# Your MySQL connection — replace with your actual password and DB name
+DATABASE_URL=mysql+pymysql://root:YOUR_MYSQL_PASSWORD@localhost/reading_db
 
-# Gemini
-GOOGLE_API_KEY=your_google_ai_studio_key_here
+# Your Gemini API key from https://aistudio.google.com
+GOOGLE_API_KEY=your_gemini_api_key_here
+
+# Gemini model (leave as-is unless you want to change it)
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
-> **Never commit `.env` to git.** It is listed in `.gitignore`.
+---
 
-### 2. Install dependencies
+## 4. Database Setup (MySQL)
 
+**4a. Create the database** (one-time setup):
+```sql
+-- In MySQL shell or Workbench:
+CREATE DATABASE reading_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+**4b. Install backend dependencies:**
 ```bash
 cd backend
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-> If SQLAlchemy or PyMySQL are missing: `pip install sqlalchemy pymysql`
+**4c. Seed the database** (creates all tables + 3 demo users + vocabulary):
+```bash
+python seed.py
+```
+
+Expected output:
+```
+✅ Schema created.
+✅ Lexicon: 30 words loaded.
+✅ Users created: Sophie (A1), Lars (A2), Rowaid (B1)
+✅ Seed complete.
+```
 
 ---
 
-## Database Initialization
+## 5. Running the Full Browser App
+
+You need **two terminals open at the same time**.
+
+### Terminal 1 — Backend API
+```bash
+cd backend
+source venv/bin/activate
+uvicorn main:app --reload
+```
+✅ Ready when you see: `Application startup complete.`
+
+### Terminal 2 — Frontend
+```bash
+cd frontend
+npm install          # first time only
+npm start
+```
+✅ Ready when you see: `Compiled successfully! Local: http://localhost:3000`
+
+### Open in browser
+```
+http://localhost:3000
+```
+
+> **Port conflict?** If port 3000 is taken, run this first:
+> ```bash
+> kill -9 $(lsof -ti :3000) 2>/dev/null
+> ```
+> Then run `npm start` again.
+
+### Using the app
+1. **Select a learner** from the dropdown (Sophie / Lars / Rowaid)
+2. **Type a topic** (optional — e.g. "Buying a bicycle in Amsterdam")
+3. **Choose a narrative style** (Storytelling, Horror, Comedy…)
+4. Click **✦ Generate Story** — takes ~10–20 seconds
+5. Click any **blue** or **yellow** word to see its definition and translation
+
+---
+
+## 6. Running the Terminal Prototype
+
+The terminal prototype generates a story end-to-end with full prompt transparency — no browser needed.
 
 ```bash
 cd backend
-python3.11 seed.py
+source venv/bin/activate
+python run_engine.py
 ```
 
-This will:
-1. Create all tables (`users`, `lexicon`, `user_topics`, `user_vocabulary_vectors`, `reading_sessions`, …)
-2. Populate **30 Dutch lexicon words** (A1 → B1)
-3. Create **3 classroom users**:
-
-| User ID | Name | Level | Goal | Location |
-|---------|------|-------|------|----------|
-| `u_A1` | Sophie | A1 | Social | Amsterdam |
-| `u_A2` | Lars | A2 | Work | Rotterdam |
-| `u_014` | Rowaid | B1 | Academic | Maastricht |
+You will see:
+- A menu to choose a user (Sophie / Lars / Rowaid)
+- The full prompt sent to Gemini printed to the terminal
+- The generated Dutch story with `[[Blue]]` and `((Yellow))` word markup
+- Confirmation that the session was saved to the database
 
 ---
 
-## How to Run
+## 7. Running the Integration Test
 
-### 🔧 Option A — Interactive Terminal Engine (Demo / Research)
+Verifies that the Gemini API key is valid and that the backend can generate a sentence.
 
 ```bash
 cd backend
-python3.11 run_engine.py
+source venv/bin/activate
+python test_integration.py
 ```
 
-```
-🇳🇱  Dutch Storyteller Engine — Multi-User Interactive Mode
-
-  ⟳ Sanity-checking gemini-2.5-flash… ✓ Got: 'Hallo'
-
-Name [Sophie/Lars/Rowaid] > Lars
-Topic > Treinen in Rotterdam
-```
-
-The engine will:
-- Print the full **system instruction + user prompt** sent to Gemini
-- Show the **Blue / Yellow word selection** for the session
-- Display the generated story with **colour-coded** `[[blue]]` / `((yellow))` words
-- Automatically **save** the session to `reading_sessions`
-
-### 🌐 Option B — REST API (for frontend / integration)
-
-```bash
-cd backend
-python3.11 -m uvicorn main:app --reload --port 8000
-```
-
-Key endpoints:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/session/generate` | Generate & save a new story |
-| `GET`  | `/session/list` | List all sessions (optionally `?user_id=u_014`) |
-| `GET`  | `/session/{id}` | Get full session detail |
-| `GET`  | `/lexicon/define/{word}` | Dynamic Gemini-powered word definition |
-| `POST` | `/telemetry/log` | Log user interaction intent |
-| `POST` | `/krs/run/{user_id}` | Manually trigger KRS |
-| `POST` | `/krs/check/{user_id}` | Auto-trigger KRS if Blue pool < 20 |
-
-Interactive docs: **http://localhost:8000/docs**
+A passing test prints a Dutch sentence and exits with code 0. If you see a `429` (quota) or `404` (model name) error, check your `.env` values.
 
 ---
 
-## Project Structure
+## Troubleshooting
 
-```
-backend/
-├── app/
-│   ├── config.py            # GOOGLE_API_KEY, GEMINI_MODEL, DATABASE_URL
-│   ├── database.py          # SQLAlchemy engine + SessionLocal
-│   ├── models.py            # All ORM models + Enums
-│   ├── schemas.py           # Pydantic request/response models
-│   ├── krs_service.py       # Knowledge-Based Recommender System logic
-│   ├── session_generator.py # Gemini storyteller (prompt build + API call)
-│   └── routers/
-│       ├── session.py       # /session/* endpoints
-│       ├── lexicon.py       # /lexicon/* endpoints
-│       ├── vocabulary.py    # /vocab/* endpoints
-│       ├── telemetry.py     # /telemetry/* endpoints
-│       └── krs.py           # /krs/* endpoints
-├── main.py                  # FastAPI app + CORS + router registration
-├── seed.py                  # One-time DB seeder (users + lexicon)
-├── run_engine.py            # Interactive terminal storyteller
-├── test_integration.py      # 3-test integration script (DB + Gemini + API)
-└── requirements.txt
-```
-
----
-
-## Running the Integration Test
-
-```bash
-# With the API server running on port 8000:
-cd backend
-python3.11 test_integration.py
-```
-
-Tests:
-1. **Database connectivity** — counts users, lexicon words, sessions
-2. **Gemini API key** — sends a minimal prompt and checks for a response
-3. **POST /session/generate** — end-to-end story generation
-
----
-
-## Research Notes
-
-This system is designed around a **2-condition study design**:
-
-| Condition | `ConditionType` | Description |
-|-----------|----------------|-------------|
-| Adaptive | `ADAPTIVE` | KRS selects Blue/Yellow words; Gemini injects them |
-| Baseline | `BASELINE` | Generic story generation with no vocabulary targeting |
-
-Telemetry events logged per word interaction:
-
-| Event | `IntentTagType` | Trigger |
-|-------|----------------|---------|
-| `DEEP_PROCESSING` | User clicked "See Examples" |
-| `ACQUISITION_INTENT` | User clicked "Add to Learn List" |
-| `WORD_AVOIDANCE` | User clicked "Ignore / Dismiss" |
-
----
-
-## Team Push Checklist
-
-- [ ] `cp backend/.env.example backend/.env` and fill in credentials
-- [ ] MySQL server running locally or remote URL set in `DATABASE_URL`
-- [ ] `python3.11 seed.py` — only needs to run once per environment
-- [ ] `python3.11 test_integration.py` — all 3 tests green before demo
-
----
-
-*Built with FastAPI · SQLAlchemy · Google Gemini · Python 3.11*
+| Symptom | Fix |
+|---------|-----|
+| `Could not load users` in browser | Backend is not running — start `uvicorn` first |
+| Port 3000 already in use | Run `kill -9 $(lsof -ti :3000)` then `npm start` |
+| `GOOGLE_API_KEY must be set` | Fill in `backend/.env` — see Step 3 |
+| `Access denied for user 'root'` | Wrong MySQL password in `DATABASE_URL` |
+| `429 RESOURCE_EXHAUSTED` | Gemini free-tier quota hit — wait 1 minute and retry |
+| `ModuleNotFoundError` | Run `pip install -r requirements.txt` inside the venv |

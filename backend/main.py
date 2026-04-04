@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.routers import krs, session, telemetry, vocabulary, lexicon
+from app.routers import krs, session, telemetry, vocabulary, lexicon, users
 
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ app.include_router(telemetry.router)
 app.include_router(vocabulary.router)
 app.include_router(krs.router)
 app.include_router(lexicon.router)
+app.include_router(users.router)
 
 
 @app.get("/", tags=["Health"])

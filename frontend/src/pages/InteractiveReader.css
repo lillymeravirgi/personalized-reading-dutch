@@ -1,0 +1,208 @@
+/* ── InteractiveReader ───────────────────────── */
+.reader-page {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+/* Loading / Error */
+.reader-loading, .reader-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 70vh;
+  gap: 1.2rem;
+  color: var(--text-muted);
+}
+.reader-spinner {
+  width: 40px; height: 40px;
+  border: 3px solid rgba(255,255,255,0.1);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.reader-error button {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: var(--text-muted);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* Header bar */
+.reader-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 2rem;
+  background: rgba(15,15,25,0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.reader-back {
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.3rem 0;
+  transition: opacity 0.2s;
+}
+.reader-back:hover { opacity: 0.75; }
+.reader-legend {
+  display: flex;
+  gap: 1.2rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  align-items: center;
+}
+.legend-blue { color: var(--blue); }
+.legend-yellow { color: var(--yellow); }
+
+/* Article */
+.reader-article {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 3.5rem 2rem 8rem;
+}
+.reader-topic {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin-bottom: 0.6rem;
+  opacity: 0.8;
+}
+.reader-title {
+  font-family: 'Lora', Georgia, serif;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  color: var(--text);
+  margin: 0 0 2.5rem;
+  line-height: 1.25;
+}
+.reader-body {
+  font-size: 1.05rem;
+  line-height: 1.95;
+  color: rgba(255,255,255,0.82);
+  font-family: 'Lora', Georgia, serif;
+}
+
+/* Words */
+.word {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 1px;
+  transition: background 0.15s;
+  display: inline;
+  outline: none;
+}
+.word:hover { background: rgba(255,255,255,0.08); }
+.word-plain:hover { background: rgba(255,255,255,0.06); }
+.word-blue {
+  color: var(--blue);
+  border-bottom: 2px solid rgba(88,130,255,0.5);
+  font-weight: 600;
+}
+.word-yellow {
+  color: var(--yellow);
+  border-bottom: 2px solid rgba(255,210,80,0.5);
+  font-weight: 600;
+}
+
+/* ── Tooltip overlay ─────────────────────── */
+.tooltip-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+.tooltip-card {
+  position: absolute;
+  width: 320px;
+  background: rgba(24,26,40,0.97);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 1.4rem;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
+  backdrop-filter: blur(20px);
+  animation: tooltipIn 0.18s ease;
+}
+@keyframes tooltipIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+}
+.tooltip-word { font-size: 1.3rem; font-weight: 700; color: var(--text); }
+.tooltip-cefr {
+  font-size: 0.68rem;
+  background: rgba(88,130,255,0.2);
+  color: var(--blue);
+  padding: 0.15rem 0.55rem;
+  border-radius: 20px;
+  font-weight: 700;
+}
+.tooltip-translation {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  margin-bottom: 1rem;
+}
+.tooltip-examples {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 0.8rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.tooltip-example .ex-nl { font-weight: 600; color: var(--text); font-size: 0.88rem; }
+.tooltip-example .ex-en { color: var(--text-muted); font-size: 0.82rem; }
+.tooltip-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.tt-btn {
+  flex: 1;
+  min-width: 80px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+  white-space: nowrap;
+}
+.tt-btn.see-examples:hover { background: rgba(88,130,255,0.15); color: var(--blue); border-color: var(--blue); }
+.tt-btn.add-learn:hover { background: rgba(255,210,80,0.12); color: var(--yellow); border-color: var(--yellow); }
+.tt-btn.ignore:hover { background: rgba(255,80,80,0.1); color: #ff8080; border-color: rgba(255,80,80,0.4); }
+
+.tooltip-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  min-height: 60px;
+}
+.tooltip-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid rgba(255,255,255,0.1);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+.tooltip-error { color: #ff8080; font-size: 0.88rem; }
