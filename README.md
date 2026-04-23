@@ -107,21 +107,6 @@ Dutch learning/
 
 ---
 
-## Team modules
-
-One feature branch per person. Files do not overlap between modules.
-
-| Module | Owner | Main files |
-|---|---|---|
-| A · Auth & Users | — | `routers/auth.py`, `LoginPage`, `SignupPage`, `OnboardingPage` |
-| B · Reading & LLM | — | `session_generator.py`, `krs_service.py`, `components/reading/` |
-| C · Vocab Test | — | `routers/vocab_test.py`, `VocabTestPage`, `components/vocab-test/` |
-| D · Surveys | — | `routers/surveys.py`, `SurveyPage`, `components/survey/` |
-| E · Experiment | — | `routers/experiment.py` (counterbalance + CSV export) |
-| F · Research | — | proposal, data analysis, final report (no code) |
-
-
----
 
 ## Environment variables
 
@@ -136,14 +121,4 @@ GEMINI_MODEL=gemini-2.5-flash
 `.env` is **per developer** and is gitignored. `.env.example` (with empty
 values) is committed so everyone knows what to fill in.
 
----
-
-## Development status
-
-This repository contains the current research prototype for the course project.
-Some modules are still in progress and are listed in the team module table
-above.
-
-Local environment files, generated databases, editor settings, and planning
-notes are excluded from version control through `.gitignore`.
 
