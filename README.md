@@ -1,38 +1,149 @@
-# personalized-reading-dutch
+# LearnDutch
 
-## Project Structure
+Group project for an HCI course. It is a small web app that generates
+short Dutch reading texts with LLM, adapts them to the
+learner‘s interests and vocabulary level, and logs how the user
+interacts with each word.
 
-personalized-reading-dutch/
-│
-├── frontend/ # React app
-├── backend/ # FastAPI server
-├── data/ # vocabulary and other datasets
-├── README.md
-└──.gitignore
+The goal of the study is to compare two versions of the same app and see
+whether the personalized version changes how students read, how hard it
+feels, and how much vocabulary they actually learn.
 
+---
+
+## Research questions
+
+**RQ1.** Does personalized reading content, adapted to a learner's vocabulary level and interests, lead to lower perceived reading difficulty compared to a non-personalized baseline?
+
+**RQ2.** Does the personalization of reading content (interest-based and vocabulary-aware) increase active user engagement compared to a non-personalized baseline?
+
+**RQ3.** Does flashcard-based review of learner-identified unknown vocabulary within an adaptive, vocabulary-aware personalized reading system lead to higher immediate acquisition and 24-hour retention compared to the same review within a non-adaptive reading system?
+
+---
+
+## Stack
+
+- **Backend:** FastAPI · SQLAlchemy · SQLite
+- **LLM:** Google Gemini 2.5 Flash
+- **Frontend:** React 19 · Vite · TypeScript · Zustand
+
+---
 
 ## How to run
 
-### Prerequisites
+You need Python 3.11, Node.js 20+, and a Gemini API key 
 
-- Node.js and npm (for frontend)
-- Python 3.10+ (for backend)
-- Git (to clone the repo)
+### Backend (terminal 1)
 
-### Backend Setup
-1. Navigate to the backend folder:
+```bash
+# from the project root
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+
 cd backend
-2. Install dependencies:
-pip install -r requirements.txt
-3. Run the backend server:
-uvicorn main:app --reload
-4. Open your browser at http://127.0.0.1:8000
+cp .env.example .env
+# open .env and paste your API key after GOOGLE_API_KEY=
 
-### Frontend Setup
-1. Navigate to the frontend folder:
-cd frontend
-2. Install dependencies (if not already installed):
+python seed.py                          # first time only
+uvicorn main:app --port 8000 --reload
+```
+
+API docs: http://localhost:8000/docs
+
+### Frontend (terminal 2)
+
+```bash
+cd frontend/leeswijs
 npm install
-3. Start the React development server:
-npm start
-4. Open your browser at http://localhost:3000
+npm run dev -- --port 3000
+```
+
+App: http://localhost:3000/login
+
+---
+
+## Project structure
+
+```
+Dutch learning/
+├── README.md
+├── .gitignore
+├── backend/
+│   ├── main.py                
+│   ├── seed.py               
+│   ├── run_engine.py          
+│   ├── test_integration.py    
+│   ├── requirements.txt
+│   ├── .env.example          
+│   └── app/
+│       ├── config.py          
+│       ├── database.py       
+│       ├── deps.py            
+│       ├── models.py        
+│       ├── schemas.py         
+│       ├── session_generator.py  
+│       ├── krs_service.py     
+│       ├── topic_service.py   
+│       ├── validator.py       
+│       └── routers/          
+└── frontend/leeswijs/
+    └── src/
+        ├── App.tsx           
+        ├── main.tsx           
+        ├── layouts/          
+        ├── pages/             
+        ├── components/        
+        │   ├── reading/
+        │   ├── flashcards/
+        │   ├── vocab-test/
+        │   └── survey/
+        ├── hooks/
+        ├── services/api.ts    
+        ├── store/index.ts     
+        ├── mocks/             
+        └── types/             
+```
+
+---
+
+## Team modules
+
+One feature branch per person. Files do not overlap between modules.
+
+| Module | Owner | Main files |
+|---|---|---|
+| A · Auth & Users | — | `routers/auth.py`, `LoginPage`, `SignupPage`, `OnboardingPage` |
+| B · Reading & LLM | — | `session_generator.py`, `krs_service.py`, `components/reading/` |
+| C · Vocab Test | — | `routers/vocab_test.py`, `VocabTestPage`, `components/vocab-test/` |
+| D · Surveys | — | `routers/surveys.py`, `SurveyPage`, `components/survey/` |
+| E · Experiment | — | `routers/experiment.py` (counterbalance + CSV export) |
+| F · Research | — | proposal, data analysis, final report (no code) |
+
+
+---
+
+## Environment variables
+
+`backend/.env` must contain:
+
+```
+GOOGLE_API_KEY=your-key-here
+DATABASE_URL=sqlite:///./dev.db
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+`.env` is **per developer** and is gitignored. `.env.example` (with empty
+values) is committed so everyone knows what to fill in.
+
+---
+
+## Development status
+
+This repository contains the current research prototype for the course project.
+Some modules are still in progress and are listed in the team module table
+above.
+
+Local environment files, generated databases, editor settings, and planning
+notes are excluded from version control through `.gitignore`.
+
