@@ -98,15 +98,25 @@ export type TLXScale = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export interface SurveyResponse {
   sessionId: string;
+
+  // NASA-TLX (simplified, 1 item) and Cognitive load
+  mentalEffort: TLXScale;
+
+  // Manipulation check (perceived personalization)
+  perceivedPersonalization: LikertScale;
+
+
+  // Reading Experience
+  easyToUnderstand: LikertScale;
+  followIdeas: LikertScale;
+  appropriateChallenge: LikertScale;
+
   // UES-SF (O'Brien, Cairns & Hall, 2018)
   focusedAttention: LikertScale;
   reward: LikertScale;
   perceivedRelevance: LikertScale;
-  // NASA-TLX (simplified, 1 item)
-  mentalEffort: TLXScale;
-  // Manipulation check (perceived personalization)
-  perceivedPersonalization: LikertScale;
 }
+
 
 // Assessment
 export interface AssessmentWord {

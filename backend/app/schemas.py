@@ -3,6 +3,24 @@ from typing import Any, Optional
 from pydantic import BaseModel
 from app.models import ConditionType, IntentTagType, VocabStatus
 
+class SurveyResponse(BaseModel):
+    sessionId: str
+
+    # Reading Experience
+    easyToUnderstand: int  # Likert 1–5
+    followIdeas: int       # Likert 1–5
+    appropriateChallenge: int  # Likert 1–5
+
+    # UES-SF
+    focusedAttention: int
+    reward: int
+    perceivedRelevance: int
+
+    # Cognitive load (NASA-TLX)
+    mentalEffort: int  # 1–7
+
+    # Manipulation check
+    perceivedPersonalization: int
 
 # ── Session ──────────────────────────────────
 class GenerateSessionRequest(BaseModel):
