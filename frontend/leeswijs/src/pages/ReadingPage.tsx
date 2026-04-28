@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  ArrowRight,
+  CheckCircle2,
   Clock,
   AlertCircle,
   Sparkles,
@@ -11,7 +11,6 @@ import {
 import {
   getReadingSession,
   defineWord,
-  addToLearn,
   logSession,
   logDwellTime,
   logWordLookup,
@@ -55,9 +54,8 @@ export default function ReadingPage() {
   const elapsedRef = useRef(0);
   useEffect(() => { elapsedRef.current = elapsedMs; }, [elapsedMs]);
 
-  // Click on a non-highlighted word: look up the translation, show the
-  // popup, and auto-add to flashcards. We do not log WEI here — WEI only
-  // counts highlighted words. We still bump the dashboard lookup counter.
+  // Click on a non-highlighted word: quick lookup only. It does not count
+  // toward WEI and does not silently add words to the learner's deck.
   async function handlePlainWordClick(word: string, el: HTMLElement) {
     const rect = el.getBoundingClientRect();
     const anchor = {
@@ -67,16 +65,12 @@ export default function ReadingPage() {
       height: rect.height,
     };
     if (user) logWordLookup(user.id);
-    setPlainLookup({ word, english: null, loading: true, added: false, anchor });
+    setPlainLookup({ word, english: null, loading: true, anchor });
     try {
       const english = await defineWord(word);
-      setPlainLookup({ word, english, loading: false, added: false, anchor });
-      await addToLearn(word, english);
-      setPlainLookup((prev) =>
-        prev && prev.word === word ? { ...prev, added: true } : prev
-      );
+      setPlainLookup({ word, english, loading: false, anchor });
     } catch {
-      setPlainLookup({ word, english: null, loading: false, added: false, anchor });
+      setPlainLookup({ word, english: null, loading: false, anchor });
     }
   }
 
@@ -90,7 +84,7 @@ export default function ReadingPage() {
     let cancelled = false;
     setLoadingSession(true);
     setError(null);
-    getReadingSession(sessionId)
+    getReadingSession(sessionId, user?.id)
       .then((res) => {
         if (cancelled) return;
         if (res.success) setCurrentSession(res.data);
@@ -106,7 +100,7 @@ export default function ReadingPage() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId, setCurrentSession, setLoadingSession]);
+  }, [sessionId, setCurrentSession, setLoadingSession, user?.id]);
 
   useEffect(() => {
     return () => {
@@ -147,7 +141,7 @@ export default function ReadingPage() {
 
   function handleFinish() {
     if (!sessionId) return;
-    navigate(`/survey/${sessionId}`);
+    navigate(`/survey/${encodeURIComponent(sessionId)}`);
   }
 
   if (isLoading && !currentSession) {
@@ -209,11 +203,6 @@ export default function ReadingPage() {
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase tracking-wide">
             {currentSession.topic}
           </span>
-          {currentSession.isAdaptive && (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase tracking-wide">
-              Personalised
-            </span>
-          )}
         </div>
         <h1 className="font-heading text-3xl font-bold text-text">
           {currentSession.title}
@@ -240,8 +229,7 @@ export default function ReadingPage() {
       <div className="mb-4 text-xs text-text/50 font-body">
         Click any <span className="bg-yellow-100 text-yellow-900 px-1 rounded">yellow</span>{" "}
         or <span className="bg-blue-100 text-blue-900 px-1 rounded">blue</span>{" "}
-        word to decide how to study it. Click any other word for a quick
-        translation — it'll be added to your flashcards automatically.
+        word to decide how to study it. Click any other word for a quick translation.
       </div>
 
       {/* Reading body */}
@@ -257,16 +245,19 @@ export default function ReadingPage() {
       </div>
 
       {/* Finish CTA */}
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-2">
         <motion.button
           type="button"
           onClick={handleFinish}
           whileTap={{ scale: 0.97 }}
-          className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-heading font-semibold text-white bg-primary hover:opacity-90"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
         >
-          Finish &amp; continue
-          <ArrowRight size={16} strokeWidth={2.5} />
+          <CheckCircle2 size={16} strokeWidth={2.3} />
+          Finish reading
         </motion.button>
+        <p className="max-w-xs text-right text-xs font-body text-text/45">
+          After this, please answer a short study survey.
+        </p>
       </div>
 
       <WordModal

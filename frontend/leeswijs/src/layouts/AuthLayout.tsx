@@ -34,7 +34,7 @@ export default function AuthLayout() {
           </span>
         </div>
         <p className="text-sm text-text/50 font-body">
-          Personalized Dutch reading, adapted to you
+          Dutch reading practice for your study session
         </p>
       </div>
 

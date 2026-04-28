@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { RotateCw } from "lucide-react";
 import type { FlashcardItem as FlashcardItemType } from "../../types";
+import SpeakButton from "../SpeakButton";
 
 type Props = {
   card: FlashcardItemType;
@@ -39,9 +40,16 @@ export default function FlashcardItem({ card, flipped, onFlip, onRate }: Props) 
               <p className="text-xs font-body text-text/40 uppercase tracking-wide">
                 Dutch
               </p>
-              <h2 className="font-heading text-3xl sm:text-4xl font-bold text-text text-center break-words">
-                {card.dutch}
-              </h2>
+              <div className="flex items-center justify-center gap-2">
+                <h2 className="font-heading text-3xl sm:text-4xl font-bold text-text text-center break-words">
+                  {card.dutch}
+                </h2>
+                <SpeakButton
+                  text={card.dutch}
+                  label={`Play pronunciation for ${card.dutch}`}
+                  className="h-9 w-9 shrink-0"
+                />
+              </div>
             </div>
             <div className="flex items-center gap-2 text-xs font-body text-text/40 pb-4">
               <RotateCw size={12} />

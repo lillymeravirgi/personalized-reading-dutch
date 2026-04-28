@@ -12,7 +12,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-import { generateSession, readActivity, getCondition } from "../services/api";
+import { generateSession, readActivity } from "../services/api";
 import type { Activity } from "../services/api";
 import { useStore } from "../store";
 
@@ -56,14 +56,12 @@ export default function HomePage() {
 
   if (!user) return null;
 
-  const condition = getCondition();
-
   async function handleStart() {
     if (!user) return;
     setLoading(true);
     setError(null);
     try {
-      const { sessionId } = await generateSession(user.id, condition);
+      const { sessionId } = await generateSession(user.id);
       navigate(`/read/${sessionId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -91,24 +89,12 @@ export default function HomePage() {
             Here's where you are with your Dutch.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span
-            className="text-xs font-heading font-semibold px-2.5 py-1 rounded-full text-white"
-            style={{ backgroundColor: "var(--color-secondary)" }}
-          >
-            {user.cefrLevel ?? "—"}
-          </span>
-          <span
-            className={[
-              "text-[10px] font-heading font-semibold uppercase tracking-wide px-2 py-1 rounded-full",
-              condition === "ADAPTIVE"
-                ? "bg-emerald-100 text-emerald-700"
-                : "bg-black/8 text-text/60",
-            ].join(" ")}
-          >
-            {condition}
-          </span>
-        </div>
+        <span
+          className="text-xs font-heading font-semibold px-2.5 py-1 rounded-full text-white"
+          style={{ backgroundColor: "var(--color-secondary)" }}
+        >
+          {user.cefrLevel ?? "—"}
+        </span>
       </div>
 
       {/* Quick start */}
@@ -119,10 +105,10 @@ export default function HomePage() {
           </div>
           <div>
             <h2 className="font-heading text-lg font-bold text-text">
-              Start a reading session
+              Start a reading task
             </h2>
             <p className="text-xs text-text/55 font-body">
-              A fresh ~200-word Dutch text tailored to your {user.cefrLevel ?? "level"}.
+              Read one Dutch text, then answer a short survey.
             </p>
           </div>
         </div>
@@ -146,7 +132,7 @@ export default function HomePage() {
           ) : (
             <>
               <Sparkles size={16} strokeWidth={2.5} />
-              Start New Session
+              Start Reading
               <ArrowRight size={16} strokeWidth={2.5} />
             </>
           )}
@@ -168,7 +154,7 @@ export default function HomePage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
           icon={<BookOpen size={16} />}
-          label="Sessions"
+          label="Readings"
           value={stats.sessions}
           tone="primary"
         />
@@ -212,11 +198,11 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Recent sessions */}
+      {/* Recent readings */}
       <div className="bg-white rounded-2xl shadow-xl shadow-black/8 px-6 py-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-heading text-sm font-bold text-text">
-            Recent sessions
+            Recent readings
           </h3>
           <button
             type="button"
@@ -229,7 +215,7 @@ export default function HomePage() {
         </div>
         {recentSessions.length === 0 ? (
           <p className="text-sm font-body text-text/45">
-            No sessions yet. Click <span className="font-semibold">Start New Session</span> above to generate your first reading.
+            No readings yet. Click <span className="font-semibold">Start Reading</span> above to generate your first reading.
           </p>
         ) : (
           <ul className="space-y-2">

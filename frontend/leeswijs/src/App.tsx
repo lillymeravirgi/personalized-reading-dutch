@@ -13,6 +13,7 @@ import FlashcardsPage from "./pages/FlashcardsPage";
 import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
 import SurveyPage from "./pages/SurveyPage";
+import VocabTestPage from "./pages/VocabTestPage";
 
 export default function App() {
   return (
@@ -33,6 +34,8 @@ export default function App() {
           <Route path="/flashcards" element={<FlashcardsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/vocab-test" element={<VocabTestPage />} />
+          <Route path="/vocab-test/:sessionId" element={<VocabTestPage />} />
           <Route path="/survey/:sessionId" element={<SurveyPage />} />
         </Route>
 

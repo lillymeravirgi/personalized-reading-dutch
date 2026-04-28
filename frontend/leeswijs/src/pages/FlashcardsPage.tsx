@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Home, RotateCcw, Layers, Sparkles } from "lucide-react";
+import { ArrowRight, Home, RotateCcw, Layers, Sparkles } from "lucide-react";
 
 import { useStore } from "../store";
 import { getFlashcards } from "../services/api";
@@ -9,6 +9,8 @@ import FlashcardDeck from "../components/flashcards/FlashcardDeck";
 
 export default function FlashcardsPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sessionId = searchParams.get("sessionId");
 
   const flashcards       = useStore((s) => s.flashcards);
   const isLoading        = useStore((s) => s.isLoadingFlashcards);
@@ -53,7 +55,15 @@ export default function FlashcardsPage() {
         <AnimatePresence mode="wait">
           {isLoading && <LoadingView key="loading" />}
           {!isLoading && flashcards.length === 0 && (
-            <EmptyView key="empty" onHome={() => navigate("/home")} />
+            <EmptyView
+              key="empty"
+              onHome={() => navigate("/home")}
+              onContinue={
+                sessionId
+                  ? () => navigate(`/vocab-test/${encodeURIComponent(sessionId)}`)
+                  : undefined
+              }
+            />
           )}
           {!isLoading && flashcards.length > 0 && !complete && (
             <motion.div
@@ -73,6 +83,11 @@ export default function FlashcardsPage() {
               total={flashcards.length}
               onReview={handleReview}
               onHome={() => navigate("/home")}
+              onContinue={
+                sessionId
+                  ? () => navigate(`/vocab-test/${encodeURIComponent(sessionId)}`)
+                  : undefined
+              }
             />
           )}
         </AnimatePresence>
@@ -115,7 +130,13 @@ function LoadingView() {
   );
 }
 
-function EmptyView({ onHome }: { onHome: () => void }) {
+function EmptyView({
+  onHome,
+  onContinue,
+}: {
+  onHome: () => void;
+  onContinue?: () => void;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -130,17 +151,31 @@ function EmptyView({ onHome }: { onHome: () => void }) {
         No flashcards due
       </h2>
       <p className="text-sm font-body text-text/50 max-w-sm mb-6">
-        Read more articles and mark words as "Add to learn" to build up your deck.
+        Complete more reading tasks and mark highlighted words as "Add to learn"
+        to build up your deck.
       </p>
-      <motion.button
-        type="button"
-        onClick={onHome}
-        whileTap={{ scale: 0.97 }}
-        className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
-      >
-        <Home size={14} />
-        Back to Home
-      </motion.button>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <motion.button
+          type="button"
+          onClick={onHome}
+          whileTap={{ scale: 0.97 }}
+          className="flex items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-5 py-2.5 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]"
+        >
+          <Home size={14} />
+          Back home
+        </motion.button>
+        {onContinue && (
+          <motion.button
+            type="button"
+            onClick={onContinue}
+            whileTap={{ scale: 0.97 }}
+            className="flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
+          >
+            Vocabulary Check
+            <ArrowRight size={14} />
+          </motion.button>
+        )}
+      </div>
     </motion.div>
   );
 }
@@ -150,11 +185,13 @@ function CompleteView({
   total,
   onReview,
   onHome,
+  onContinue,
 }: {
   remembered: number;
   total: number;
   onReview: () => void;
   onHome: () => void;
+  onContinue?: () => void;
 }) {
   const pct = total === 0 ? 0 : Math.round((remembered / total) * 100);
   const meta = verdict(pct);
@@ -211,12 +248,21 @@ function CompleteView({
         </motion.button>
         <motion.button
           type="button"
-          onClick={onHome}
+          onClick={onContinue ?? onHome}
           whileTap={{ scale: 0.97 }}
           className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
         >
-          <Home size={14} />
-          Back to Home
+          {onContinue ? (
+            <>
+              Vocabulary Check
+              <ArrowRight size={14} />
+            </>
+          ) : (
+            <>
+              <Home size={14} />
+              Back home
+            </>
+          )}
         </motion.button>
       </div>
     </motion.div>

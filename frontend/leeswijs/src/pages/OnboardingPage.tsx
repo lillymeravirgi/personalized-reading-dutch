@@ -63,7 +63,7 @@ export default function OnboardingPage() {
           What are you interested in?
         </h1>
         <p className="mt-1 text-sm text-text/50 font-body">
-          We'll create reading content you actually enjoy.
+          Pick a few topics for your study profile.
         </p>
       </div>
 
@@ -131,7 +131,7 @@ export default function OnboardingPage() {
               : "bg-black/6 text-text/30 cursor-not-allowed",
           ].join(" ")}
         >
-          Continue to Assessment
+          Continue to Level Check
           <ArrowRight size={16} strokeWidth={2.5} />
         </motion.button>
 

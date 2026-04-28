@@ -12,7 +12,6 @@ import {
 
 import {
   generateSession,
-  getCondition,
   readActivity,
   type SessionLogEntry,
 } from "../services/api";
@@ -41,7 +40,7 @@ export default function ReadingHistoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const { sessionId } = await generateSession(user.id, getCondition());
+      const { sessionId } = await generateSession(user.id);
       navigate(`/read/${sessionId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -70,15 +69,15 @@ export default function ReadingHistoryPage() {
         </div>
         <div>
           <h1 className="font-heading text-2xl font-bold text-text">
-            Your reading library
+            Reading history
           </h1>
           <p className="text-sm font-body text-text/50">
-            Every text you've generated. Click to re-open.
+            Past reading tasks are saved here.
           </p>
         </div>
       </div>
 
-      {/* Top bar: new session + search */}
+      {/* Top bar: new reading + search */}
       <div className="flex items-center gap-2 flex-wrap mb-5">
         <motion.button
           type="button"
@@ -99,7 +98,7 @@ export default function ReadingHistoryPage() {
           ) : (
             <>
               <Sparkles size={15} strokeWidth={2.5} />
-              New Session
+              New Reading
             </>
           )}
         </motion.button>
@@ -134,7 +133,7 @@ export default function ReadingHistoryPage() {
         <EmptyState onStart={handleStart} loading={loading} />
       ) : filtered.length === 0 ? (
         <p className="text-sm font-body text-text/45 py-10 text-center">
-          No sessions match "{query}".
+          No readings match "{query}".
         </p>
       ) : (
         <ul className="space-y-2">
@@ -156,11 +155,6 @@ export default function ReadingHistoryPage() {
                     <span className="text-[10px] font-heading font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
                       {s.topic}
                     </span>
-                    {s.isAdaptive && (
-                      <span className="text-[10px] font-heading font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                        Personalised
-                      </span>
-                    )}
                   </div>
                   <p className="text-sm font-heading font-semibold text-text truncate">
                     {s.title}
@@ -192,10 +186,10 @@ function EmptyState({ onStart, loading }: { onStart: () => void; loading: boolea
         <BookOpen size={26} className="text-primary" strokeWidth={1.8} />
       </div>
       <h2 className="font-heading text-xl font-bold text-text mb-1">
-        No sessions yet
+        No readings yet
       </h2>
       <p className="text-sm font-body text-text/50 max-w-sm mb-6">
-        Generate your first Dutch reading tailored to your level and interests.
+        Generate your first Dutch reading task.
       </p>
       <motion.button
         type="button"
@@ -209,7 +203,7 @@ function EmptyState({ onStart, loading }: { onStart: () => void; loading: boolea
         ].join(" ")}
       >
         {loading ? <Spinner /> : <Sparkles size={15} strokeWidth={2.5} />}
-        Start first session
+        Start first reading
         {!loading && <ArrowRight size={15} strokeWidth={2.5} />}
       </motion.button>
     </div>

@@ -9,19 +9,34 @@ import type {
   WordInteraction,
   SurveyResponse,
   ApiResponse,
+  VocabTest,
+  VocabTestPhase,
+  VocabTestResult,
+  BilingualSentence,
+  HighlightedWord,
 } from "../types";
 import {
   mockUser,
   mockReadingSession,
   mockFlashcards,
   mockAssessmentBatches,
+  mockVocabTest,
 } from "../mocks/data";
 
 // Axios instance
 export const apiClient = axios.create({
-  baseURL: "http://localhost:8000/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api",
   timeout: 10_000,
   headers: { "Content-Type": "application/json" },
+});
+
+apiClient.interceptors.request.use((config) => {
+  const userId = getPersistedUserId();
+  if (userId) {
+    config.headers = config.headers ?? {};
+    (config.headers as Record<string, string>)["X-User-Id"] = userId;
+  }
+  return config;
 });
 
 // Helpers
@@ -31,8 +46,124 @@ function ok<T>(data: T): ApiResponse<T> {
   return { success: true, data };
 }
 
-// Set USE_MOCK to false to hit the real FastAPI backend.
-export const USE_MOCK = true;
+// Set VITE_USE_MOCK=true for frontend-only demos.
+export const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
+
+type BackendWordInfo = {
+  word_id: number;
+  word: string;
+  translation: string;
+  cefr_level: string;
+  examples?: BilingualSentence[] | null;
+};
+
+type BackendSessionPayload = {
+  session_id: number;
+  title: string;
+  content: string;
+  topic_used: string | null;
+  condition: "ADAPTIVE" | "BASELINE";
+  blue_words: BackendWordInfo[];
+  yellow_words: BackendWordInfo[];
+};
+
+function toReadingSession(payload: BackendSessionPayload): ReadingSession {
+  const { text, highlights } = extractHighlights(
+    payload.content,
+    payload.blue_words,
+    payload.yellow_words
+  );
+
+  const level =
+    payload.blue_words[0]?.cefr_level ??
+    payload.yellow_words[0]?.cefr_level ??
+    "A1";
+
+  return {
+    sessionId: String(payload.session_id),
+    text,
+    title: payload.title,
+    topic: payload.topic_used ?? "general",
+    cefrLevel: level,
+    highlights,
+    isAdaptive: payload.condition === "ADAPTIVE",
+  };
+}
+
+function extractHighlights(
+  content: string,
+  blueWords: BackendWordInfo[],
+  yellowWords: BackendWordInfo[]
+): { text: string; highlights: HighlightedWord[] } {
+  const blueByWord = byWord(blueWords);
+  const yellowByWord = byWord(yellowWords);
+  const highlights: HighlightedWord[] = [];
+  let text = "";
+  let cursor = 0;
+  const marker = /\[\[([^\]]+)\]\]/g;
+
+  for (const match of content.matchAll(marker)) {
+    const full = match[0];
+    const word = match[1].trim();
+    const start = match.index ?? 0;
+    text += content.slice(cursor, start);
+
+    const cleanStart = text.length;
+    text += word;
+    const cleanEnd = text.length;
+
+    const key = word.toLowerCase();
+    const blue = blueByWord.get(key);
+    const yellow = yellowByWord.get(key);
+    const source = blue ?? yellow;
+    if (source) {
+      highlights.push({
+        wordId: String(source.word_id),
+        dutch: word,
+        english: source.translation,
+        startIndex: cleanStart,
+        endIndex: cleanEnd,
+        highlightType: blue ? "unknown" : "learning",
+        exampleSentences: source.examples ?? [],
+        usageFrequency: "common",
+      });
+    }
+
+    cursor = start + full.length;
+  }
+
+  text += content.slice(cursor);
+  return { text, highlights };
+}
+
+function byWord(words: BackendWordInfo[]): Map<string, BackendWordInfo> {
+  return new Map(words.map((word) => [word.word.toLowerCase(), word]));
+}
+
+function getPersistedUserId(): string | null {
+  try {
+    const raw = localStorage.getItem("leeswijs-store");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { user?: { id?: string } } };
+    return parsed.state?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function toNumericId(value: string, label: string): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    throw new Error(`Cannot send ${label} id '${value}' to the backend yet.`);
+  }
+  return n;
+}
+
+function toBackendIntent(action: WordInteraction["action"]) {
+  if (action === "see_examples") return "DEEP_PROCESSING";
+  if (action === "add_to_learn") return "ACQUISITION_INTENT";
+  return "WORD_AVOIDANCE";
+}
 
 // API functions
 
@@ -42,22 +173,24 @@ export async function getUser(): Promise<ApiResponse<User>> {
     await delay();
     return ok(mockUser);
   }
-  const { data } = await apiClient.get<ApiResponse<User>>("/user/me");
+  const { data } = await apiClient.get<ApiResponse<User>>("/users/me");
   return data;
 }
 
 // Fetch one reading session by id.
 export async function getReadingSession(
-  sessionId: string
+  sessionId: string,
+  userId?: string
 ): Promise<ApiResponse<ReadingSession>> {
   if (USE_MOCK) {
     await delay();
     return ok({ ...mockReadingSession, sessionId });
   }
-  const { data } = await apiClient.get<ApiResponse<ReadingSession>>(
-    `/sessions/${sessionId}`
+  const { data } = await apiClient.get<BackendSessionPayload>(
+    `/session/${Number(sessionId)}`,
+    { params: { user_id: userId ?? getPersistedUserId() } }
   );
-  return data;
+  return ok(toReadingSession(data));
 }
 
 // Ask the backend to generate a fresh reading session and return its id.
@@ -72,16 +205,18 @@ type GenerateSessionPayload = {
 
 export async function generateSession(
   userId: string,
-  condition: "ADAPTIVE" | "BASELINE" = "ADAPTIVE"
+  condition?: "ADAPTIVE" | "BASELINE"
 ): Promise<{ sessionId: string }> {
   if (USE_MOCK) {
     await delay(600);
     return { sessionId: mockReadingSession.sessionId };
   }
   try {
+    const body =
+      condition === undefined ? { user_id: userId } : { user_id: userId, condition };
     const { data } = await apiClient.post<GenerateSessionPayload>(
       "/session/generate",
-      { user_id: userId, condition }
+      body
     );
     return { sessionId: String(data.session_id) };
   } catch (err) {
@@ -99,6 +234,35 @@ export async function getFlashcards(): Promise<ApiResponse<FlashcardItem[]>> {
     return ok(mockFlashcards);
   }
   const { data } = await apiClient.get<ApiResponse<FlashcardItem[]>>("/flashcards");
+  return data;
+}
+
+export async function getVocabTest(
+  sessionId: string,
+  phase: VocabTestPhase = "IMMEDIATE"
+): Promise<ApiResponse<VocabTest>> {
+  if (USE_MOCK) {
+    await delay();
+    return ok({ ...mockVocabTest, sessionId, phase });
+  }
+  const { data } = await apiClient.get<ApiResponse<VocabTest>>(
+    "/vocab-test/start",
+    { params: { session_id: sessionId, phase } }
+  );
+  return data;
+}
+
+export async function submitVocabTestResult(
+  result: VocabTestResult
+): Promise<ApiResponse<VocabTestResult>> {
+  if (USE_MOCK) {
+    await delay();
+    return ok(result);
+  }
+  const { data } = await apiClient.post<ApiResponse<VocabTestResult>>(
+    "/vocab-test/submit",
+    result
+  );
   return data;
 }
 
@@ -160,6 +324,8 @@ export type Activity = {
 
 const ACTIVITY_KEY_PREFIX = "leeswijs-activity-";
 const CONDITION_KEY       = "leeswijs-condition";
+const MAX_READING_DWELL_MS = 2 * 60 * 60 * 1000;
+const MAX_DAILY_MINUTES    = 8 * 60;
 
 function emptyActivity(): Activity {
   return {
@@ -171,12 +337,51 @@ function emptyActivity(): Activity {
   };
 }
 
+function safeNumber(value: unknown, max: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, max);
+}
+
+function sanitizeActivity(activity: Partial<Activity>): Activity {
+  const sessions = Array.isArray(activity.sessions)
+    ? activity.sessions
+        .map((entry) => {
+          const s = entry as Partial<SessionLogEntry>;
+          if (!s.sessionId) return null;
+          return {
+            sessionId: String(s.sessionId),
+            title: String(s.title ?? "Untitled reading"),
+            topic: String(s.topic ?? ""),
+            cefrLevel: String(s.cefrLevel ?? ""),
+            isAdaptive: Boolean(s.isAdaptive),
+            createdAt: String(s.createdAt ?? new Date().toISOString()),
+            dwellMs: safeNumber(s.dwellMs, MAX_READING_DWELL_MS),
+          };
+        })
+        .filter((entry): entry is SessionLogEntry => entry !== null)
+    : [];
+
+  const dailyMinutes: Record<string, number> = {};
+  for (const [key, value] of Object.entries(activity.dailyMinutes ?? {})) {
+    dailyMinutes[key] = safeNumber(value, MAX_DAILY_MINUTES);
+  }
+
+  return {
+    sessions,
+    wordsLookedUp: safeNumber(activity.wordsLookedUp, 100_000),
+    flashcardsRemembered: safeNumber(activity.flashcardsRemembered, 100_000),
+    flashcardsForgot: safeNumber(activity.flashcardsForgot, 100_000),
+    dailyMinutes,
+  };
+}
+
 export function readActivity(username: string): Activity {
   try {
     const raw = localStorage.getItem(ACTIVITY_KEY_PREFIX + username);
     if (!raw) return emptyActivity();
     const parsed = JSON.parse(raw) as Partial<Activity>;
-    return { ...emptyActivity(), ...parsed };
+    return sanitizeActivity({ ...emptyActivity(), ...parsed });
   } catch {
     return emptyActivity();
   }
@@ -215,12 +420,21 @@ export function logDwellTime(
   sessionId: string,
   ms: number
 ): void {
-  if (ms <= 0) return;
+  const safeMs = safeNumber(ms, MAX_READING_DWELL_MS);
+  if (safeMs <= 0) return;
   const a = readActivity(username);
   const idx = a.sessions.findIndex((s) => s.sessionId === sessionId);
-  if (idx >= 0) a.sessions[idx].dwellMs += ms;
+  if (idx >= 0) {
+    a.sessions[idx].dwellMs = safeNumber(
+      a.sessions[idx].dwellMs + safeMs,
+      MAX_READING_DWELL_MS
+    );
+  }
   const key = todayKey();
-  a.dailyMinutes[key] = (a.dailyMinutes[key] ?? 0) + ms / 60_000;
+  a.dailyMinutes[key] = safeNumber(
+    (a.dailyMinutes[key] ?? 0) + safeMs / 60_000,
+    MAX_DAILY_MINUTES
+  );
   writeActivity(username, a);
 }
 
@@ -320,8 +534,8 @@ export async function defineWord(word: string): Promise<string | null> {
   }
 }
 
-// Auto-add a word to the flashcard deck after the user looks it up on
-// Reading. Mock mode does nothing; real mode hits PATCH /api/vocab/add-to-learn.
+// Auto-add a plain looked-up word after the user clicks it in Reading.
+// Highlighted words use logInteraction("add_to_learn"), where we have word_id.
 export async function addToLearn(
   word: string,
   english: string | null
@@ -331,7 +545,11 @@ export async function addToLearn(
     return;
   }
   try {
-    await apiClient.patch("/vocab/add-to-learn", { word, english });
+    await apiClient.patch("/vocab/add-plain-word", {
+      user_id: getPersistedUserId(),
+      word,
+      english,
+    });
   } catch {
     // Swallow: non-critical, user already got the translation.
   }
@@ -345,11 +563,24 @@ export async function logInteraction(
     await delay(100); // fire-and-forget feel
     return ok(null);
   }
-  const { data } = await apiClient.post<ApiResponse<null>>(
-    "/interactions",
-    interaction
-  );
-  return data;
+  const wordId = toNumericId(interaction.wordId, "word");
+  const sessionId = toNumericId(interaction.sessionId, "session");
+  const userId = getPersistedUserId();
+
+  if (interaction.action === "add_to_learn" && userId) {
+    await apiClient.patch("/vocab/add-to-learn", {
+      user_id: userId,
+      word_id: wordId,
+    });
+  }
+
+  await apiClient.post("/telemetry/log", {
+    session_id: sessionId,
+    word_id: wordId,
+    intent_tag: toBackendIntent(interaction.action),
+    engagement_weight: interaction.weight,
+  });
+  return ok(null);
 }
 
 // Submit the survey a user filled out after a reading session.
@@ -373,6 +604,9 @@ type LoginPayload = {
   username: string;
   display_name: string;
   estimated_cefr: string | null;
+  interests?: string[];
+  assessed_at?: string | null;
+  created_at?: string | null;
 };
 
 // Seeded participants (see backend/seed.py): user01 .. user13
@@ -468,10 +702,10 @@ export async function login(username: string, password: string): Promise<User> {
       id: data.user_id,
       name: data.display_name,
       email: data.username,
-      interests: [],
+      interests: data.interests ?? [],
       cefrLevel: (data.estimated_cefr as CefrLevel) ?? null,
-      assessedAt: null,
-      createdAt: new Date().toISOString(),
+      assessedAt: data.assessed_at ?? null,
+      createdAt: data.created_at ?? new Date().toISOString(),
     };
   } catch (err) {
     const detail =
@@ -492,7 +726,12 @@ export async function saveProfile(user: User): Promise<void> {
     });
     return;
   }
-  // Real backend persistence can be added here when the profile route is ready.
+  await apiClient.put("/users/me/profile", {
+    display_name: user.name,
+    interests: user.interests,
+    estimated_cefr: user.cefrLevel,
+    assessed_at: user.assessedAt,
+  });
 }
 
 // Change the current user's password. Mock mode saves the new password

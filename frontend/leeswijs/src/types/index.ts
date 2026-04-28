@@ -14,7 +14,7 @@ export interface User {
 }
 
 /** Bilingual example sentence: Dutch text + English translation.
- *  Matches backend lexicon shape (backend/seed.py → Lexicon.examples). */
+ *  Matches backend lexicon shape (backend/seed.py -> Lexicon.examples). */
 export interface BilingualSentence {
   nl: string;
   en: string;
@@ -28,11 +28,11 @@ export interface VocabularyWord {
   dutch: string;
   english: string;
   status: WordStatus;
-  /** 0–1 */
+  /** 0-1 */
   difficulty: number;
   exposureCount: number;
   lastSeen: string | null;
-  /** 0–1 */
+  /** 0-1 */
   reviewPriority: number;
 }
 
@@ -93,30 +93,55 @@ export interface WordInteraction {
 
 // Survey
 export type LikertScale = 1 | 2 | 3 | 4 | 5;
-/** NASA-TLX mental-effort item (Hart & Staveland, 1988) — 7-point scale. */
+/** NASA-TLX mental-effort item (Hart & Staveland, 1988) - 7-point scale. */
 export type TLXScale = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export interface SurveyResponse {
   sessionId: string;
-
-  // NASA-TLX (simplified, 1 item) and Cognitive load
-  mentalEffort: TLXScale;
-
-  // Manipulation check (perceived personalization)
-  perceivedPersonalization: LikertScale;
-
-
-  // Reading Experience
   easyToUnderstand: LikertScale;
   followIdeas: LikertScale;
   appropriateChallenge: LikertScale;
-
-  // UES-SF (O'Brien, Cairns & Hall, 2018)
   focusedAttention: LikertScale;
   reward: LikertScale;
   perceivedRelevance: LikertScale;
+  mentalEffort: TLXScale;
+  perceivedPersonalization: LikertScale;
 }
 
+// Vocabulary test
+export type VocabTestPhase = "IMMEDIATE" | "DELAYED_24H";
+
+export interface VocabTestQuestion {
+  questionId: string;
+  wordId: string;
+  dutch: string;
+  prompt: string;
+  options: string[];
+  /** Mock/frontend contract uses this for scoring. Backend can also score. */
+  correctIndex: number;
+}
+
+export interface VocabTest {
+  sessionId: string;
+  phase: VocabTestPhase;
+  questions: VocabTestQuestion[];
+}
+
+export interface VocabTestAnswer {
+  questionId: string;
+  wordId: string;
+  selectedIndex: number;
+  isCorrect: boolean;
+}
+
+export interface VocabTestResult {
+  sessionId: string;
+  phase: VocabTestPhase;
+  answers: VocabTestAnswer[];
+  correct: number;
+  total: number;
+  submittedAt: string;
+}
 
 // Assessment
 export interface AssessmentWord {
@@ -138,9 +163,7 @@ export interface AssessmentResult {
   confidenceScore: number;
 }
 
-// API wrapper
-export interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error?: string;
-}
+// Generic API response wrapper
+export type ApiResponse<T> =
+  | { success: true; data: T }
+  | { success: false; error: string };

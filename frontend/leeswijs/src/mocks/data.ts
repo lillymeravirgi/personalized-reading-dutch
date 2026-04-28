@@ -4,6 +4,7 @@ import type {
   ReadingSession,
   FlashcardItem,
   AssessmentBatch,
+  VocabTest,
 } from "../types";
 
 // User
@@ -413,6 +414,54 @@ export const mockFlashcards: FlashcardItem[] = [
     reviewInterval: "2d",
   },
 ];
+
+// Vocabulary test
+export const mockVocabTest: VocabTest = {
+  sessionId: "session-001",
+  phase: "IMMEDIATE",
+  questions: [
+    {
+      questionId: "vt001",
+      wordId: "w001",
+      dutch: "ontwikkeling",
+      prompt: "What does ontwikkeling mean?",
+      options: ["development", "decision", "environment", "evidence"],
+      correctIndex: 0,
+    },
+    {
+      questionId: "vt002",
+      wordId: "w003",
+      dutch: "gegevens",
+      prompt: "What does gegevens mean?",
+      options: ["sounds", "data", "questions", "models"],
+      correctIndex: 1,
+    },
+    {
+      questionId: "vt003",
+      wordId: "w004",
+      dutch: "verwerking",
+      prompt: "What does verwerking mean?",
+      options: ["growth", "translation", "processing", "warning"],
+      correctIndex: 2,
+    },
+    {
+      questionId: "vt004",
+      wordId: "w007",
+      dutch: "algoritme",
+      prompt: "What does algoritme mean?",
+      options: ["algorithm", "lecture", "city", "choice"],
+      correctIndex: 0,
+    },
+    {
+      questionId: "vt005",
+      wordId: "w008",
+      dutch: "oplossing",
+      prompt: "What does oplossing mean?",
+      options: ["risk", "solution", "research", "accuracy"],
+      correctIndex: 1,
+    },
+  ],
+};
 
 // Assessment batches
 export const mockAssessmentBatches: AssessmentBatch[] = [

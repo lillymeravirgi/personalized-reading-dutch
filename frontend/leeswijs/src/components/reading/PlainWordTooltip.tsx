@@ -1,12 +1,12 @@
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Check, Loader2, BookPlus } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
+import SpeakButton from "../SpeakButton";
 
 export type PlainLookup = {
   word: string;
   english: string | null;
   loading: boolean;
-  added: boolean;
   // Position of the clicked word, used to place the tooltip.
   anchor: { top: number; left: number; width: number; height: number };
 };
@@ -17,7 +17,6 @@ type Props = {
 };
 
 // Small popup shown when the user clicks a non-highlighted word.
-// Click also auto-adds the word to flashcards (see ReadingPage).
 // We do not log WEI here — WEI is only for highlighted words.
 export default function PlainWordTooltip({ lookup, onClose }: Props) {
   useEffect(() => {
@@ -59,9 +58,17 @@ export default function PlainWordTooltip({ lookup, onClose }: Props) {
                 <p className="text-[10px] font-heading font-semibold uppercase tracking-wide text-text/40">
                   Dutch
                 </p>
-                <h3 className="font-heading text-lg font-bold text-text">
-                  {lookup.word}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-heading text-lg font-bold text-text">
+                    {lookup.word}
+                  </h3>
+                  <SpeakButton
+                    text={lookup.word}
+                    label={`Play pronunciation for ${lookup.word}`}
+                    className="h-7 w-7 shrink-0"
+                    size={13}
+                  />
+                </div>
               </div>
               <button
                 type="button"
@@ -91,30 +98,6 @@ export default function PlainWordTooltip({ lookup, onClose }: Props) {
                 <p className="text-sm font-body text-text/45 italic">
                   Not in the demo dictionary.
                 </p>
-              )}
-            </div>
-
-            {/* Footer: auto-add status */}
-            <div
-              className={[
-                "flex items-center gap-1.5 px-4 py-2 text-xs font-body border-t",
-                lookup.added
-                  ? "bg-emerald-50 border-emerald-100 text-emerald-700"
-                  : "bg-black/[0.02] border-black/6 text-text/50",
-              ].join(" ")}
-            >
-              {lookup.added ? (
-                <>
-                  <Check size={12} strokeWidth={3} />
-                  <span className="font-semibold">
-                    Added to your flashcards
-                  </span>
-                </>
-              ) : (
-                <>
-                  <BookPlus size={12} />
-                  <span>Saving to flashcards…</span>
-                </>
               )}
             </div>
           </motion.div>

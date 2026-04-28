@@ -53,7 +53,11 @@ export default function AssessmentPage() {
   function toggleWord(wordId: string) {
     setKnownIds((prev) => {
       const next = new Set(prev);
-      next.has(wordId) ? next.delete(wordId) : next.add(wordId);
+      if (next.has(wordId)) {
+        next.delete(wordId);
+      } else {
+        next.add(wordId);
+      }
       return next;
     });
   }
