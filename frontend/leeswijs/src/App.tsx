@@ -11,6 +11,7 @@ import ReadingPage from "./pages/ReadingPage";
 import FlashcardsPage from "./pages/FlashcardsPage";
 import ProfilePage from "./pages/ProfilePage";
 import SurveyPage from "./pages/SurveyPage";
+import RegisterPage from "./pages/RegisterPage";
 
 export default function App() {
   return (
@@ -18,9 +19,10 @@ export default function App() {
       <Routes>
         {/* ── Auth / onboarding flow (no sidebar) ─────────────────────── */}
         <Route element={<AuthLayout />}>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/assessment" element={<AssessmentPage />} />
+            <Route path="/login"      element={<LoginPage />} />
+            <Route path="/register"   element={<RegisterPage />} />  {/* add this */}
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/assessment" element={<AssessmentPage />} />
         </Route>
 
         {/* ── Authenticated app (with sidebar + top bar) ───────────────── */}
