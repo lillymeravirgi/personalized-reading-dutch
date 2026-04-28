@@ -28,7 +28,7 @@ export default function App() {
         {/* ── Authenticated app (with sidebar + top bar) ───────────────── */}
         <Route element={<MainLayout />}>
           <Route path="/home" element={<HomePage />} />
-          <Route path="/read/:sessionId" element={<ReadingPage />} />
+          <Route path="/read" element={<ReadingPage />} />
           <Route path="/flashcards" element={<FlashcardsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/survey/:sessionId" element={<SurveyPage />} />
