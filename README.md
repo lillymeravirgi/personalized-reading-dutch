@@ -3,14 +3,6 @@
 LearnDutch is an HCI course group project for studying personalized Dutch reading support for second-language learners. The frontend app is in `frontend/leeswijs`.The main goal is to run a clean experiment and collect usable data about reading engagement,
 perceived difficulty, cognitive load, and vocabulary learning.
 
-## Research Goal
-
-We compare two versions of the same reading experience:
-
-- **Baseline:** AI-generated Dutch text at the learner's level, without using the learner's interests or vocabulary profile for personalization.
-- **Adaptive:** AI-generated Dutch text at the learner's level, using the learner's interests and vocabulary profile.
-
-Both conditions should use the same UI . Participants should not see whether they are in the baseline or adaptive condition.
 
 ## Research Questions
 
@@ -19,23 +11,6 @@ Both conditions should use the same UI . Participants should not see whether the
 **RQ2.** Does interest-based and vocabulary-aware personalization increase user engagement during reading compared with a non-personalized baseline?
 
 **RQ3.** 
-
-
-## Testing Accounts
-
-The intended account convention for the study is:
-
-- `user01` to `user10`: participant accounts, randomly assigned to study participants
-- `user11` to `user16`: internal team testing accounts
-
-The default password is the same as the username. For example:
-
-```text
-username: user01
-password: user01
-```
-
-The backend seed data creates these accounts from `user01` to `user16`.
 
 ## Stack
 
