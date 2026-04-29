@@ -8,9 +8,9 @@ Idempotent: existing rows are skipped, safe to re-run.
 
 Seeds:
   - 30-word lexicon (A1 - B1)
-  - 13 blank user accounts (u_001 - u_013)
+  - 16 blank user accounts (u_001 - u_016)
       u_001 - u_010   research participants
-      u_011 - u_013   internal team (evie is u_011)
+      u_011 - u_016   internal team testing accounts
     Default password == username (e.g. user01 / user01).
     CEFR is left NULL on purpose - each user takes the Assessment
     after login to set their real level.
@@ -179,11 +179,11 @@ print(f"  {len(LEXICON_DATA)} words processed")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  3. User accounts (u_001 - u_013)
+#  3. User accounts (u_001 - u_016)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Slots 1-10: research participants.
-# Slots 11-13: internal team (evie is u_011).
+# Slots 11-16: internal team testing accounts.
 # Password defaults to the username for convenience; change freely
 # in the DB or via a future password-change route.
 
@@ -196,7 +196,7 @@ def account_row(slot: int):
     }
 
 
-ACCOUNTS = [account_row(i) for i in range(1, 14)]
+ACCOUNTS = [account_row(i) for i in range(1, 17)]
 
 print("Seeding user accounts...")
 for row in ACCOUNTS:
@@ -217,14 +217,14 @@ for row in ACCOUNTS:
             display_name=row["display_name"],
         ))
 db.commit()
-print(f"  {len(ACCOUNTS)} accounts processed (u_001 - u_013)")
+print(f"  {len(ACCOUNTS)} accounts processed (u_001 - u_016)")
 
 db.close()
 
 print("")
 print("Seed complete.")
-print("  13 pre-assigned accounts. Login with:")
+print("  16 pre-assigned accounts. Login with:")
 print("    username: user01  password: user01")
 print("    username: user02  password: user02")
 print("    ...")
-print("    username: user13  password: user13")
+print("    username: user16  password: user16")
