@@ -11,10 +11,11 @@ DATABASE_URL: str = os.getenv(
     "sqlite:///./dev.db"  # fallback for local dev without MySQL
 )
 
-GOOGLE_API_KEY: str = os.getenv(
-    "GOOGLE_API_KEY",
-    "AIzaSyB0RAWl5Y1uNXaA531HnTwfm2Eqocp0y5k"
-)
+GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY") or ""
+# OR use an assertion to satisfy Pyre
+key = os.getenv("GOOGLE_API_KEY")
+assert key is not None, "GOOGLE_API_KEY must be set in .env"
+GOOGLE_API_KEY: str = key
 
 # gemini-2.5-flash is the current stable generation (2025)
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
