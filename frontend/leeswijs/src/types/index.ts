@@ -98,13 +98,21 @@ export type TLXScale = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export interface SurveyResponse {
   sessionId: string;
-  easyToUnderstand: LikertScale;
-  followIdeas: LikertScale;
+  /** RQ1-W3: "The reading felt worth my time and effort." */
+  worthMyTime: LikertScale;
+  /** ZPD-1: "The text was appropriately challenging for my level." */
   appropriateChallenge: LikertScale;
+  /** COMP-1: "I could follow the main ideas of the text without difficulty." */
+  comprehension: LikertScale;
+  /** UES-FA: "I was so involved in this text that I lost track of time." */
   focusedAttention: LikertScale;
+  /** UES-RW: "I would want to read more texts similar to this one." */
   reward: LikertScale;
+  /** UES-PR: "The content of this text felt personally meaningful to me." */
   perceivedRelevance: LikertScale;
+  /** TLX-MD: "How much mental effort did it take to read this text?" (1–7) */
   mentalEffort: TLXScale;
+  /** MC-1: "This text felt specifically tailored to my interests and Dutch level." */
   perceivedPersonalization: LikertScale;
 }
 

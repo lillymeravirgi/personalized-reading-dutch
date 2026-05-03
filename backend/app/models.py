@@ -1,6 +1,6 @@
 import enum
 import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import (
     BigInteger, Boolean, DateTime, Enum as SAEnum,
@@ -22,9 +22,9 @@ class ConditionType(str, enum.Enum):
 
 
 class IntentTagType(str, enum.Enum):
-    DEEP_PROCESSING   = "DEEP_PROCESSING"    # User clicked "See Examples"
-    ACQUISITION_INTENT = "ACQUISITION_INTENT" # User clicked "Add to Learn List"
-    WORD_AVOIDANCE    = "WORD_AVOIDANCE"     # User clicked "Ignore" / "Dismiss"
+    DEEP_PROCESSING    = "DEEP_PROCESSING"     # User clicked "See Examples"
+    ACQUISITION_INTENT = "ACQUISITION_INTENT"  # User clicked "Add to Learn List"
+    WORD_AVOIDANCE     = "WORD_AVOIDANCE"      # User clicked "Ignore" / "Dismiss"
 
 
 class VocabStatus(str, enum.Enum):
@@ -78,10 +78,8 @@ class Lexicon(Base):
     word: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     translation: Mapped[str] = mapped_column(String(255), nullable=False)
     cefr_level: Mapped[str] = mapped_column(String(10), nullable=False)
-    # JSON: list of {"nl": "...", "en": "..."}
-    examples: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    # JSON: list of {"nl": "...", "en": "..."}
-    use_cases: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    examples: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    use_cases: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
 
     vocab_vectors: Mapped[list["UserVocabularyVector"]] = relationship("UserVocabularyVector", back_populates="lexicon_entry")
     recommendations: Mapped[list["RecommendedVocabulary"]] = relationship("RecommendedVocabulary", back_populates="lexicon_entry")
@@ -112,9 +110,7 @@ class RecommendedVocabulary(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(50), ForeignKey("users.user_id"), nullable=False)
     word_id: Mapped[int] = mapped_column(Integer, ForeignKey("lexicon.word_id"), nullable=False)
-    recommended_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, nullable=False, default=func.now()
-    )
+    recommended_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     is_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     user: Mapped["User"] = relationship("User", back_populates="recommendations")
@@ -130,10 +126,12 @@ class ReadingSession(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     topic_used: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     condition: Mapped[ConditionType] = mapped_column(SAEnum(ConditionType), nullable=False, default=ConditionType.ADAPTIVE)
+    # Computed from post-reading survey; drives next-session LLM prompt adjustments
+    survey_signal: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="sessions")
     telemetry_logs: Mapped[list["InteractionTelemetry"]] = relationship("InteractionTelemetry", back_populates="session", cascade="all, delete-orphan")
-
+    survey_result: Mapped[Optional["SurveyResult"]] = relationship("SurveyResult", back_populates="session", uselist=False)
 
 
 class InteractionTelemetry(Base):
@@ -152,22 +150,42 @@ class InteractionTelemetry(Base):
 # ─────────────────────────────────────────────
 #  UserAccount
 # ─────────────────────────────────────────────
-#
-# Separate table for login credentials.
-# Keeps login details separate from the study profile.
 
 class UserAccount(Base):
     __tablename__ = "user_accounts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("users.user_id"), unique=True, nullable=False
-    )
+    user_id: Mapped[str] = mapped_column(String(50), ForeignKey("users.user_id"), unique=True, nullable=False)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, nullable=False, default=func.now()
-    )
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=func.now())
 
     user: Mapped["User"] = relationship("User")
+
+class SurveyResult(Base):
+    """Stores all 8 post-reading survey answers. One row per reading session."""
+    __tablename__ = "survey_results"
+
+    survey_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("reading_sessions.session_id"), unique=True, nullable=False)
+
+    # Section 1 — RQ1
+    worth_my_time: Mapped[int] = mapped_column(Integer, nullable=False)             # Likert 1–5
+
+    # Section 2 — Flow/ZPD + RQ3 context
+    appropriate_challenge: Mapped[int] = mapped_column(Integer, nullable=False)     # Likert 1–5
+    comprehension: Mapped[int] = mapped_column(Integer, nullable=False)             # Likert 1–5
+
+    # Section 3 — UES-SF (RQ2)
+    focused_attention: Mapped[int] = mapped_column(Integer, nullable=False)         # Likert 1–5
+    reward: Mapped[int] = mapped_column(Integer, nullable=False)                    # Likert 1–5
+    perceived_relevance: Mapped[int] = mapped_column(Integer, nullable=False)       # Likert 1–5
+
+    # Section 4 — NASA-TLX (RQ2 triangulation)
+    mental_effort: Mapped[int] = mapped_column(Integer, nullable=False)             # 1–7
+
+    # Section 5 — Manipulation check
+    perceived_personalization: Mapped[int] = mapped_column(Integer, nullable=False) # Likert 1–5
+
+    session: Mapped["ReadingSession"] = relationship("ReadingSession", back_populates="survey_result")

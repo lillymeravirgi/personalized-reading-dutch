@@ -1,28 +1,42 @@
 from __future__ import annotations
-from typing import Any, Optional
-from pydantic import BaseModel
+from typing import Any, Literal, Optional
+from pydantic import BaseModel, Field
 from app.models import ConditionType, IntentTagType, VocabStatus
 
+LikertScale = Literal[1, 2, 3, 4, 5]
+TLXScale    = Literal[1, 2, 3, 4, 5, 6, 7]
+
 class SurveyResponse(BaseModel):
-    sessionId: str
+    session_id: int = Field(alias="sessionId")
 
-    # Reading Experience
-    easyToUnderstand: int  # Likert 1–5
-    followIdeas: int       # Likert 1–5
-    appropriateChallenge: int  # Likert 1–5
+    # Section 1 — Reading value (RQ1)
+    worth_my_time: LikertScale = Field(alias="worthMyTime")
+    """RQ1-W3: 'The reading felt worth my time and effort.'"""
 
-    # UES-SF
-    focusedAttention: int
-    reward: int
-    perceivedRelevance: int
+    # Section 2 — Challenge & comprehension (Flow/ZPD + RQ3 context)
+    appropriate_challenge: LikertScale = Field(alias="appropriateChallenge")
+    """ZPD-1: 'The text was appropriately challenging for my level.'"""
+    comprehension: LikertScale = Field(alias="comprehension")
+    """COMP-1: 'I could follow the main ideas of the text without difficulty.'"""
 
-    # Cognitive load (NASA-TLX)
-    mentalEffort: int  # 1–7
+    # Section 3 — Engagement / UES-SF (RQ2)
+    focused_attention: LikertScale = Field(alias="focusedAttention")
+    """UES-FA: 'I was so involved in this text that I lost track of time.'"""
+    reward: LikertScale = Field(alias="reward")
+    """UES-RW: 'I would want to read more texts similar to this one.'"""
+    perceived_relevance: LikertScale = Field(alias="perceivedRelevance")
+    """UES-PR: 'The content of this text felt personally meaningful to me.'"""
 
-    # Manipulation check
-    perceivedPersonalization: int
+    # Section 4 — Cognitive load / NASA-TLX (RQ2 triangulation)
+    mental_effort: TLXScale = Field(alias="mentalEffort")
+    """TLX-MD: 'How much mental effort did it take to read this text?' (1–7)"""
 
-# ── Session ──────────────────────────────────
+    # Section 5 — Manipulation check
+    perceived_personalization: LikertScale = Field(alias="perceivedPersonalization")
+    """MC-1: 'This text felt specifically tailored to my interests and Dutch level.'"""
+
+    model_config = {"populate_by_name": True}
+
 class GenerateSessionRequest(BaseModel):
     user_id: str
     K: float = 0.7

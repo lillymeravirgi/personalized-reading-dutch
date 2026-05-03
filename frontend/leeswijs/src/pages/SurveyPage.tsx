@@ -16,37 +16,52 @@ import LikertQuestion from "../components/survey/LikertQuestion";
 import TLXQuestion from "../components/survey/TLXQuestion";
 import type { LikertScale, TLXScale, SurveyResponse } from "../types";
 
-const TLX_QUESTION = "How much mental effort did it take to read this text?";
+const Q_WORTH_MY_TIME =
+  "The reading felt worth my time and effort.";                             // RQ1-W3
+const Q_APPROPRIATE_CHALLENGE =
+  "The text was appropriately challenging for my level.";                   // ZPD-1
+const Q_COMPREHENSION =
+  "I could follow the main ideas of the text without difficulty.";          // COMP-1
+const Q_FOCUSED_ATTENTION =
+  "I was so involved in this text that I lost track of time.";              // UES-FA
+const Q_REWARD =
+  "I would want to read more texts similar to this one.";                   // UES-RW
+const Q_PERCEIVED_RELEVANCE =
+  "The content of this text felt personally meaningful to me.";             // UES-PR
+const Q_MENTAL_EFFORT =
+  "How much mental effort did it take to read this text?";                  // TLX-MD
+const Q_MANIPULATION_CHECK =
+  "This text felt specifically tailored to my interests and Dutch level.";  // MC-1
 
-const TEXT_FIT_QUESTION =
-  "This text matched my reading interests and Dutch level.";
+const TOTAL_QUESTIONS = 8;
 
 export default function SurveyPage() {
   const { sessionId = "" } = useParams<{ sessionId: string }>();
+  //const sessionId = "1";
   const navigate = useNavigate();
 
-  const [easyToUnderstand, setEasyToUnderstand] =
-    useState<LikertScale | null>(null);
-  const [followIdeas, setFollowIdeas] = useState<LikertScale | null>(null);
-  const [appropriateChallenge, setAppropriateChallenge] =
-    useState<LikertScale | null>(null);
-  const [focusedAttention, setFocusedAttention] =
-    useState<LikertScale | null>(null);
+  // Section 1 — RQ1
+  const [worthMyTime, setWorthMyTime] = useState<LikertScale | null>(null);
+  // Section 2 — Flow/ZPD + RQ3 context
+  const [appropriateChallenge, setAppropriateChallenge] = useState<LikertScale | null>(null);
+  const [comprehension, setComprehension] = useState<LikertScale | null>(null);
+  // Section 3 — UES-SF / RQ2
+  const [focusedAttention, setFocusedAttention] = useState<LikertScale | null>(null);
   const [reward, setReward] = useState<LikertScale | null>(null);
-  const [perceivedRelevance, setPerceivedRelevance] =
-    useState<LikertScale | null>(null);
+  const [perceivedRelevance, setPerceivedRelevance] = useState<LikertScale | null>(null);
+  // Section 4 — NASA-TLX / RQ2
   const [mentalEffort, setMentalEffort] = useState<TLXScale | null>(null);
-  const [perceivedPersonalization, setPerceivedPersonalization] =
-    useState<LikertScale | null>(null);
+  // Section 5 — Manipulation check
+  const [perceivedPersonalization, setPerceivedPersonalization] = useState<LikertScale | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  const answers = [
-    easyToUnderstand,
-    followIdeas,
+  const answers: Array<LikertScale | TLXScale | null> = [
+    worthMyTime,
     appropriateChallenge,
+    comprehension,
     focusedAttention,
     reward,
     perceivedRelevance,
@@ -54,24 +69,24 @@ export default function SurveyPage() {
     perceivedPersonalization,
   ];
 
-  const answered = answers.every((value) => value !== null);
-  const answeredCount = answers.filter((value) => value !== null).length;
+  const answered = answers.every((v) => v !== null);
+  const answeredCount = answers.filter((v) => v !== null).length;
 
   async function handleSubmit() {
     if (!answered || !sessionId) return;
-
     setSubmitting(true);
     setError(null);
 
+    // All fields match SurveyResponse exactly — no TS(2353) errors
     const payload: SurveyResponse = {
       sessionId,
-      easyToUnderstand: easyToUnderstand!,
-      followIdeas: followIdeas!,
-      appropriateChallenge: appropriateChallenge!,
-      focusedAttention: focusedAttention!,
-      reward: reward!,
-      perceivedRelevance: perceivedRelevance!,
-      mentalEffort: mentalEffort!,
+      worthMyTime:              worthMyTime!,
+      appropriateChallenge:     appropriateChallenge!,
+      comprehension:            comprehension!,
+      focusedAttention:         focusedAttention!,
+      reward:                   reward!,
+      perceivedRelevance:       perceivedRelevance!,
+      mentalEffort:             mentalEffort!,
       perceivedPersonalization: perceivedPersonalization!,
     };
 
@@ -91,14 +106,10 @@ export default function SurveyPage() {
       <ThankYouView
         onHome={() => navigate("/home", { replace: true })}
         onReviewWords={() =>
-          navigate(`/flashcards?sessionId=${encodeURIComponent(sessionId)}`, {
-            replace: true,
-          })
+          navigate(`/flashcards?sessionId=${encodeURIComponent(sessionId)}`, { replace: true })
         }
         onVocabularyCheck={() =>
-          navigate(`/vocab-test/${encodeURIComponent(sessionId)}`, {
-            replace: true,
-          })
+          navigate(`/vocab-test/${encodeURIComponent(sessionId)}`, { replace: true })
         }
       />
     );
@@ -111,6 +122,7 @@ export default function SurveyPage() {
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
       className="max-w-2xl mx-auto"
     >
+      {/* Header */}
       <div className="flex items-center gap-3 mb-2">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <ClipboardList size={18} strokeWidth={2} />
@@ -120,31 +132,32 @@ export default function SurveyPage() {
             How was that reading?
           </h1>
           <p className="text-sm font-body text-text/50">
-            Eight short questions about this reading. Please answer from your
-            own experience.
+            Eight short questions about this reading session. Please answer from your own experience.
           </p>
         </div>
       </div>
 
+      {/* Progress */}
       <div className="mt-6 mb-8">
         <div className="mb-1.5 flex items-center justify-between">
           <span className="text-xs font-body font-semibold text-text/60 uppercase tracking-wide">
             Progress
           </span>
           <span className="text-xs font-body text-text/50">
-            {answeredCount} / 8
+            {answeredCount} / {TOTAL_QUESTIONS}
           </span>
         </div>
         <div className="h-1.5 overflow-hidden rounded-full bg-black/8">
           <motion.div
             className="h-full rounded-full bg-primary"
             initial={false}
-            animate={{ width: `${(answeredCount / 8) * 100}%` }}
+            animate={{ width: `${(answeredCount / TOTAL_QUESTIONS) * 100}%` }}
             transition={{ duration: 0.3 }}
           />
         </div>
       </div>
 
+      {/* Error */}
       <AnimatePresence>
         {error && (
           <motion.div
@@ -159,64 +172,41 @@ export default function SurveyPage() {
         )}
       </AnimatePresence>
 
+      {/* Questions */}
       <div className="space-y-8 rounded-2xl bg-white px-7 py-8 shadow-xl shadow-black/8">
-        <LikertQuestion
-          tag="Reading experience"
-          question="The text was easy to understand."
-          value={easyToUnderstand}
-          onChange={setEasyToUnderstand}
-        />
+
+        <SectionLabel label="Reading value" />
+        <LikertQuestion tag="RQ1" question={Q_WORTH_MY_TIME} value={worthMyTime} onChange={setWorthMyTime} />
+
         <Divider />
-        <LikertQuestion
-          tag="Reading experience"
-          question="I could follow the main ideas of the text without difficulty."
-          value={followIdeas}
-          onChange={setFollowIdeas}
-        />
+
+        <SectionLabel label="Challenge & comprehension" />
+        <LikertQuestion tag="Appropriate challenge" question={Q_APPROPRIATE_CHALLENGE} value={appropriateChallenge} onChange={setAppropriateChallenge} />
         <Divider />
-        <LikertQuestion
-          tag="Reading experience"
-          question="The text was appropriately challenging for my level."
-          value={appropriateChallenge}
-          onChange={setAppropriateChallenge}
-        />
+        <LikertQuestion tag="Comprehension" question={Q_COMPREHENSION} value={comprehension} onChange={setComprehension} />
+
         <Divider />
-        <LikertQuestion
-          tag="Reading focus"
-          question="I was so involved in this text that I lost track of time."
-          value={focusedAttention}
-          onChange={setFocusedAttention}
-        />
+
+        <SectionLabel label="Engagement" />
+        <LikertQuestion tag="Focused attention" question={Q_FOCUSED_ATTENTION} value={focusedAttention} onChange={setFocusedAttention} />
         <Divider />
-        <LikertQuestion
-          tag="Reading interest"
-          question="I would want to read more texts similar to this one."
-          value={reward}
-          onChange={setReward}
-        />
+        <LikertQuestion tag="Reward" question={Q_REWARD} value={reward} onChange={setReward} />
         <Divider />
-        <LikertQuestion
-          tag="Content relevance"
-          question="The content of this text felt personally meaningful to me."
-          value={perceivedRelevance}
-          onChange={setPerceivedRelevance}
-        />
+        <LikertQuestion tag="Perceived relevance" question={Q_PERCEIVED_RELEVANCE} value={perceivedRelevance} onChange={setPerceivedRelevance} />
+
         <Divider />
-        <TLXQuestion
-          tag="Mental effort"
-          question={TLX_QUESTION}
-          value={mentalEffort}
-          onChange={setMentalEffort}
-        />
+
+        <SectionLabel label="Mental effort" />
+        <TLXQuestion tag="Cognitive load" question={Q_MENTAL_EFFORT} value={mentalEffort} onChange={setMentalEffort} />
+
         <Divider />
-        <LikertQuestion
-          tag="Text fit"
-          question={TEXT_FIT_QUESTION}
-          value={perceivedPersonalization}
-          onChange={setPerceivedPersonalization}
-        />
+
+        <SectionLabel label="Text fit" />
+        <LikertQuestion tag="Manipulation check" question={Q_MANIPULATION_CHECK} value={perceivedPersonalization} onChange={setPerceivedPersonalization} />
+
       </div>
 
+      {/* Submit */}
       <div className="mt-7 flex justify-end">
         <motion.button
           type="button"
@@ -231,26 +221,20 @@ export default function SurveyPage() {
               : "bg-black/8 text-text/40 cursor-not-allowed",
           ].join(" ")}
         >
-          {submitting ? (
-            <Spinner />
-          ) : (
-            <>
-              Submit
-              <ArrowRight size={16} strokeWidth={2.5} />
-            </>
-          )}
+          {submitting ? <Spinner /> : <><ArrowRight size={16} strokeWidth={2.5} />Submit</>}
         </motion.button>
       </div>
 
       {!answered && (
         <p className="mt-3 text-right text-xs text-text/40 font-body">
-          Please answer all eight questions to continue.
+          Please answer all {TOTAL_QUESTIONS} questions to continue.
         </p>
       )}
     </motion.div>
   );
 }
 
+// ── Thank-you screen ──────────────────────────────────────────────────────────
 function ThankYouView({
   onHome,
   onReviewWords,
@@ -275,44 +259,33 @@ function ThankYouView({
       >
         <CheckCircle2 size={28} className="text-emerald-600" strokeWidth={1.8} />
       </motion.div>
-      <h2 className="font-heading text-xl font-bold text-text mb-1">
-        Reading task complete
-      </h2>
+      <h2 className="font-heading text-xl font-bold text-text mb-1">Reading task complete</h2>
       <p className="text-sm font-body text-text/50 max-w-sm">
-        Your response has been recorded. This is the end of the required study
-        step for this reading.
+        Your response has been recorded. This is the end of the required study step for this reading.
       </p>
-
       <div className="mt-7 grid w-full gap-3 sm:grid-cols-2">
-        <motion.button
-          type="button"
-          onClick={onHome}
-          whileTap={{ scale: 0.97 }}
-          className="sm:col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90"
-        >
-          <Home size={15} />
-          Back home
+        <motion.button type="button" onClick={onHome} whileTap={{ scale: 0.97 }}
+          className="sm:col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90">
+          <Home size={15} /> Back home
         </motion.button>
-        <motion.button
-          type="button"
-          onClick={onReviewWords}
-          whileTap={{ scale: 0.97 }}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-4 py-3 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]"
-        >
-          <Layers size={15} />
-          Review words
+        <motion.button type="button" onClick={onReviewWords} whileTap={{ scale: 0.97 }}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-4 py-3 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]">
+          <Layers size={15} /> Review words
         </motion.button>
-        <motion.button
-          type="button"
-          onClick={onVocabularyCheck}
-          whileTap={{ scale: 0.97 }}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-4 py-3 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]"
-        >
-          <ClipboardCheck size={15} />
-          Vocabulary check
+        <motion.button type="button" onClick={onVocabularyCheck} whileTap={{ scale: 0.97 }}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-4 py-3 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]">
+          <ClipboardCheck size={15} /> Vocabulary check
         </motion.button>
       </div>
     </motion.div>
+  );
+}
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <p className="text-[11px] font-body font-semibold uppercase tracking-widest text-text/35">
+      {label}
+    </p>
   );
 }
 
@@ -322,24 +295,9 @@ function Divider() {
 
 function Spinner() {
   return (
-    <svg
-      className="h-4 w-4 animate-spin text-white"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
+    <svg className="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
   );
 }

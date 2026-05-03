@@ -1,8 +1,16 @@
 """
 Session Generator
 Executes the K-probability topic roll, injects Blue and Yellow words,
-generates a reading text, and persists the ReadingSession.
+generates a reading text via Gemini, and persists the ReadingSession.
+
+Survey → Prompt:
+  Before calling the LLM, _survey_signal_prompt_block() reads the survey_signal
+  JSON stored on the user's most recent completed session and translates it into
+  natural-language instructions (challenge direction, engagement refresh, etc.).
+  These are injected into the prompt so each new text adapts to how the learner
+  experienced the previous one.
 """
+
 from __future__ import annotations
 
 import json
@@ -11,10 +19,9 @@ import math
 import random
 import re
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from google import genai
-
 from sqlalchemy.orm import Session
 
 from app.config import GOOGLE_API_KEY, GEMINI_MODEL
@@ -55,6 +62,60 @@ _NEUTRAL_POOL = [
 ]
 
 
+#  Survey → Prompt signal
+
+def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
+    """
+    Translate the survey_signal stored on the previous session into
+    natural-language instructions injected into the LLM prompt.
+    Returns "" when there is no prior survey data (first session).
+    """
+    if session is None or not session.survey_signal:
+        return ""
+
+    sig = session.survey_signal
+    lines: list[str] = []
+
+    # ── Challenge direction (ZPD / Flow Theory)
+    direction = sig.get("challenge_direction", "same")
+    if direction == "easier":
+        lines.append(
+            "The learner found the previous text TOO DIFFICULT. "
+            "Use slightly simpler sentence structures and prefer words closer to "
+            "their known vocabulary. Avoid long subordinate clauses."
+        )
+    elif direction == "harder":
+        lines.append(
+            "The learner found the previous text TOO EASY. "
+            "Introduce more varied sentence structures and include a higher "
+            "proportion of target (blue) words. Aim for slightly greater lexical density."
+        )
+    else:
+        lines.append(
+            "The previous text was at the right challenge level. "
+            "Maintain a similar difficulty and sentence complexity."
+        )
+
+    # ── Engagement refresh (UES composite < 3)
+    if sig.get("engagement_boost"):
+        lines.append(
+            "The learner's engagement score was LOW. "
+            "Vary the genre or narrative style of this text (e.g. switch from "
+            "informational to story-based, or use an unexpected setting). "
+            "Make the topic feel fresh and surprising."
+        )
+
+    # ── Perceived personalisation (manipulation check failed)
+    if not sig.get("felt_personalised", True):
+        lines.append(
+            "The learner did NOT feel the previous text was personalised to them. "
+            "Make the connection to their stated interests more explicit — "
+            "mention those interests directly in the text context."
+        )
+
+    return "\n".join(lines)
+
+
 # ─────────────────────────────────────────────
 #  Public entry point
 # ─────────────────────────────────────────────
@@ -71,17 +132,29 @@ def generate_session(
     if not user:
         raise ValueError(f"User '{user_id}' not found.")
 
-    # 1. Topic Roll
+    # 1. Fetch previous session's survey signal (drives prompt adaptation)
+    prev_session = (
+        db.query(ReadingSession)
+        .filter(
+            ReadingSession.user_id == user_id,
+            ReadingSession.survey_signal.isnot(None),
+        )
+        .order_by(ReadingSession.session_id.desc())
+        .first()
+    )
+    survey_block = _survey_signal_prompt_block(prev_session)
+
+    # 2. Topic Roll
     selected_topic = _topic_roll(user_id, K, db)
 
-    # 2. Word Injection
-    blue_entries  = _fetch_blue_words(user_id, db)
+    # 3. Word Injection
+    blue_entries   = _fetch_blue_words(user_id, db)
     yellow_entries = _fetch_yellow_words(user_id, db)
 
-    blue_words  = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
+    blue_words   = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
     yellow_words = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
 
-    # 3. Generate reading text
+    # 4. Generate reading text (survey_block injected into prompt)
     story_json = _generate_story_content(
         user=user,
         selected_topic=selected_topic,
@@ -89,9 +162,10 @@ def generate_session(
         word_count_range=word_count_range,
         blue_words=[w["word"] for w in blue_words],
         yellow_words=[w["word"] for w in yellow_words],
+        survey_block=survey_block,
     )
 
-    # 4. Persist session
+    # 5. Persist session
     session = ReadingSession(
         user_id=user_id,
         title=story_json.get("title", ""),
@@ -104,13 +178,13 @@ def generate_session(
     db.refresh(session)
 
     return {
-        "session_id": session.session_id,
-        "title": story_json.get("title", ""),
-        "content": story_json.get("content", ""),
-        "topic_used": selected_topic,
-        "blue_words": blue_words,
+        "session_id":  session.session_id,
+        "title":       story_json.get("title", ""),
+        "content":     story_json.get("content", ""),
+        "topic_used":  selected_topic,
+        "blue_words":  blue_words,
         "yellow_words": yellow_words,
-        "metadata": story_json.get("metadata", {}),
+        "metadata":    story_json.get("metadata", {}),
     }
 
 
@@ -183,10 +257,10 @@ def _fetch_yellow_words(user_id: str, db: Session) -> list[UserVocabularyVector]
 
 def _lex_to_dict(entry: Lexicon) -> dict:
     return {
-        "word_id": entry.word_id,
-        "word": entry.word,
+        "word_id":     entry.word_id,
+        "word":        entry.word,
         "translation": entry.translation,
-        "cefr_level": entry.cefr_level,
+        "cefr_level":  entry.cefr_level,
     }
 
 
@@ -201,9 +275,16 @@ def _generate_story_content(
     word_count_range: str,
     blue_words: list[str],
     yellow_words: list[str],
+    survey_block: str,
 ) -> dict:
     blue_str   = ", ".join(blue_words)   if blue_words   else "(none)"
     yellow_str = ", ".join(yellow_words) if yellow_words else "(none)"
+
+    # survey_block is "" on the first session → the section is skipped cleanly
+    survey_section = (
+        f"\n### FEEDBACK FROM LEARNER'S PREVIOUS SESSION\n{survey_block}\n"
+        if survey_block else ""
+    )
 
     prompt = f"""\
 ### USER PROFILE
@@ -220,7 +301,7 @@ def _generate_story_content(
 ### MANDATORY VOCABULARY INJECTION
 1. BLUE WORDS (New Recommendations): {blue_str}
 2. YELLOW WORDS (Active Learning): {yellow_str}
-
+{survey_section}
 ### INSTRUCTIONS
 Write a cohesive Dutch text of approximately {word_count_range} words.
 - Ensure ALL Blue and Yellow words are used at least once.
@@ -242,12 +323,13 @@ Return ONLY a valid JSON object with these exact keys:
 """
 
     logger.info(
-        "[SessionGen] generating text for user=%s topic=%s level=%s blue=%d yellow=%d",
+        "[SessionGen] generating text for user=%s topic=%s level=%s blue=%d yellow=%d survey=%s",
         user.user_id,
         selected_topic,
         user.estimated_cefr,
         len(blue_words),
         len(yellow_words),
+        "yes" if survey_block else "none",
     )
 
     last_error = None
@@ -263,7 +345,7 @@ Return ONLY a valid JSON object with these exact keys:
             text = re.sub(r"\s*```$", "", text)
             result = json.loads(text)
             logger.info(
-                "[SessionGen] generated text title=%r topic=%s",
+                "[SessionGen] generated title=%r topic=%s",
                 result.get("title"),
                 selected_topic,
             )
