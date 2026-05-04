@@ -34,12 +34,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow the React dev server
+# Allow the React dev server. Vite defaults to 5173 but the README runs it on
+# 3000 — keep both so either invocation works without surprise CORS errors.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],

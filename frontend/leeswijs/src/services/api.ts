@@ -23,12 +23,13 @@ import {
   mockVocabTest,
 } from "../mocks/data";
 
-// Axios instance
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api",
   timeout: 10_000,
   headers: { "Content-Type": "application/json" },
 });
+
+const SESSION_GENERATION_TIMEOUT_MS = 60_000;
 
 apiClient.interceptors.request.use((config) => {
   const userId = getPersistedUserId();
@@ -39,14 +40,54 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Helpers
 const delay = (ms = 300) => new Promise<void>((res) => setTimeout(res, ms));
 
 function ok<T>(data: T): ApiResponse<T> {
   return { success: true, data };
 }
 
-// Set VITE_USE_MOCK=true for frontend-only demos.
+function fail<T>(error: string): ApiResponse<T> {
+  return { success: false, error };
+}
+
+export const BACKEND_NOT_READY_MESSAGE =
+  "This feature needs backend support.";
+
+export function isBackendNotReadyMessage(message: string | null | undefined): boolean {
+  return message === BACKEND_NOT_READY_MESSAGE;
+}
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const detail =
+    (err as { response?: { data?: { detail?: unknown } } })?.response?.data
+      ?.detail;
+
+  if (axios.isAxiosError(err)) {
+    if (err.response?.status === 404 || err.response?.status === 405) {
+      return BACKEND_NOT_READY_MESSAGE;
+    }
+    if (err.code === "ECONNABORTED") {
+      return "The request took too long. Please try again.";
+    }
+  }
+
+  if (typeof detail === "string" && detail.trim()) return detail;
+
+  return fallback;
+}
+
+function asApiResponse<T>(data: T | ApiResponse<T>): ApiResponse<T> {
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "success" in data &&
+    typeof (data as { success: unknown }).success === "boolean"
+  ) {
+    return data as ApiResponse<T>;
+  }
+  return ok(data as T);
+}
+
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 type BackendWordInfo = {
@@ -68,6 +109,12 @@ type BackendSessionPayload = {
 };
 
 function toReadingSession(payload: BackendSessionPayload): ReadingSession {
+  if (isBackendGenerationFailure(payload.content)) {
+    throw new Error(
+      "This reading was not created correctly because the text generator was rate limited. Please start a new reading."
+    );
+  }
+
   const { text, highlights } = extractHighlights(
     payload.content,
     payload.blue_words,
@@ -88,6 +135,10 @@ function toReadingSession(payload: BackendSessionPayload): ReadingSession {
     highlights,
     isAdaptive: payload.condition === "ADAPTIVE",
   };
+}
+
+function isBackendGenerationFailure(content: string): boolean {
+  return content.trim().startsWith("Er is een fout opgetreden bij het genereren");
 }
 
 function extractHighlights(
@@ -146,7 +197,11 @@ function getPersistedUserId(): string | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { state?: { user?: { id?: string } } };
     return parsed.state?.user?.id ?? null;
-  } catch {
+  } catch (err) {
+    const message = apiErrorMessage(err, "Translation is not available yet.");
+    if (isBackendNotReadyMessage(message)) {
+      throw new Error(message);
+    }
     return null;
   }
 }
@@ -165,9 +220,6 @@ function toBackendIntent(action: WordInteraction["action"]) {
   return "WORD_AVOIDANCE";
 }
 
-// API functions
-
-// Get the logged-in user's profile.
 export async function getUser(): Promise<ApiResponse<User>> {
   if (USE_MOCK) {
     await delay();
@@ -177,7 +229,6 @@ export async function getUser(): Promise<ApiResponse<User>> {
   return data;
 }
 
-// Fetch one reading session by id.
 export async function getReadingSession(
   sessionId: string,
   userId?: string
@@ -193,9 +244,6 @@ export async function getReadingSession(
   return ok(toReadingSession(data));
 }
 
-// Ask the backend to generate a fresh reading session and return its id.
-// Backend uses int ids, we stringify at the boundary.
-// Throws on failure so the caller can show an error.
 type GenerateSessionPayload = {
   session_id: number;
   title: string;
@@ -216,25 +264,163 @@ export async function generateSession(
       condition === undefined ? { user_id: userId } : { user_id: userId, condition };
     const { data } = await apiClient.post<GenerateSessionPayload>(
       "/session/generate",
-      body
+      body,
+      { timeout: SESSION_GENERATION_TIMEOUT_MS }
     );
     return { sessionId: String(data.session_id) };
   } catch (err) {
-    const detail =
-      (err as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail;
-    throw new Error(detail ?? "Could not generate a new session.");
+    const timeout =
+      axios.isAxiosError(err) && err.code === "ECONNABORTED";
+    throw new Error(
+      apiErrorMessage(
+        err,
+        (timeout
+          ? "The text generator is taking longer than expected. Please try again."
+          : "Could not generate a new session.")
+      )
+    );
   }
 }
 
-// Get flashcards that are due today.
-export async function getFlashcards(): Promise<ApiResponse<FlashcardItem[]>> {
+export async function continueSession(
+  userId: string,
+  previousSessionId: string,
+): Promise<{ sessionId: string }> {
+  if (USE_MOCK) {
+    await delay(600);
+    return { sessionId: mockReadingSession.sessionId };
+  }
+  try {
+    const { data } = await apiClient.post<GenerateSessionPayload>(
+      "/session/continue",
+      {
+        user_id: userId,
+        previous_session_id: Number(previousSessionId),
+      },
+      { timeout: SESSION_GENERATION_TIMEOUT_MS },
+    );
+    return { sessionId: String(data.session_id) };
+  } catch (err) {
+    throw new Error(apiErrorMessage(err, "Could not generate a continuation."));
+  }
+}
+
+type BackendFlashcardItem = {
+  word_id: string;
+  dutch: string;
+  english: string;
+  example_sentence: { nl: string; en: string };
+  difficulty: number;
+  mode: "learning" | "review" | string;
+  next_review_date: string | null;
+  review_interval: string | null;
+};
+
+function toFlashcardItem(b: BackendFlashcardItem): FlashcardItem {
+  return {
+    wordId: b.word_id,
+    dutch: b.dutch,
+    english: b.english,
+    exampleSentence: { nl: b.example_sentence.nl, en: b.example_sentence.en },
+    difficulty: b.difficulty,
+    mode: b.mode === "review" ? "review" : "learning",
+    nextReviewDate: b.next_review_date,
+    reviewInterval: (b.review_interval as FlashcardItem["reviewInterval"]) ?? null,
+  };
+}
+
+function flashcardsFromSession(session: ReadingSession): FlashcardItem[] {
+  const seen = new Set<string>();
+  return session.highlights
+    .filter((word) => {
+      if (seen.has(word.wordId)) return false;
+      seen.add(word.wordId);
+      return true;
+    })
+    .slice(0, 8)
+    .map((word) => ({
+      wordId: word.wordId,
+      dutch: word.dutch,
+      english: word.english,
+      exampleSentence:
+        word.exampleSentences[0] ?? {
+          nl: word.dutch,
+          en: word.english,
+        },
+      difficulty: word.highlightType === "unknown" ? 0.65 : 0.45,
+      mode: word.highlightType === "learning" ? "review" : "learning",
+      nextReviewDate: null,
+      reviewInterval: null,
+    }));
+}
+
+function vocabTestFromSession(
+  session: ReadingSession,
+  phase: VocabTestPhase
+): VocabTest {
+  const fallbackDistractors = [
+    "development",
+    "choice",
+    "environment",
+    "question",
+    "system",
+    "example",
+    "sound",
+    "problem",
+  ];
+  const words = flashcardsFromSession(session).slice(0, 5);
+  const allMeanings = words.map((word) => word.english).filter(Boolean);
+
+  return {
+    sessionId: session.sessionId,
+    phase,
+    questions: words.map((word, index) => {
+      const distractors = [...allMeanings, ...fallbackDistractors]
+        .filter((option) => option !== word.english)
+        .filter((option, optionIndex, arr) => arr.indexOf(option) === optionIndex)
+        .slice(0, 3);
+      const correctIndex = index % 4;
+      const options = [...distractors];
+      options.splice(correctIndex, 0, word.english);
+      return {
+        questionId: `local-${session.sessionId}-${word.wordId}`,
+        wordId: word.wordId,
+        dutch: word.dutch,
+        prompt: `What does ${word.dutch} mean?`,
+        options,
+        correctIndex,
+      };
+    }),
+  };
+}
+
+export async function getFlashcards(
+  sessionId?: string | null,
+  userId?: string
+): Promise<ApiResponse<FlashcardItem[]>> {
   if (USE_MOCK) {
     await delay();
     return ok(mockFlashcards);
   }
-  const { data } = await apiClient.get<ApiResponse<FlashcardItem[]>>("/flashcards");
-  return data;
+  const effectiveUserId = userId ?? getPersistedUserId();
+  if (!effectiveUserId) return ok([]);
+  try {
+    const { data } = await apiClient.get<BackendFlashcardItem[]>("/flashcards", {
+      params: { user_id: effectiveUserId },
+    });
+    return ok(data.map(toFlashcardItem));
+  } catch (err) {
+    const message = apiErrorMessage(err, "Could not load flashcards.");
+    if (sessionId && isBackendNotReadyMessage(message)) {
+      try {
+        const session = await getReadingSession(sessionId, effectiveUserId);
+        if (session.success) return ok(flashcardsFromSession(session.data));
+      } catch {
+        return fail("Review words from this reading are not available yet.");
+      }
+    }
+    return fail(message);
+  }
 }
 
 export async function getVocabTest(
@@ -245,11 +431,27 @@ export async function getVocabTest(
     await delay();
     return ok({ ...mockVocabTest, sessionId, phase });
   }
-  const { data } = await apiClient.get<ApiResponse<VocabTest>>(
-    "/vocab-test/start",
-    { params: { session_id: sessionId, phase } }
-  );
-  return data;
+  try {
+    const { data } = await apiClient.get<ApiResponse<VocabTest> | VocabTest>(
+      "/vocab-test/start",
+      { params: { session_id: sessionId, phase } }
+    );
+    return asApiResponse(data);
+  } catch (err) {
+    const message = apiErrorMessage(err, "Could not load the vocabulary test.");
+    if (isBackendNotReadyMessage(message)) {
+      try {
+        const session = await getReadingSession(
+          sessionId,
+          getPersistedUserId() ?? undefined
+        );
+        if (session.success) return ok(vocabTestFromSession(session.data, phase));
+      } catch {
+        return fail("Vocabulary check for this reading is not available yet.");
+      }
+    }
+    return fail(message);
+  }
 }
 
 export async function submitVocabTestResult(
@@ -259,14 +461,46 @@ export async function submitVocabTestResult(
     await delay();
     return ok(result);
   }
-  const { data } = await apiClient.post<ApiResponse<VocabTestResult>>(
-    "/vocab-test/submit",
-    result
-  );
-  return data;
+  try {
+    const { data } = await apiClient.post<ApiResponse<VocabTestResult> | VocabTestResult>(
+      "/vocab-test/submit",
+      result
+    );
+    return asApiResponse(data);
+  } catch (err) {
+    const message = apiErrorMessage(err, "Could not submit the vocabulary test.");
+    if (isBackendNotReadyMessage(message)) {
+      return ok(result);
+    }
+    return fail(message);
+  }
 }
 
-// Get one assessment batch (batchNumber is 1-indexed).
+type BackendAssessmentWord = {
+  word_id: string;
+  dutch: string;
+  english?: string | null;
+  is_pseudo: boolean;
+};
+type BackendAssessmentBatch = {
+  batch_number: number;
+  total_batches: number;
+  words: BackendAssessmentWord[];
+};
+
+function toAssessmentBatch(payload: BackendAssessmentBatch): AssessmentBatch {
+  return {
+    batchNumber: payload.batch_number,
+    totalBatches: payload.total_batches,
+    words: payload.words.map((w) => ({
+      wordId: w.word_id,
+      dutch: w.dutch,
+      english: w.english ?? undefined,
+      isPseudo: w.is_pseudo,
+    })),
+  };
+}
+
 export async function getAssessmentBatch(
   batchNumber: number
 ): Promise<ApiResponse<AssessmentBatch>> {
@@ -276,13 +510,12 @@ export async function getAssessmentBatch(
       mockAssessmentBatches[batchNumber - 1] ?? mockAssessmentBatches[0];
     return ok(batch);
   }
-  const { data } = await apiClient.get<ApiResponse<AssessmentBatch>>(
+  const { data } = await apiClient.get<BackendAssessmentBatch>(
     `/assessment/batch/${batchNumber}`
   );
-  return data;
+  return ok(toAssessmentBatch(data));
 }
 
-// Submit the assessment answers. Returns the estimated CEFR level.
 export async function submitAssessment(
   result: AssessmentResult
 ): Promise<ApiResponse<AssessmentResult>> {
@@ -290,16 +523,19 @@ export async function submitAssessment(
     await delay();
     return ok(result);
   }
-  const { data } = await apiClient.post<ApiResponse<AssessmentResult>>(
-    "/assessment/submit",
-    result
-  );
-  return data;
+  const userId = getPersistedUserId();
+  await apiClient.post("/assessment/submit", {
+    user_id: userId,
+    known_word_ids: result.knownWordIds,
+    unknown_word_ids: result.unknownWordIds,
+    estimated_level: result.estimatedLevel,
+    confidence_score: result.confidenceScore,
+  });
+  if (userId) {
+    apiClient.post(`/krs/run/${encodeURIComponent(userId)}`).catch(() => {});
+  }
+  return ok(result);
 }
-
-// Activity log + condition helpers used by the Home dashboard.
-// In mock mode this data lives in localStorage so Home and Reading History
-// still have something real to show before these endpoints are connected.
 
 export type SessionLogEntry = {
   sessionId: string;
@@ -307,9 +543,7 @@ export type SessionLogEntry = {
   topic: string;
   cefrLevel: string;
   isAdaptive: boolean;
-  /** ISO timestamp of when the session was generated. */
   createdAt: string;
-  /** Accumulated reading dwell in ms (may update as user re-opens). */
   dwellMs: number;
 };
 
@@ -318,7 +552,6 @@ export type Activity = {
   wordsLookedUp: number;
   flashcardsRemembered: number;
   flashcardsForgot: number;
-  /** Map of "YYYY-MM-DD" -> minutes read that day (local time). */
   dailyMinutes: Record<string, number>;
 };
 
@@ -391,7 +624,7 @@ function writeActivity(username: string, a: Activity): void {
   try {
     localStorage.setItem(ACTIVITY_KEY_PREFIX + username, JSON.stringify(a));
   } catch {
-    // ignore (quota / private mode)
+    return;
   }
 }
 
@@ -408,7 +641,6 @@ export function logSession(
   session: Omit<SessionLogEntry, "dwellMs">
 ): void {
   const a = readActivity(username);
-  // Avoid duplicates when the same session loads twice.
   if (!a.sessions.some((s) => s.sessionId === session.sessionId)) {
     a.sessions.push({ ...session, dwellMs: 0 });
     writeActivity(username, a);
@@ -454,12 +686,32 @@ export function logFlashcardReview(
   writeActivity(username, a);
 }
 
-// Wipe a user's local progress so they run onboarding again on next login.
+export async function submitFlashcardReview(
+  userId: string,
+  wordId: string,
+  remembered: boolean,
+): Promise<ApiResponse<null>> {
+  if (USE_MOCK) {
+    await delay(100);
+    return ok(null);
+  }
+  try {
+    await apiClient.post("/flashcards/review", null, {
+      params: {
+        user_id: userId,
+        word_id: toNumericId(wordId, "word"),
+        remembered,
+      },
+    });
+    return ok(null);
+  } catch (err) {
+    return fail(apiErrorMessage(err, "Could not save flashcard review."));
+  }
+}
+
 export function resetLocalData(username: string): void {
   try {
     localStorage.removeItem(ACTIVITY_KEY_PREFIX + username);
-    // Also clear their saved profile + password so the next login runs
-    // the new-user flow again. Keep other users' data intact.
     const pw = readMap<string>(PASSWORDS_KEY);
     delete pw[username];
     writeMap(PASSWORDS_KEY, pw);
@@ -467,11 +719,10 @@ export function resetLocalData(username: string): void {
     delete pf[username];
     writeMap(PROFILES_KEY, pf);
   } catch {
-    // noop
+    return;
   }
 }
 
-// Experiment condition toggle
 export type Condition = "ADAPTIVE" | "BASELINE";
 
 export function getCondition(): Condition {
@@ -483,16 +734,16 @@ export function getCondition(): Condition {
 }
 
 export function setCondition(c: Condition): void {
-  try { localStorage.setItem(CONDITION_KEY, c); } catch { /* noop */ }
+  try { localStorage.setItem(CONDITION_KEY, c); } catch { return; }
 }
 
-// Mini dictionary for non-highlighted words in Reading.
-// In mock mode this covers the common words in the seeded sample article.
-// In real mode `GET /api/lexicon/define/{word}` provides the translation.
 const MOCK_DICT: Record<string, string> = {
   de: "the", het: "the / it", een: "a / an", van: "of / from", en: "and",
   is: "is", zijn: "are / to be", niet: "not", nog: "still / yet", maar: "but",
   ook: "also", op: "on", in: "in", tot: "until / to", naar: "to",
+  fijn: "nice / pleasant", horen: "to hear", instrumenten: "instruments",
+  klinken: "sound", zit: "sits / is sitting", heeft: "has",
+  kleine: "small", tablet: "tablet",
   dag: "day", elke: "every", nieuwe: "new", grote: "big", grootste: "biggest",
   meer: "more", beter: "better", hoe: "how", dat: "that", die: "that / those",
   deze: "this / these", er: "there", toch: "yet / still", juist: "precisely",
@@ -515,10 +766,15 @@ const MOCK_DICT: Record<string, string> = {
   lang: "long", voorbij: "past / over", zoals: "such as",
 };
 
-// Look up a word's English translation. Used by Reading when the user
-// clicks a non-highlighted word. Returns null when not in the dictionary.
+function normalizeLookupKey(word: string): string {
+  return word
+    .trim()
+    .toLowerCase()
+    .replace(/^[^\p{L}'-]+|[^\p{L}'-]+$/gu, "");
+}
+
 export async function defineWord(word: string): Promise<string | null> {
-  const key = word.trim().toLowerCase();
+  const key = normalizeLookupKey(word);
   if (!key) return null;
   if (USE_MOCK) {
     await delay(150);
@@ -534,14 +790,12 @@ export async function defineWord(word: string): Promise<string | null> {
   }
 }
 
-// Auto-add a plain looked-up word after the user clicks it in Reading.
-// Highlighted words use logInteraction("add_to_learn"), where we have word_id.
 export async function addToLearn(
   word: string,
   english: string | null
 ): Promise<void> {
   if (USE_MOCK) {
-    await delay(100);
+    await delay(150);
     return;
   }
   try {
@@ -550,17 +804,16 @@ export async function addToLearn(
       word,
       english,
     });
-  } catch {
-    // Swallow: non-critical, user already got the translation.
+  } catch (err) {
+    throw new Error(apiErrorMessage(err, "Could not add this word."));
   }
 }
 
-// Log one word interaction (see examples / add to learn / ignore).
 export async function logInteraction(
   interaction: WordInteraction
 ): Promise<ApiResponse<null>> {
   if (USE_MOCK) {
-    await delay(100); // fire-and-forget feel
+    await delay(100);
     return ok(null);
   }
   const wordId = toNumericId(interaction.wordId, "word");
@@ -583,7 +836,6 @@ export async function logInteraction(
   return ok(null);
 }
 
-// Submit the survey a user filled out after a reading session.
 export async function submitSurvey(
   response: SurveyResponse
 ): Promise<ApiResponse<null>> {
@@ -598,7 +850,6 @@ export async function submitSurvey(
   return data;
 }
 
-// Auth
 type LoginPayload = {
   user_id: string;
   username: string;
@@ -609,14 +860,10 @@ type LoginPayload = {
   created_at?: string | null;
 };
 
-// Seeded participants (see backend/seed.py): user01 .. user13
 const VALID_USERNAMES = Array.from({ length: 13 }, (_, i) =>
   `user${String(i + 1).padStart(2, "0")}`
 );
 
-// localStorage keys used for per-user data in mock mode.
-// `leeswijs-passwords` : { [username]: currentPassword }
-// `leeswijs-profiles`  : { [username]: { interests, cefrLevel } }
 const PASSWORDS_KEY = "leeswijs-passwords";
 const PROFILES_KEY  = "leeswijs-profiles";
 
@@ -639,12 +886,11 @@ function writeMap<T>(key: string, map: Record<string, T>): void {
   try {
     localStorage.setItem(key, JSON.stringify(map));
   } catch {
-    // noop – private mode etc.
+    return;
   }
 }
 
 function getStoredPassword(username: string): string {
-  // Default password == username (matches backend/seed.py).
   return readMap<string>(PASSWORDS_KEY)[username] ?? username;
 }
 
@@ -664,11 +910,6 @@ function setStoredProfile(username: string, profile: StoredProfile): void {
   writeMap(PROFILES_KEY, map);
 }
 
-// Log in with username + password.
-// Mock mode: only user01 – user13 work. Password is the localStorage
-// override, and if not set, it equals the username (backend seed default).
-// Returning users get their saved interests + CEFR back; first-timers
-// start empty so the app routes them through onboarding and assessment.
 export async function login(username: string, password: string): Promise<User> {
   if (USE_MOCK) {
     await delay(400);
@@ -714,28 +955,31 @@ export async function login(username: string, password: string): Promise<User> {
   }
 }
 
-// Save the user's interests + CEFR so logout-then-login does not re-ask.
-// In mock mode this stays in localStorage. A real user profile endpoint can
-// take over later without changing the calling code.
 export async function saveProfile(user: User): Promise<void> {
+  const profile = {
+    interests: user.interests,
+    cefrLevel: user.cefrLevel,
+    assessedAt: user.assessedAt,
+  };
+  setStoredProfile(user.id, profile);
+
   if (USE_MOCK) {
-    setStoredProfile(user.id, {
-      interests: user.interests,
-      cefrLevel: user.cefrLevel,
-      assessedAt: user.assessedAt,
-    });
     return;
   }
-  await apiClient.put("/users/me/profile", {
-    display_name: user.name,
-    interests: user.interests,
-    estimated_cefr: user.cefrLevel,
-    assessed_at: user.assessedAt,
-  });
+  try {
+    await apiClient.put("/users/me/profile", {
+      interests: user.interests,
+      estimated_cefr: user.cefrLevel,
+      assessed_at: user.assessedAt,
+    });
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      return;
+    }
+    throw new Error(apiErrorMessage(err, "Could not save profile."));
+  }
 }
 
-// Change the current user's password. Mock mode saves the new password
-// per-username in localStorage so the next login needs the new one.
 export async function changePassword(
   username: string,
   oldPassword: string,
@@ -761,8 +1005,6 @@ export async function changePassword(
       new_password: newPassword,
     });
   } catch (err) {
-    const detail =
-      (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    throw new Error(detail ?? "Could not change password.");
+    throw new Error(apiErrorMessage(err, "Could not change password."));
   }
 }

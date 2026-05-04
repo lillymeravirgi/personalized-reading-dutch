@@ -5,7 +5,7 @@ from typing import Optional
 from app.database import get_db
 from app.models import ReadingSession, RecommendedVocabulary, UserVocabularyVector
 from app.schemas import GenerateSessionRequest, GenerateSessionResponse, WordInfo
-from app.session_generator import generate_session
+
 
 router = APIRouter(prefix="/session", tags=["Session"])
 
@@ -24,6 +24,10 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except GenerationRateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except GenerationFailedError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

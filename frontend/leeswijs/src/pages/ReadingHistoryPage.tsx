@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   BookOpen,
-  Sparkles,
   ArrowRight,
   ChevronRight,
   Clock,
@@ -12,9 +11,11 @@ import {
 
 import {
   generateSession,
+  getCondition,
   readActivity,
   type SessionLogEntry,
 } from "../services/api";
+import ReadingGenerationStatus from "../components/ReadingGenerationStatus";
 import { useStore } from "../store";
 
 export default function ReadingHistoryPage() {
@@ -29,7 +30,6 @@ export default function ReadingHistoryPage() {
   useEffect(() => {
     if (!user) return;
     const a = readActivity(user.id);
-    // Most recent first.
     setSessions([...a.sessions].reverse());
   }, [user]);
 
@@ -40,7 +40,7 @@ export default function ReadingHistoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const { sessionId } = await generateSession(user.id);
+      const { sessionId } = await generateSession(user.id, getCondition());
       navigate(`/read/${sessionId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -60,11 +60,10 @@ export default function ReadingHistoryPage() {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-      className="max-w-3xl mx-auto"
+      className="mx-auto max-w-5xl"
     >
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary">
+      <div className="mb-5 flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <BookOpen size={18} strokeWidth={2} />
         </div>
         <div>
@@ -77,8 +76,7 @@ export default function ReadingHistoryPage() {
         </div>
       </div>
 
-      {/* Top bar: new reading + search */}
-      <div className="flex items-center gap-2 flex-wrap mb-5">
+      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-lg border border-black/8 bg-white px-4 py-4 shadow-sm shadow-black/5">
         <motion.button
           type="button"
           onClick={handleStart}
@@ -97,8 +95,8 @@ export default function ReadingHistoryPage() {
             </>
           ) : (
             <>
-              <Sparkles size={15} strokeWidth={2.5} />
-              New Reading
+              <BookOpen size={15} strokeWidth={2.5} />
+              New reading
             </>
           )}
         </motion.button>
@@ -118,6 +116,8 @@ export default function ReadingHistoryPage() {
         </div>
       </div>
 
+      {loading && <ReadingGenerationStatus className="mb-4" />}
+
       {error && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
@@ -128,7 +128,6 @@ export default function ReadingHistoryPage() {
         </motion.div>
       )}
 
-      {/* Body */}
       {sessions.length === 0 ? (
         <EmptyState onStart={handleStart} loading={loading} />
       ) : filtered.length === 0 ? (
@@ -142,7 +141,7 @@ export default function ReadingHistoryPage() {
               <button
                 type="button"
                 onClick={() => navigate(`/read/${s.sessionId}`)}
-                className="w-full text-left bg-white rounded-xl border border-black/8 px-5 py-4 hover:border-primary/30 hover:bg-primary/[0.02] transition-colors flex items-center justify-between gap-3"
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-black/8 bg-white px-5 py-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.02]"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -178,11 +177,10 @@ export default function ReadingHistoryPage() {
   );
 }
 
-// Sub-components
 function EmptyState({ onStart, loading }: { onStart: () => void; loading: boolean }) {
   return (
-    <div className="flex flex-col items-center text-center py-14 bg-white rounded-2xl shadow-xl shadow-black/8 px-6">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+    <div className="flex flex-col items-center rounded-lg border border-black/8 bg-white px-6 py-14 text-center shadow-sm shadow-black/5">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10">
         <BookOpen size={26} className="text-primary" strokeWidth={1.8} />
       </div>
       <h2 className="font-heading text-xl font-bold text-text mb-1">
@@ -202,7 +200,7 @@ function EmptyState({ onStart, loading }: { onStart: () => void; loading: boolea
           loading ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
         ].join(" ")}
       >
-        {loading ? <Spinner /> : <Sparkles size={15} strokeWidth={2.5} />}
+        {loading ? <Spinner /> : <BookOpen size={15} strokeWidth={2.5} />}
         Start first reading
         {!loading && <ArrowRight size={15} strokeWidth={2.5} />}
       </motion.button>

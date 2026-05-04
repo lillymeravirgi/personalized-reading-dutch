@@ -41,6 +41,24 @@ logger = logging.getLogger(__name__)
 
 _client = genai.Client(api_key=GOOGLE_API_KEY)
 
+
+class GenerationRateLimitError(RuntimeError):
+    """Raised when Gemini quota/rate limits prevent text generation."""
+
+
+class GenerationFailedError(RuntimeError):
+    """Raised when Gemini fails for a non-quota reason."""
+
+
+def _is_rate_limit_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return (
+        "429" in message
+        or "quota" in message
+        or "resource_exhausted" in message
+        or "rate limit" in message
+    )
+
 _SYSTEM_INSTRUCTION = """\
 You are an expert Dutch Pedagogical Content Creator and Linguist. \
 Your goal is to write highly personalized reading materials for L2 Dutch learners.
@@ -352,13 +370,16 @@ Return ONLY a valid JSON object with these exact keys:
             return result
         except Exception as e:
             last_error = e
+            if _is_rate_limit_error(e):
+                logger.warning(f"[SessionGen] Gemini rate-limited: {e}")
+                raise GenerationRateLimitError(
+                    "The text generator is temporarily rate limited. Please wait a moment and try again."
+                ) from e
             logger.warning(f"[SessionGen] Attempt {attempt} failed: {e}")
             if attempt < 3:
                 time.sleep(2)
 
     logger.error(f"[SessionGen] All attempts failed: {last_error}")
-    return {
-        "title": "Oefentekst",
-        "content": f"Er is een fout opgetreden bij het genereren van de tekst. ({last_error})",
-        "metadata": {"topic_used": selected_topic, "cefr_actual": user.estimated_cefr},
-    }
+    raise GenerationFailedError(
+        "The text generator could not create a reading right now. Please try again."
+    ) from last_error

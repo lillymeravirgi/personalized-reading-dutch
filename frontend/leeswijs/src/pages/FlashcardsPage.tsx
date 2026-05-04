@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Home, RotateCcw, Layers, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowRight, ClipboardCheck, Home, RotateCcw, Layers } from "lucide-react";
 
 import { useStore } from "../store";
-import { getFlashcards } from "../services/api";
+import {
+  getFlashcards,
+  isBackendNotReadyMessage,
+  readActivity,
+} from "../services/api";
 import FlashcardDeck from "../components/flashcards/FlashcardDeck";
 
 export default function FlashcardsPage() {
@@ -17,24 +21,41 @@ export default function FlashcardsPage() {
   const setFlashcards    = useStore((s) => s.setFlashcards);
   const setLoadingCards  = useStore((s) => s.setLoadingFlashcards);
   const resetSession     = useStore((s) => s.resetSession);
+  const user             = useStore((s) => s.user);
+  const latestSession = user ? readActivity(user.id).sessions.slice(-1)[0] : null;
+  const effectiveSessionId = sessionId ?? latestSession?.sessionId ?? null;
 
   const [complete,      setComplete]      = useState(false);
   const [rememberedIds, setRememberedIds] = useState<Set<string>>(new Set());
+  const [error,         setError]         = useState<string | null>(null);
+  const [reloadId,      setReloadId]      = useState(0);
 
-  // Initial fetch
   useEffect(() => {
     let cancelled = false;
     setLoadingCards(true);
-    getFlashcards().then((res) => {
-      if (cancelled) return;
-      if (res.success) setFlashcards(res.data);
-      setLoadingCards(false);
-    });
+    setError(null);
+    getFlashcards(effectiveSessionId, user?.id)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success) {
+          setFlashcards(res.data);
+        } else {
+          setFlashcards([]);
+          setError(res.error);
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setFlashcards([]);
+        setError(err instanceof Error ? err.message : "Could not load flashcards.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCards(false);
+      });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [effectiveSessionId, reloadId, setFlashcards, setLoadingCards, user?.id]);
 
   function handleComplete(remembered: Set<string>) {
     setRememberedIds(remembered);
@@ -47,25 +68,32 @@ export default function FlashcardsPage() {
     setComplete(false);
   }
 
-  // Phase router
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="mx-auto max-w-3xl">
       <Header />
       <div className="mt-6">
         <AnimatePresence mode="wait">
           {isLoading && <LoadingView key="loading" />}
-          {!isLoading && flashcards.length === 0 && (
+          {!isLoading && error && (
+            <ErrorView
+              key="error"
+              message={error}
+              onRetry={() => setReloadId((n) => n + 1)}
+              onHome={() => navigate("/home")}
+            />
+          )}
+          {!isLoading && !error && flashcards.length === 0 && (
             <EmptyView
               key="empty"
               onHome={() => navigate("/home")}
-              onContinue={
-                sessionId
-                  ? () => navigate(`/vocab-test/${encodeURIComponent(sessionId)}`)
+              onVocabTest={
+                effectiveSessionId
+                  ? () => navigate(`/vocab-test/${encodeURIComponent(effectiveSessionId)}`)
                   : undefined
               }
             />
           )}
-          {!isLoading && flashcards.length > 0 && !complete && (
+          {!isLoading && !error && flashcards.length > 0 && !complete && (
             <motion.div
               key="deck"
               initial={{ opacity: 0, y: 10 }}
@@ -76,7 +104,7 @@ export default function FlashcardsPage() {
               <FlashcardDeck onComplete={handleComplete} />
             </motion.div>
           )}
-          {!isLoading && complete && (
+          {!isLoading && !error && complete && (
             <CompleteView
               key="complete"
               remembered={rememberedIds.size}
@@ -84,8 +112,8 @@ export default function FlashcardsPage() {
               onReview={handleReview}
               onHome={() => navigate("/home")}
               onContinue={
-                sessionId
-                  ? () => navigate(`/vocab-test/${encodeURIComponent(sessionId)}`)
+                effectiveSessionId
+                  ? () => navigate(`/vocab-test/${encodeURIComponent(effectiveSessionId)}`)
                   : undefined
               }
             />
@@ -93,26 +121,108 @@ export default function FlashcardsPage() {
         </AnimatePresence>
       </div>
 
-      {/* Session flag to remember this page mounted (defensive reset on unmount) */}
       <ResetOnLeave reset={resetSession} />
     </div>
   );
 }
 
-// Sub-views
 function Header() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary">
-        <Layers size={18} strokeWidth={2} />
-      </div>
-      <div>
-        <h1 className="font-heading text-2xl font-bold text-text">Flashcards</h1>
-        <p className="text-sm font-body text-text/50">
-          Review the words you're learning.
-        </p>
+    <div className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Layers size={18} strokeWidth={2} />
+          </div>
+          <div>
+            <h1 className="font-heading text-2xl font-bold text-text">Flashcards</h1>
+            <p className="text-sm font-body text-text/50">
+              Review selected words before the vocabulary check.
+            </p>
+          </div>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full bg-primary/[0.06] px-3 py-1.5 text-xs font-body font-semibold text-primary">
+          <ClipboardCheck size={13} />
+          Vocabulary check next
+        </div>
       </div>
     </div>
+  );
+}
+
+function ErrorView({
+  message,
+  onRetry,
+  onHome,
+}: {
+  message: string;
+  onRetry: () => void;
+  onHome: () => void;
+}) {
+  const backendNotReady = isBackendNotReadyMessage(message);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      className={[
+        "rounded-lg border px-5 py-4",
+        backendNotReady ? "border-black/8 bg-white" : "border-red-200 bg-red-50",
+      ].join(" ")}
+    >
+      <div className="flex gap-3">
+        <AlertCircle
+          size={18}
+          className={[
+            "mt-0.5 shrink-0",
+            backendNotReady ? "text-text/35" : "text-red-500",
+          ].join(" ")}
+        />
+        <div>
+          <h2
+            className={[
+              "font-heading text-sm font-semibold",
+              backendNotReady ? "text-text" : "text-red-700",
+            ].join(" ")}
+          >
+            {backendNotReady ? "Flashcards are not connected yet" : "Could not load flashcards"}
+          </h2>
+          <p
+            className={[
+              "mt-1 text-sm font-body",
+              backendNotReady ? "text-text/55" : "text-red-700/80",
+            ].join(" ")}
+          >
+            {backendNotReady
+              ? "This review step is waiting for backend support. You can go back and start another reading for now."
+              : message}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {!backendNotReady && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="rounded-lg bg-red-600 px-3 py-2 text-xs font-heading font-semibold text-white hover:opacity-90"
+              >
+                Try again
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onHome}
+              className={[
+                "rounded-lg border bg-white px-3 py-2 text-xs font-heading font-semibold",
+                backendNotReady
+                  ? "border-black/12 text-text/70 hover:bg-black/[0.03]"
+                  : "border-red-200 text-red-700 hover:bg-red-100",
+              ].join(" ")}
+            >
+              Back home
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -132,17 +242,17 @@ function LoadingView() {
 
 function EmptyView({
   onHome,
-  onContinue,
+  onVocabTest,
 }: {
   onHome: () => void;
-  onContinue?: () => void;
+  onVocabTest?: () => void;
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      className="flex flex-col items-center text-center py-16"
+      className="flex flex-col items-center rounded-lg border border-black/8 bg-white px-6 py-14 text-center shadow-sm shadow-black/5"
     >
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-black/5">
         <Layers size={28} className="text-text/30" strokeWidth={1.6} />
@@ -151,30 +261,29 @@ function EmptyView({
         No flashcards due
       </h2>
       <p className="text-sm font-body text-text/50 max-w-sm mb-6">
-        Complete more reading tasks and mark highlighted words as "Add to learn"
-        to build up your deck.
+        There are no saved words to review from this deck.
       </p>
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex w-full max-w-sm flex-col gap-3 sm:flex-row">
+        {onVocabTest && (
+          <motion.button
+            type="button"
+            onClick={onVocabTest}
+            whileTap={{ scale: 0.97 }}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
+          >
+            Vocabulary check
+            <ArrowRight size={14} />
+          </motion.button>
+        )}
         <motion.button
           type="button"
           onClick={onHome}
           whileTap={{ scale: 0.97 }}
-          className="flex items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-5 py-2.5 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]"
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-5 py-2.5 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]"
         >
           <Home size={14} />
           Back home
         </motion.button>
-        {onContinue && (
-          <motion.button
-            type="button"
-            onClick={onContinue}
-            whileTap={{ scale: 0.97 }}
-            className="flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
-          >
-            Vocabulary Check
-            <ArrowRight size={14} />
-          </motion.button>
-        )}
       </div>
     </motion.div>
   );
@@ -202,7 +311,7 @@ function CompleteView({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-10 flex flex-col items-center text-center"
+      className="flex flex-col items-center rounded-lg border border-black/8 bg-white px-8 py-10 text-center shadow-sm shadow-black/5"
     >
       <motion.div
         initial={{ scale: 0, rotate: -20 }}
@@ -211,7 +320,7 @@ function CompleteView({
         className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl"
         style={{ backgroundColor: `${meta.color}18` }}
       >
-        <Sparkles size={30} style={{ color: meta.color }} strokeWidth={1.6} />
+        <Layers size={30} style={{ color: meta.color }} strokeWidth={1.6} />
       </motion.div>
 
       <h2 className="font-heading text-2xl font-bold text-text mb-1">
@@ -254,7 +363,7 @@ function CompleteView({
         >
           {onContinue ? (
             <>
-              Vocabulary Check
+              Vocabulary check
               <ArrowRight size={14} />
             </>
           ) : (
@@ -270,16 +379,14 @@ function CompleteView({
 }
 
 function verdict(pct: number) {
-  if (pct >= 80) return { title: "Excellent!",   subtitle: "You've got a strong grip on these words.",       color: "#0D7377" };
-  if (pct >= 50) return { title: "Nice work.",   subtitle: "A solid run — keep reviewing to lock them in.", color: "#F2A541" };
-  return         { title: "Good try.",          subtitle: "Fresh words take time. Another pass will help.", color: "#EF4444" };
+  if (pct >= 80) return { title: "Review complete", subtitle: "Most words were remembered.", color: "#0D7377" };
+  if (pct >= 50) return { title: "Review complete", subtitle: "Some words need another review.", color: "#F2A541" };
+  return         { title: "Review complete", subtitle: "These words need more practice.", color: "#EF4444" };
 }
 
-// Reset the deck state when navigating away so a second visit starts clean.
 function ResetOnLeave({ reset }: { reset: () => void }) {
   useEffect(() => {
     return () => reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reset]);
   return null;
 }

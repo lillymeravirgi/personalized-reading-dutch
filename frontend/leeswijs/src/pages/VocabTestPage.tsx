@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle, ArrowRight, ClipboardCheck, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowRight, ClipboardCheck, Home, Loader2 } from "lucide-react";
 
 import TestComplete from "../components/vocab-test/TestComplete";
 import TestProgress from "../components/vocab-test/TestProgress";
 import TestQuestion from "../components/vocab-test/TestQuestion";
-import { getVocabTest, submitVocabTestResult } from "../services/api";
+import {
+  getVocabTest,
+  isBackendNotReadyMessage,
+  submitVocabTestResult,
+} from "../services/api";
 import type {
   VocabTest,
   VocabTestAnswer,
@@ -117,7 +121,7 @@ export default function VocabTestPage() {
     return (
       <div className="mx-auto max-w-2xl py-12 text-center">
         <div className="inline-flex items-center gap-2 text-sm font-body text-text/60">
-          <Sparkles size={16} className="animate-pulse" />
+          <Loader2 size={16} className="animate-spin" />
           Loading vocabulary test…
         </div>
       </div>
@@ -125,13 +129,59 @@ export default function VocabTestPage() {
   }
 
   if (!test || !currentQuestion) {
+    const backendNotReady = isBackendNotReadyMessage(error);
     return (
-      <div className="mx-auto max-w-2xl rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+      <div
+        className={[
+          "mx-auto max-w-2xl rounded-lg border px-5 py-4",
+          backendNotReady
+            ? "border-black/8 bg-white"
+            : "border-red-200 bg-red-50",
+        ].join(" ")}
+      >
         <div className="flex gap-3">
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
-          <p className="text-sm font-body text-red-700">
-            {error ?? "No vocabulary check is available for this reading yet."}
-          </p>
+          <AlertCircle
+            size={18}
+            className={[
+              "mt-0.5 shrink-0",
+              backendNotReady ? "text-text/35" : "text-red-500",
+            ].join(" ")}
+          />
+          <div>
+            <h1
+              className={[
+                "font-heading text-sm font-semibold",
+                backendNotReady ? "text-text" : "text-red-700",
+              ].join(" ")}
+            >
+              {backendNotReady
+                ? "Vocabulary check is not connected yet"
+                : "Could not load vocabulary check"}
+            </h1>
+            <p
+              className={[
+                "mt-1 text-sm font-body",
+                backendNotReady ? "text-text/55" : "text-red-700/80",
+              ].join(" ")}
+            >
+              {backendNotReady
+                ? "This vocabulary check is waiting for backend support. You can go back and continue testing the reading flow."
+                : error ?? "No vocabulary check is available for this reading yet."}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/home")}
+              className={[
+                "mt-4 inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-heading font-semibold",
+                backendNotReady
+                  ? "border-black/12 text-text/70 hover:bg-black/[0.03]"
+                  : "border-red-200 text-red-700 hover:bg-red-100",
+              ].join(" ")}
+            >
+              <Home size={13} />
+              Back home
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -146,23 +196,30 @@ export default function VocabTestPage() {
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
       className="mx-auto max-w-2xl"
     >
-      <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <ClipboardCheck size={18} strokeWidth={2} />
-        </div>
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-text">
-            Vocabulary Check
-          </h1>
-          <p className="text-sm font-body text-text/50">
-            {phase === "DELAYED_24H"
-              ? "Delayed check for the words from your reading."
-              : "Check a few target words from this reading."}
-          </p>
+      <div className="mb-5 rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <ClipboardCheck size={18} strokeWidth={2} />
+            </div>
+            <div>
+              <h1 className="font-heading text-2xl font-bold text-text">
+                Vocabulary check
+              </h1>
+              <p className="text-sm font-body text-text/50">
+                {phase === "DELAYED_24H"
+                  ? "24-hour retention check for reviewed words."
+                  : "Immediate check after flashcard review."}
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full bg-secondary/15 px-3 py-1.5 text-xs font-body font-semibold text-[#9a5a08]">
+            {phase === "DELAYED_24H" ? "Delayed" : "Immediate"}
+          </span>
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white px-7 py-8 shadow-xl shadow-black/8">
+      <div className="rounded-lg border border-black/8 bg-white px-6 py-7 shadow-sm shadow-black/5 sm:px-7 sm:py-8">
         <AnimatePresence mode="wait">
           {result ? (
             <motion.div

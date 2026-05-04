@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Volume2 } from "lucide-react";
 
 type Props = {
@@ -15,6 +15,22 @@ export default function SpeakButton({
   size = 16,
 }: Props) {
   const [speaking, setSpeaking] = useState(false);
+  const [voiceUnavailable, setVoiceUnavailable] = useState(false);
+
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+    const clearUnavailable = () => setVoiceUnavailable(false);
+    window.speechSynthesis.addEventListener("voiceschanged", clearUnavailable);
+    return () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", clearUnavailable);
+    };
+  }, []);
+
+  function getNetherlandsDutchVoice() {
+    return window.speechSynthesis
+      .getVoices()
+      .find((voice) => voice.lang.toLowerCase() === "nl-nl");
+  }
 
   function speak(e: React.MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
@@ -22,33 +38,41 @@ export default function SpeakButton({
 
     if (!text.trim() || !("speechSynthesis" in window)) return;
 
+    const dutchVoice = getNetherlandsDutchVoice();
+    if (!dutchVoice) {
+      setVoiceUnavailable(true);
+      return;
+    }
+
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "nl-NL";
     utterance.rate = 0.86;
-
-    const dutchVoice = window.speechSynthesis
-      .getVoices()
-      .find((voice) => voice.lang.toLowerCase().startsWith("nl"));
-    if (dutchVoice) utterance.voice = dutchVoice;
+    utterance.voice = dutchVoice;
 
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
+    setVoiceUnavailable(false);
     setSpeaking(true);
     window.speechSynthesis.speak(utterance);
   }
+
+  const buttonLabel = voiceUnavailable
+    ? "Netherlands Dutch voice unavailable on this device"
+    : label;
 
   return (
     <button
       type="button"
       onClick={speak}
-      aria-label={label}
-      title={label}
+      aria-label={buttonLabel}
+      title={buttonLabel}
       className={[
         "inline-flex items-center justify-center rounded-lg border border-black/8",
         "bg-white text-primary shadow-sm shadow-black/5 transition-colors",
         "hover:border-primary/30 hover:bg-primary/[0.04]",
         speaking ? "ring-2 ring-primary/25" : "",
+        voiceUnavailable ? "opacity-60" : "",
         className,
       ].join(" ")}
     >

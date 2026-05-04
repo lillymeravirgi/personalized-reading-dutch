@@ -11,7 +11,6 @@ import {
   type InterestId,
 } from "../constants/interests";
 
-// Component
 export default function OnboardingPage() {
   const navigate = useNavigate();
   const setUser = useStore((s) => s.setUser);
@@ -36,8 +35,6 @@ export default function OnboardingPage() {
     if (user) {
       const updated = { ...user, interests: [...selected] };
       setUser(updated);
-      // Persist so a logout-then-login cycle does not re-prompt (mock mode
-      // writes to localStorage; real backend call lives inside saveProfile).
       void saveProfile(updated);
     }
     navigate("/assessment");
@@ -54,20 +51,17 @@ export default function OnboardingPage() {
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9"
     >
-      {/* Step indicator */}
       <StepIndicator current={1} total={2} />
 
-      {/* Heading */}
       <div className="mt-6 mb-2">
         <h1 className="font-heading text-2xl font-bold text-text">
           What are you interested in?
         </h1>
         <p className="mt-1 text-sm text-text/50 font-body">
-          Pick a few topics for your study profile.
+          Pick a few topics you would like to read about.
         </p>
       </div>
 
-      {/* Selection counter */}
       <div className="mb-5 flex items-center gap-2">
         <motion.span
           key={count}
@@ -90,7 +84,6 @@ export default function OnboardingPage() {
         )}
       </div>
 
-      {/* Interest grid */}
       <motion.div
         className="grid grid-cols-2 sm:grid-cols-3 gap-3"
         initial="hidden"
@@ -115,7 +108,6 @@ export default function OnboardingPage() {
         })}
       </motion.div>
 
-      {/* Continue button */}
       <div className="mt-7">
         <motion.button
           type="button"
@@ -149,7 +141,6 @@ export default function OnboardingPage() {
   );
 }
 
-// InterestCard
 interface CardProps {
   interest: (typeof INTERESTS)[number];
   isSelected: boolean;
@@ -187,7 +178,6 @@ function InterestCard({ interest, isSelected, isDisabled, onToggle }: CardProps)
         ].join(" ")}
         style={isSelected ? { borderColor: interest.color, backgroundColor: `${interest.color}0f` } : {}}
       >
-        {/* Check badge */}
         <AnimatePresence>
           {isSelected && (
             <motion.span
@@ -204,7 +194,6 @@ function InterestCard({ interest, isSelected, isDisabled, onToggle }: CardProps)
           )}
         </AnimatePresence>
 
-        {/* Icon */}
         <div
           className="flex items-center justify-center w-10 h-10 rounded-xl transition-colors duration-150"
           style={{
@@ -218,7 +207,6 @@ function InterestCard({ interest, isSelected, isDisabled, onToggle }: CardProps)
           />
         </div>
 
-        {/* Label */}
         <span
           className="text-xs font-body font-semibold leading-tight transition-colors duration-150"
           style={{ color: isSelected ? interest.color : "#78716c" }}
@@ -230,7 +218,6 @@ function InterestCard({ interest, isSelected, isDisabled, onToggle }: CardProps)
   );
 }
 
-// StepIndicator
 function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex items-center gap-3">

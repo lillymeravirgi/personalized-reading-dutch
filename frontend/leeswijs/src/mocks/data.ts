@@ -7,7 +7,6 @@ import type {
   VocabTest,
 } from "../types";
 
-// User
 export const mockUser: User = {
   id: "user-001",
   name: "Alex",
@@ -18,9 +17,7 @@ export const mockUser: User = {
   createdAt: "2025-09-01T10:00:00Z",
 };
 
-// Vocabulary (words that appear in the reading session)
 export const mockVocabulary: VocabularyWord[] = [
-  // unknown words (blue)
   {
     wordId: "w001",
     dutch: "ontwikkeling",
@@ -71,7 +68,6 @@ export const mockVocabulary: VocabularyWord[] = [
     lastSeen: "2025-10-10T08:00:00Z",
     reviewPriority: 0.75,
   },
-  // learning words (yellow)
   {
     wordId: "w006",
     dutch: "onderzoek",
@@ -104,39 +100,44 @@ export const mockVocabulary: VocabularyWord[] = [
   },
 ];
 
-// Reading session
-// Text is ~200 words. Character offsets match the positions below.
 const articleText =
-  "De ontwikkeling van kunstmatige intelligentie gaat snel. " +
-  "Elke dag worden nieuwe modellen gepubliceerd die complexe taken kunnen uitvoeren. " +
-  "Van het analyseren van grote hoeveelheden gegevens tot het schrijven van teksten — " +
-  "de mogelijkheden lijken eindeloos. " +
+  "De ontwikkeling van digitale technologie in ziekenhuizen gaat snel. " +
+  "Elke dag worden nieuwe hulpmiddelen getest die artsen en verpleegkundigen kunnen helpen. " +
+  "Van het analyseren van grote hoeveelheden gegevens tot het plannen van afspraken, " +
+  "de mogelijkheden worden steeds groter. " +
   "Wetenschappers doen intensief onderzoek naar de grenzen van deze technologie. " +
   "Een van de grootste uitdagingen is de verwerking van ongestructureerde informatie, " +
-  "zoals afbeeldingen en geluid. " +
+  "zoals foto's, notities en geluid. " +
   "Het algoritme dat hiervoor wordt gebruikt, leert van miljoenen voorbeelden. " +
   "Hoe meer gegevens het systeem ziet, hoe beter de nauwkeurigheid wordt. " +
   "Toch zijn er ook zorgen. " +
-  "Critici wijzen op privacyrisico's en de mogelijke impact op de arbeidsmarkt. " +
-  "Maar voorstanders zeggen dat kunstmatige intelligentie juist nieuwe banen creëert " +
-  "en een oplossing biedt voor problemen die mensen alleen niet kunnen oplossen. " +
-  "De discussie over de toekomst van AI is nog lang niet voorbij.";
+  "Critici wijzen op privacyrisico's en de mogelijke impact op het werk van zorgpersoneel. " +
+  "Maar voorstanders zeggen dat digitale technologie juist tijd kan besparen " +
+  "en een oplossing biedt voor problemen die mensen alleen moeilijk kunnen oplossen. " +
+  "De discussie over de toekomst van zorgtechnologie is nog lang niet voorbij.";
+
+function locate(text: string, word: string): { startIndex: number; endIndex: number } {
+  const startIndex = text.indexOf(word);
+  if (startIndex < 0) {
+    console.warn(`[mock] highlight word not found in article: "${word}"`);
+    return { startIndex: 0, endIndex: 0 };
+  }
+  return { startIndex, endIndex: startIndex + word.length };
+}
 
 export const mockReadingSession: ReadingSession = {
   sessionId: "session-001",
   text: articleText,
-  title: "De opmars van kunstmatige intelligentie",
+  title: "Digitale technologie in de zorg",
   topic: "technology",
   cefrLevel: "B1",
   isAdaptive: true,
   highlights: [
-    // unknown (blue)
     {
       wordId: "w001",
       dutch: "ontwikkeling",
       english: "development",
-      startIndex: 3,
-      endIndex: 15,
+      ...locate(articleText, "ontwikkeling"),
       highlightType: "unknown",
       exampleSentences: [
         { nl: "De ontwikkeling van nieuwe medicijnen kost veel tijd.",
@@ -148,16 +149,15 @@ export const mockReadingSession: ReadingSession = {
     },
     {
       wordId: "w002",
-      dutch: "kunstmatige intelligentie",
-      english: "artificial intelligence",
-      startIndex: 19,
-      endIndex: 43,
+      dutch: "digitale technologie",
+      english: "digital technology",
+      ...locate(articleText, "digitale technologie"),
       highlightType: "unknown",
       exampleSentences: [
-        { nl: "Kunstmatige intelligentie verandert de gezondheidszorg.",
-          en: "Artificial intelligence is changing healthcare." },
-        { nl: "Veel bedrijven investeren nu in kunstmatige intelligentie.",
-          en: "Many companies are now investing in artificial intelligence." },
+        { nl: "Digitale technologie verandert de gezondheidszorg.",
+          en: "Digital technology is changing healthcare." },
+        { nl: "Veel bedrijven investeren nu in digitale technologie.",
+          en: "Many companies are now investing in digital technology." },
       ],
       usageFrequency: "moderate",
     },
@@ -165,8 +165,7 @@ export const mockReadingSession: ReadingSession = {
       wordId: "w003",
       dutch: "gegevens",
       english: "data",
-      startIndex: 196,
-      endIndex: 204,
+      ...locate(articleText, "gegevens"),
       highlightType: "unknown",
       exampleSentences: [
         { nl: "De gegevens worden veilig opgeslagen in de cloud.",
@@ -180,8 +179,7 @@ export const mockReadingSession: ReadingSession = {
       wordId: "w004",
       dutch: "verwerking",
       english: "processing",
-      startIndex: 374,
-      endIndex: 384,
+      ...locate(articleText, "verwerking"),
       highlightType: "unknown",
       exampleSentences: [
         { nl: "De verwerking van je aanvraag duurt twee werkdagen.",
@@ -195,8 +193,7 @@ export const mockReadingSession: ReadingSession = {
       wordId: "w005",
       dutch: "nauwkeurigheid",
       english: "accuracy",
-      startIndex: 504,
-      endIndex: 518,
+      ...locate(articleText, "nauwkeurigheid"),
       highlightType: "unknown",
       exampleSentences: [
         { nl: "De nauwkeurigheid van het model is indrukwekkend.",
@@ -206,13 +203,11 @@ export const mockReadingSession: ReadingSession = {
       ],
       usageFrequency: "moderate",
     },
-    // learning (yellow)
     {
       wordId: "w006",
       dutch: "onderzoek",
       english: "research",
-      startIndex: 276,
-      endIndex: 285,
+      ...locate(articleText, "onderzoek"),
       highlightType: "learning",
       exampleSentences: [
         { nl: "Het onderzoek naar klimaatverandering is urgent.",
@@ -226,8 +221,7 @@ export const mockReadingSession: ReadingSession = {
       wordId: "w007",
       dutch: "algoritme",
       english: "algorithm",
-      startIndex: 430,
-      endIndex: 439,
+      ...locate(articleText, "algoritme"),
       highlightType: "learning",
       exampleSentences: [
         { nl: "Het algoritme sorteert de resultaten op relevantie.",
@@ -241,8 +235,7 @@ export const mockReadingSession: ReadingSession = {
       wordId: "w008",
       dutch: "oplossing",
       english: "solution",
-      startIndex: 706,
-      endIndex: 715,
+      ...locate(articleText, "oplossing"),
       highlightType: "learning",
       exampleSentences: [
         { nl: "We moeten een oplossing vinden voor dit probleem.",
@@ -255,7 +248,6 @@ export const mockReadingSession: ReadingSession = {
   ],
 };
 
-// Flashcards
 export const mockFlashcards: FlashcardItem[] = [
   {
     wordId: "f001",
@@ -405,8 +397,8 @@ export const mockFlashcards: FlashcardItem[] = [
     dutch: "toepassing",
     english: "application / use",
     exampleSentence: {
-      nl: "De toepassing van AI in de zorg groeit snel.",
-      en: "The application of AI in healthcare is growing fast.",
+      nl: "De toepassing van digitale zorg groeit snel.",
+      en: "The use of digital healthcare is growing fast.",
     },
     difficulty: 0.6,
     mode: "learning",
@@ -415,7 +407,6 @@ export const mockFlashcards: FlashcardItem[] = [
   },
 ];
 
-// Vocabulary test
 export const mockVocabTest: VocabTest = {
   sessionId: "session-001",
   phase: "IMMEDIATE",
@@ -463,84 +454,103 @@ export const mockVocabTest: VocabTest = {
   ],
 };
 
-// Assessment batches
 export const mockAssessmentBatches: AssessmentBatch[] = [
   {
     batchNumber: 1,
     totalBatches: 3,
     words: [
-      { wordId: "a001", dutch: "huis", english: "house" },
-      { wordId: "a002", dutch: "werken", english: "to work" },
-      { wordId: "a003", dutch: "vriendelijk", english: "friendly" },
-      { wordId: "a004", dutch: "reizen", english: "to travel" },
-      { wordId: "a005", dutch: "schoon", english: "clean" },
-      { wordId: "a006", dutch: "geweldig", english: "great / wonderful" },
-      { wordId: "a007", dutch: "beslissen", english: "to decide" },
-      { wordId: "a008", dutch: "afhankelijk", english: "dependent" },
+      { wordId: "a001", dutch: "huis",          english: "house" },
+      { wordId: "a002", dutch: "werken",        english: "to work" },
+      { wordId: "p001", dutch: "krelping",      isPseudo: true },
+      { wordId: "a003", dutch: "vriendelijk",   english: "friendly" },
+      { wordId: "a004", dutch: "reizen",        english: "to travel" },
+      { wordId: "p002", dutch: "vrengsel",      isPseudo: true },
+      { wordId: "a005", dutch: "schoon",        english: "clean" },
+      { wordId: "a006", dutch: "geweldig",      english: "great / wonderful" },
+      { wordId: "a007", dutch: "beslissen",     english: "to decide" },
+      { wordId: "p003", dutch: "griksel",       isPseudo: true },
+      { wordId: "a008", dutch: "afhankelijk",   english: "dependent" },
       { wordId: "a009", dutch: "ondersteuning", english: "support" },
-      { wordId: "a010", dutch: "uitdaging", english: "challenge" },
-      { wordId: "a011", dutch: "bereiken", english: "to achieve / to reach" },
-      { wordId: "a012", dutch: "geduldig", english: "patient" },
-      { wordId: "a013", dutch: "vertrouwen", english: "trust / to trust" },
-      { wordId: "a014", dutch: "aanpassen", english: "to adapt" },
-      { wordId: "a015", dutch: "keuze", english: "choice" },
-      { wordId: "a016", dutch: "omgeving", english: "environment / surroundings" },
-      { wordId: "a017", dutch: "zorgvuldig", english: "careful" },
-      { wordId: "a018", dutch: "herhalen", english: "to repeat" },
-      { wordId: "a019", dutch: "duidelijk", english: "clear" },
-      { wordId: "a020", dutch: "bijdragen", english: "to contribute" },
+      { wordId: "p004", dutch: "glopig",        isPseudo: true },
+      { wordId: "a010", dutch: "uitdaging",     english: "challenge" },
+      { wordId: "a011", dutch: "bereiken",      english: "to achieve / to reach" },
+      { wordId: "p005", dutch: "miffel",        isPseudo: true },
+      { wordId: "a012", dutch: "geduldig",      english: "patient" },
+      { wordId: "a013", dutch: "vertrouwen",    english: "trust / to trust" },
+      { wordId: "p006", dutch: "kwisp",         isPseudo: true },
+      { wordId: "a014", dutch: "aanpassen",     english: "to adapt" },
+      { wordId: "a015", dutch: "keuze",         english: "choice" },
+      { wordId: "p007", dutch: "sprekte",       isPseudo: true },
+      { wordId: "a016", dutch: "omgeving",      english: "environment / surroundings" },
+      { wordId: "a017", dutch: "zorgvuldig",    english: "careful" },
+      { wordId: "a018", dutch: "herhalen",      english: "to repeat" },
+      { wordId: "a019", dutch: "duidelijk",     english: "clear" },
+      { wordId: "a020", dutch: "bijdragen",     english: "to contribute" },
     ],
   },
   {
     batchNumber: 2,
     totalBatches: 3,
     words: [
-      { wordId: "a021", dutch: "bewustzijn", english: "awareness / consciousness" },
-      { wordId: "a022", dutch: "benadering", english: "approach" },
-      { wordId: "a023", dutch: "hypothese", english: "hypothesis" },
-      { wordId: "a024", dutch: "perspectief", english: "perspective" },
-      { wordId: "a025", dutch: "criticus", english: "critic" },
-      { wordId: "a026", dutch: "infrastructuur", english: "infrastructure" },
-      { wordId: "a027", dutch: "implementeren", english: "to implement" },
-      { wordId: "a028", dutch: "consistentie", english: "consistency" },
+      { wordId: "a021", dutch: "bewustzijn",        english: "awareness / consciousness" },
+      { wordId: "p008", dutch: "gruffelen",         isPseudo: true },
+      { wordId: "a022", dutch: "benadering",        english: "approach" },
+      { wordId: "a023", dutch: "hypothese",         english: "hypothesis" },
+      { wordId: "p009", dutch: "krinkel",           isPseudo: true },
+      { wordId: "a024", dutch: "perspectief",       english: "perspective" },
+      { wordId: "a025", dutch: "criticus",          english: "critic" },
+      { wordId: "p010", dutch: "flunzen",           isPseudo: true },
+      { wordId: "a026", dutch: "infrastructuur",    english: "infrastructure" },
+      { wordId: "a027", dutch: "implementeren",     english: "to implement" },
+      { wordId: "p011", dutch: "brempelig",         isPseudo: true },
+      { wordId: "a028", dutch: "consistentie",      english: "consistency" },
       { wordId: "a029", dutch: "onafhankelijkheid", english: "independence" },
-      { wordId: "a030", dutch: "transparantie", english: "transparency" },
-      { wordId: "a031", dutch: "methodologie", english: "methodology" },
-      { wordId: "a032", dutch: "integratie", english: "integration" },
-      { wordId: "a033", dutch: "efficiëntie", english: "efficiency" },
-      { wordId: "a034", dutch: "validatie", english: "validation" },
-      { wordId: "a035", dutch: "duurzaamheid", english: "sustainability" },
-      { wordId: "a036", dutch: "implicatie", english: "implication" },
+      { wordId: "p012", dutch: "plunseling",        isPseudo: true },
+      { wordId: "a030", dutch: "transparantie",     english: "transparency" },
+      { wordId: "a031", dutch: "methodologie",      english: "methodology" },
+      { wordId: "p013", dutch: "krampelheid",       isPseudo: true },
+      { wordId: "a032", dutch: "integratie",        english: "integration" },
+      { wordId: "a033", dutch: "efficiëntie",       english: "efficiency" },
+      { wordId: "p014", dutch: "krakkeren",         isPseudo: true },
+      { wordId: "a034", dutch: "validatie",         english: "validation" },
+      { wordId: "a035", dutch: "duurzaamheid",      english: "sustainability" },
+      { wordId: "a036", dutch: "implicatie",        english: "implication" },
       { wordId: "a037", dutch: "aansprakelijkheid", english: "liability / accountability" },
-      { wordId: "a038", dutch: "herstructureren", english: "to restructure" },
-      { wordId: "a039", dutch: "kwetsbaarheid", english: "vulnerability" },
-      { wordId: "a040", dutch: "normalisatie", english: "normalisation" },
+      { wordId: "a038", dutch: "herstructureren",   english: "to restructure" },
+      { wordId: "a039", dutch: "kwetsbaarheid",     english: "vulnerability" },
+      { wordId: "a040", dutch: "normalisatie",      english: "normalisation" },
     ],
   },
   {
     batchNumber: 3,
     totalBatches: 3,
     words: [
-      { wordId: "a041", dutch: "speculatief", english: "speculative" },
-      { wordId: "a042", dutch: "paradigma", english: "paradigm" },
-      { wordId: "a043", dutch: "epistemologie", english: "epistemology" },
-      { wordId: "a044", dutch: "coherentie", english: "coherence" },
-      { wordId: "a045", dutch: "axioma", english: "axiom" },
-      { wordId: "a046", dutch: "hegemonie", english: "hegemony" },
-      { wordId: "a047", dutch: "ontologie", english: "ontology" },
-      { wordId: "a048", dutch: "dialectisch", english: "dialectical" },
-      { wordId: "a049", dutch: "fenomenologie", english: "phenomenology" },
-      { wordId: "a050", dutch: "deterministisch", english: "deterministic" },
-      { wordId: "a051", dutch: "pragmatisch", english: "pragmatic" },
-      { wordId: "a052", dutch: "pluralisme", english: "pluralism" },
-      { wordId: "a053", dutch: "subjectiviteit", english: "subjectivity" },
+      { wordId: "a041", dutch: "speculatief",      english: "speculative" },
+      { wordId: "p015", dutch: "blimperbaar",      isPseudo: true },
+      { wordId: "a042", dutch: "paradigma",        english: "paradigm" },
+      { wordId: "a043", dutch: "epistemologie",    english: "epistemology" },
+      { wordId: "p016", dutch: "drofachtig",       isPseudo: true },
+      { wordId: "a044", dutch: "coherentie",       english: "coherence" },
+      { wordId: "a045", dutch: "axioma",           english: "axiom" },
+      { wordId: "p017", dutch: "kloeffelen",       isPseudo: true },
+      { wordId: "a046", dutch: "hegemonie",        english: "hegemony" },
+      { wordId: "a047", dutch: "ontologie",        english: "ontology" },
+      { wordId: "p018", dutch: "sprotteren",       isPseudo: true },
+      { wordId: "a048", dutch: "dialectisch",      english: "dialectical" },
+      { wordId: "a049", dutch: "fenomenologie",    english: "phenomenology" },
+      { wordId: "p019", dutch: "knorzelig",        isPseudo: true },
+      { wordId: "a050", dutch: "deterministisch",  english: "deterministic" },
+      { wordId: "a051", dutch: "pragmatisch",      english: "pragmatic" },
+      { wordId: "p020", dutch: "zwinkelheid",      isPseudo: true },
+      { wordId: "a052", dutch: "pluralisme",       english: "pluralism" },
+      { wordId: "a053", dutch: "subjectiviteit",   english: "subjectivity" },
       { wordId: "a054", dutch: "contraproductief", english: "counterproductive" },
-      { wordId: "a055", dutch: "transcendent", english: "transcendent" },
-      { wordId: "a056", dutch: "arbitrair", english: "arbitrary" },
-      { wordId: "a057", dutch: "discontinuïteit", english: "discontinuity" },
-      { wordId: "a058", dutch: "relativisme", english: "relativism" },
-      { wordId: "a059", dutch: "tautologie", english: "tautology" },
-      { wordId: "a060", dutch: "existentieel", english: "existential" },
+      { wordId: "a055", dutch: "transcendent",     english: "transcendent" },
+      { wordId: "a056", dutch: "arbitrair",        english: "arbitrary" },
+      { wordId: "a057", dutch: "discontinuïteit",  english: "discontinuity" },
+      { wordId: "a058", dutch: "relativisme",      english: "relativism" },
+      { wordId: "a059", dutch: "tautologie",       english: "tautology" },
+      { wordId: "a060", dutch: "existentieel",     english: "existential" },
     ],
   },
 ];

@@ -1,17 +1,12 @@
 import { Outlet } from "react-router-dom";
 
-// Wrapper for pages without auth: login, onboarding, assessment.
-// Shows the LeesWijs wordmark on a decorative background.
 export default function AuthLayout() {
   return (
     <div className="relative min-h-screen bg-background flex flex-col items-center justify-center px-4 overflow-hidden">
-      {/* Decorative background */}
       <DecorativeBackground />
 
-      {/* Wordmark */}
       <div className="relative z-10 mb-8 text-center select-none">
         <div className="flex items-center justify-center gap-2 mb-1">
-          {/* Book icon (pure SVG, no dependency) */}
           <svg
             width="36"
             height="36"
@@ -38,7 +33,6 @@ export default function AuthLayout() {
         </p>
       </div>
 
-      {/* Card */}
       <div className="relative z-10 w-full max-w-md">
         <Outlet />
       </div>
@@ -46,11 +40,9 @@ export default function AuthLayout() {
   );
 }
 
-// Background decoration
 function DecorativeBackground() {
   return (
     <>
-      {/* Large blurred teal blob — top-left */}
       <div
         className="pointer-events-none absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-20"
         style={{
@@ -58,7 +50,6 @@ function DecorativeBackground() {
           filter: "blur(40px)",
         }}
       />
-      {/* Large blurred amber blob — bottom-right */}
       <div
         className="pointer-events-none absolute -bottom-24 -right-24 w-80 h-80 rounded-full opacity-15"
         style={{
@@ -66,7 +57,6 @@ function DecorativeBackground() {
           filter: "blur(48px)",
         }}
       />
-      {/* Subtle dot grid */}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.035]"
         style={{
@@ -75,7 +65,6 @@ function DecorativeBackground() {
           backgroundSize: "28px 28px",
         }}
       />
-      {/* Floating letter tiles */}
       {TILES.map((t) => (
         <LetterTile key={t.char + t.x} {...t} />
       ))}

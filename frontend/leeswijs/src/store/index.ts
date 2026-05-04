@@ -9,7 +9,6 @@ import type {
   FlashcardItem,
 } from "../types";
 
-// User slice
 interface UserSlice {
   user: User | null;
   isLoadingUser: boolean;
@@ -18,7 +17,6 @@ interface UserSlice {
   clearUser: () => void;
 }
 
-// Vocabulary slice
 interface VocabularySlice {
   vocabulary: VocabularyWord[];
   setVocabulary: (words: VocabularyWord[]) => void;
@@ -26,7 +24,6 @@ interface VocabularySlice {
   incrementExposure: (wordId: string) => void;
 }
 
-// Session slice
 interface SessionSlice {
   currentSession: ReadingSession | null;
   interactions: WordInteraction[];
@@ -37,7 +34,6 @@ interface SessionSlice {
   clearSession: () => void;
 }
 
-// Flashcard slice
 interface FlashcardSlice {
   flashcards: FlashcardItem[];
   currentIndex: number;
@@ -51,14 +47,11 @@ interface FlashcardSlice {
   resetSession: () => void;
 }
 
-// Combined store type
 type Store = UserSlice & VocabularySlice & SessionSlice & FlashcardSlice;
 
-// Store
 export const useStore = create<Store>()(
   persist(
     (set) => ({
-  // User
   user: null,
   isLoadingUser: false,
 
@@ -66,7 +59,6 @@ export const useStore = create<Store>()(
   setLoadingUser: (loading) => set({ isLoadingUser: loading }),
   clearUser: () => set({ user: null }),
 
-  // Vocabulary
   vocabulary: [],
 
   setVocabulary: (vocabulary) => set({ vocabulary }),
@@ -91,7 +83,6 @@ export const useStore = create<Store>()(
       ),
     })),
 
-  // Session
   currentSession: null,
   interactions: [],
   isLoadingSession: false,
@@ -107,7 +98,6 @@ export const useStore = create<Store>()(
   clearSession: () =>
     set({ currentSession: null, interactions: [] }),
 
-  // Flashcards
   flashcards: [],
   currentIndex: 0,
   reviewedIds: new Set(),
@@ -130,7 +120,6 @@ export const useStore = create<Store>()(
     set((state) => {
       const next = new Set(state.reviewedIds);
       next.add(wordId);
-      // Auto-advance to next unreviewed card
       const nextIndex = state.flashcards.findIndex(
         (c, i) => i > state.currentIndex && !next.has(c.wordId)
       );
@@ -144,7 +133,6 @@ export const useStore = create<Store>()(
     set((state) => ({
       currentIndex: 0,
       reviewedIds: new Set(),
-      // Re-queue learning-mode cards that haven't been reviewed
       flashcards: [
         ...state.flashcards.filter((c) => !state.reviewedIds.has(c.wordId)),
         ...state.flashcards.filter((c) => state.reviewedIds.has(c.wordId)),
@@ -153,15 +141,10 @@ export const useStore = create<Store>()(
     }),
     {
       name: "leeswijs-store",
-      // Only persist the logged-in user; ephemeral session / flashcards / vocab
-      // data resets on reload, which matches research prototype expectations.
       partialize: (state) => ({ user: state.user }),
     }
   )
 );
-
-// Typed selector hooks.
-// Convenience so components don't import the whole store type.
 
 export const useUser = () => useStore((s) => s.user);
 export const useVocabulary = () => useStore((s) => s.vocabulary);

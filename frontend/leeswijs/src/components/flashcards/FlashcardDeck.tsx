@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 import { useStore } from "../../store";
-import { logFlashcardReview } from "../../services/api";
+import { logFlashcardReview, submitFlashcardReview } from "../../services/api";
 import FlashcardItem from "./FlashcardItem";
 
 type Props = {
@@ -23,8 +23,7 @@ export default function FlashcardDeck({ onComplete }: Props) {
   const total = flashcards.length;
   const done  = reviewedIds.size;
 
-  // Rate handler
-  function handleRate(didRemember: boolean) {
+  const handleRate = useCallback((didRemember: boolean) => {
     if (!card) return;
     if (didRemember) {
       setRemembered((prev) => {
@@ -34,23 +33,22 @@ export default function FlashcardDeck({ onComplete }: Props) {
       });
     }
     if (user) logFlashcardReview(user.id, didRemember);
+    if (user) {
+      void submitFlashcardReview(user.id, card.wordId, didRemember);
+    }
     markReviewed(card.wordId);
     setFlipped(false);
 
-    // If this was the last un-reviewed card, fire completion callback.
-    // (Use size + 1 because the store update is not yet reflected in local closure.)
     if (reviewedIds.size + 1 >= total) {
       const finalSet = didRemember
         ? new Set([...remembered, card.wordId])
         : remembered;
       onComplete(finalSet);
     }
-  }
+  }, [card, markReviewed, onComplete, remembered, reviewedIds.size, total, user]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // Skip if user is typing somewhere
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
 
@@ -67,8 +65,7 @@ export default function FlashcardDeck({ onComplete }: Props) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flipped, card?.wordId]);
+  }, [flipped, handleRate]);
 
   if (!card) return null;
 
@@ -76,7 +73,6 @@ export default function FlashcardDeck({ onComplete }: Props) {
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-lg mx-auto">
-      {/* Progress bar */}
       <div className="w-full">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-body font-semibold text-text/60 uppercase tracking-wide">
@@ -96,7 +92,6 @@ export default function FlashcardDeck({ onComplete }: Props) {
         </div>
       </div>
 
-      {/* Current card. key={wordId} so it re-mounts and the flip animation restarts. */}
       <FlashcardItem
         key={card.wordId}
         card={card}

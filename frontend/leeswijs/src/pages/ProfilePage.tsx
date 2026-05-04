@@ -1,17 +1,20 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  User as UserIcon,
   Award,
-  Sparkles,
+  BookOpen,
   LogOut,
+  RefreshCw,
   Settings as SettingsIcon,
+  Tags,
+  User as UserIcon,
 } from "lucide-react";
 
+import { INTERESTS } from "../constants/interests";
 import { useStore } from "../store";
 
-function capitalize(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+function interestLabel(id: string) {
+  return INTERESTS.find((item) => item.id === id)?.label ?? id;
 }
 
 export default function ProfilePage() {
@@ -28,82 +31,102 @@ export default function ProfilePage() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="max-w-xl mx-auto"
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className="mx-auto max-w-3xl space-y-4"
     >
-      <div className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 mb-7">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <UserIcon size={17} />
+          </div>
           <div>
             <h1 className="font-heading text-2xl font-bold text-text">Profile</h1>
-            <p className="mt-1 text-sm text-text/50 font-body">
-              A quick look at your account.
+            <p className="text-sm font-body text-text/50">
+              Your study setup for this prototype.
             </p>
           </div>
-          <motion.button
-            type="button"
-            onClick={() => navigate("/settings")}
-            whileTap={{ scale: 0.97 }}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-black/12 bg-white px-3 py-1.5 text-xs font-heading font-semibold text-text/70 hover:bg-black/[0.03] hover:border-black/20"
-          >
-            <SettingsIcon size={12} />
-            Edit in Settings
-          </motion.button>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/settings")}
+          className="inline-flex items-center gap-2 rounded-lg border border-black/12 bg-white px-3 py-2 text-xs font-heading font-semibold text-text/70 hover:bg-black/[0.03]"
+        >
+          <SettingsIcon size={13} />
+          Settings
+        </button>
+      </div>
+
+      <section className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <InfoBlock
+            icon={<UserIcon size={14} />}
+            label="Account ID"
+            value={user.id}
+          />
+          <InfoBlock
+            icon={<Award size={14} />}
+            label="CEFR level"
+            value={user.cefrLevel ?? "Not assessed"}
+          />
         </div>
 
-        {/* Info rows */}
-        <div className="space-y-4 mb-2">
-          <InfoRow icon={<UserIcon size={14} />} label="Username" value={user.name} />
-          <InfoRow
-            icon={<Award size={14} />}
-            label="CEFR Level"
-            value={user.cefrLevel ?? "—"}
-          />
-
-          <div className="flex items-start gap-3">
-            <span className="text-text/40 mt-0.5">
-              <Sparkles size={14} />
-            </span>
-            <span className="text-xs font-body font-semibold text-text/60 uppercase tracking-wide w-24 pt-0.5 shrink-0">
-              Interests
-            </span>
-            <div className="flex flex-wrap gap-1.5 flex-1">
-              {user.interests.length === 0 ? (
-                <span className="text-sm text-text/40 font-body">—</span>
-              ) : (
-                user.interests.map((i) => (
-                  <span
-                    key={i}
-                    className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-body font-semibold"
-                  >
-                    {capitalize(i)}
-                  </span>
-                ))
-              )}
-            </div>
+        <div className="mt-5 border-t border-black/8 pt-4">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-body font-semibold uppercase tracking-wide text-text/50">
+            <Tags size={13} />
+            Topics
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {user.interests.length === 0 ? (
+              <span className="text-sm font-body text-text/45">No topics selected.</span>
+            ) : (
+              user.interests.map((id) => (
+                <span
+                  key={id}
+                  className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-body font-semibold text-primary"
+                >
+                  {interestLabel(id)}
+                </span>
+              ))
+            )}
           </div>
         </div>
+      </section>
 
-        <hr className="border-black/8 my-7" />
+      <section className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
+        <h2 className="font-heading text-sm font-bold text-text">
+          Study actions
+        </h2>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <ActionButton
+            icon={<BookOpen size={15} />}
+            label="Start reading"
+            hint="Generate a new Dutch text"
+            onClick={() => navigate("/home")}
+          />
+          <ActionButton
+            icon={<RefreshCw size={15} />}
+            label="Retake assessment"
+            hint="Update the CEFR estimate"
+            onClick={() => navigate("/assessment")}
+          />
+        </div>
+      </section>
 
-        {/* Logout */}
-        <motion.button
-          type="button"
-          onClick={handleLogout}
-          whileTap={{ scale: 0.97 }}
-          className="w-full flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-body font-semibold text-red-600 border border-red-200 bg-red-50/50 hover:bg-red-50 transition-colors"
-        >
-          <LogOut size={16} />
-          Log out
-        </motion.button>
-      </div>
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50/60 px-4 py-2.5 text-sm font-heading font-semibold text-red-600 hover:bg-red-50"
+      >
+        <LogOut size={15} />
+        Log out
+      </button>
     </motion.div>
   );
 }
 
-function InfoRow({
+function InfoBlock({
   icon,
   label,
   value,
@@ -113,12 +136,44 @@ function InfoRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-text/40">{icon}</span>
-      <span className="text-xs font-body font-semibold text-text/60 uppercase tracking-wide w-24 shrink-0">
+    <div className="rounded-lg border border-black/8 bg-black/[0.015] px-4 py-3">
+      <div className="flex items-center gap-1.5 text-xs font-body font-semibold uppercase tracking-wide text-text/45">
+        <span>{icon}</span>
         {label}
-      </span>
-      <span className="text-sm font-body text-text">{value}</span>
+      </div>
+      <p className="mt-2 font-heading text-lg font-semibold text-text">{value}</p>
     </div>
+  );
+}
+
+function ActionButton({
+  icon,
+  label,
+  hint,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  hint: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-4 py-3 text-left hover:border-primary/25 hover:bg-primary/[0.03]"
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        {icon}
+      </span>
+      <span>
+        <span className="block font-heading text-sm font-semibold text-text">
+          {label}
+        </span>
+        <span className="mt-0.5 block text-xs font-body text-text/45">
+          {hint}
+        </span>
+      </span>
+    </button>
   );
 }

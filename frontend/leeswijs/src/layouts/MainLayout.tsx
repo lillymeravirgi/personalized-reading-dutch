@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Home,
@@ -25,17 +25,15 @@ const NAV_ITEMS = [
 export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const user = useStore((s) => s.user);
+  const location = useLocation();
+  const currentLabel = getPageLabel(location.pathname);
 
-  // Not logged in -> /login.
   if (!user) return <Navigate to="/login" replace />;
-  // First-time users must finish onboarding + assessment before they
-  // can reach any real page.
   if (user.interests.length === 0) return <Navigate to="/onboarding" replace />;
   if (!user.cefrLevel)             return <Navigate to="/assessment" replace />;
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/30 z-20 lg:hidden"
@@ -43,17 +41,15 @@ export default function MainLayout() {
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={[
-          "fixed top-0 left-0 h-full w-56 bg-white border-r border-black/8 z-30",
+          "fixed top-0 left-0 h-full w-60 bg-white border-r border-black/8 z-30",
           "flex flex-col py-6 px-3 gap-1",
           "transition-transform duration-200",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           "lg:translate-x-0 lg:static lg:z-auto",
         ].join(" ")}
       >
-        {/* Wordmark */}
         <div className="px-3 mb-6">
           <span className="font-heading text-2xl font-bold text-primary">Lees</span>
           <span className="font-heading text-2xl font-bold text-secondary">Wijs</span>
@@ -66,10 +62,10 @@ export default function MainLayout() {
             onClick={() => setSidebarOpen(false)}
             className={({ isActive }) =>
               [
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body font-semibold transition-colors",
+                "flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-body font-semibold transition-colors",
                 isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-text/60 hover:bg-black/5 hover:text-text",
+                  ? "border-primary/15 bg-primary/10 text-primary"
+                  : "border-transparent text-text/60 hover:border-black/8 hover:bg-black/[0.03] hover:text-text",
               ].join(" ")
             }
           >
@@ -79,11 +75,8 @@ export default function MainLayout() {
         ))}
       </aside>
 
-      {/* Main column */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
         <header className="h-14 bg-white border-b border-black/8 flex items-center justify-between px-4 lg:px-6 shrink-0">
-          {/* Hamburger (mobile only) */}
           <button
             className="lg:hidden p-1.5 rounded-lg text-text/60 hover:bg-black/5"
             onClick={() => setSidebarOpen((o) => !o)}
@@ -92,13 +85,15 @@ export default function MainLayout() {
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
-          <div className="hidden lg:block" />
+          <div className="hidden lg:block">
+            <p className="text-xs font-body font-semibold uppercase tracking-wide text-text/35">
+              {currentLabel}
+            </p>
+          </div>
 
-          {/* User menu */}
           <UserMenu cefrLevel={user.cefrLevel ?? "—"} name={user.name} />
         </header>
 
-        {/* Page content */}
         <main className="flex-1 overflow-auto p-4 lg:p-8">
           <Outlet />
         </main>
@@ -107,14 +102,19 @@ export default function MainLayout() {
   );
 }
 
-// UserMenu
+function getPageLabel(pathname: string): string {
+  if (pathname.startsWith("/read/")) return "Reading";
+  if (pathname.startsWith("/vocab-test")) return "Vocabulary check";
+  if (pathname.startsWith("/settings")) return "Settings";
+  return NAV_ITEMS.find((item) => pathname.startsWith(item.to))?.label ?? "Study session";
+}
+
 function UserMenu({ cefrLevel, name }: { cefrLevel: string; name: string }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const clearUser = useStore((s) => s.clearUser);
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // Close on outside click / Escape.
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {

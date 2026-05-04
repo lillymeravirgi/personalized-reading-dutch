@@ -19,14 +19,12 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Auth / onboarding flow (no sidebar) */}
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/assessment" element={<AssessmentPage />} />
         </Route>
 
-        {/* Authenticated app (guard is inside MainLayout) */}
         <Route element={<MainLayout />}>
           <Route path="/home" element={<HomePage />} />
           <Route path="/reading" element={<ReadingHistoryPage />} />
@@ -39,7 +37,6 @@ export default function App() {
           <Route path="/survey/:sessionId" element={<SurveyPage />} />
         </Route>
 
-        {/* Default redirect */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

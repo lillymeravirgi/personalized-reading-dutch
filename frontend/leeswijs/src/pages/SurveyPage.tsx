@@ -5,7 +5,6 @@ import {
   ArrowRight,
   AlertCircle,
   CheckCircle2,
-  ClipboardCheck,
   ClipboardList,
   Home,
   Layers,
@@ -108,9 +107,6 @@ export default function SurveyPage() {
         onReviewWords={() =>
           navigate(`/flashcards?sessionId=${encodeURIComponent(sessionId)}`, { replace: true })
         }
-        onVocabularyCheck={() =>
-          navigate(`/vocab-test/${encodeURIComponent(sessionId)}`, { replace: true })
-        }
       />
     );
   }
@@ -129,10 +125,10 @@ export default function SurveyPage() {
         </div>
         <div>
           <h1 className="font-heading text-2xl font-bold text-text">
-            How was that reading?
+            A few questions about the reading
           </h1>
           <p className="text-sm font-body text-text/50">
-            Eight short questions about this reading session. Please answer from your own experience.
+            Please take a moment to answer carefully from your own experience. There are eight short questions.
           </p>
         </div>
       </div>
@@ -238,11 +234,9 @@ export default function SurveyPage() {
 function ThankYouView({
   onHome,
   onReviewWords,
-  onVocabularyCheck,
 }: {
   onHome: () => void;
   onReviewWords: () => void;
-  onVocabularyCheck: () => void;
 }) {
   return (
     <motion.div
@@ -261,20 +255,16 @@ function ThankYouView({
       </motion.div>
       <h2 className="font-heading text-xl font-bold text-text mb-1">Reading task complete</h2>
       <p className="text-sm font-body text-text/50 max-w-sm">
-        Your response has been recorded. This is the end of the required study step for this reading.
+        Your response has been recorded. Next, review the words you selected while reading.
       </p>
-      <div className="mt-7 grid w-full gap-3 sm:grid-cols-2">
-        <motion.button type="button" onClick={onHome} whileTap={{ scale: 0.97 }}
-          className="sm:col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90">
-          <Home size={15} /> Back home
-        </motion.button>
+      <div className="mt-7 grid w-full gap-3">
         <motion.button type="button" onClick={onReviewWords} whileTap={{ scale: 0.97 }}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-4 py-3 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]">
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90">
           <Layers size={15} /> Review words
         </motion.button>
-        <motion.button type="button" onClick={onVocabularyCheck} whileTap={{ scale: 0.97 }}
+        <motion.button type="button" onClick={onHome} whileTap={{ scale: 0.97 }}
           className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-4 py-3 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]">
-          <ClipboardCheck size={15} /> Vocabulary check
+          <Home size={15} /> Back home
         </motion.button>
       </div>
     </motion.div>

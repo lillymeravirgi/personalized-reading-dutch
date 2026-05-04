@@ -2,22 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Sparkles,
   ArrowRight,
   AlertCircle,
   BookOpen,
-  Search,
-  Layers,
-  Clock,
   ChevronRight,
+  ClipboardCheck,
+  Layers,
 } from "lucide-react";
 
-import { generateSession, readActivity } from "../services/api";
+import ReadingGenerationStatus from "../components/ReadingGenerationStatus";
+import { INTERESTS } from "../constants/interests";
+import { generateSession, getCondition, readActivity } from "../services/api";
 import type { Activity } from "../services/api";
 import { useStore } from "../store";
-
-// CEFR ladder meta
-const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -27,32 +24,15 @@ export default function HomePage() {
   const [error,    setError]    = useState<string | null>(null);
   const [activity, setActivity] = useState<Activity | null>(null);
 
-  // Load activity from localStorage once + whenever user changes.
   useEffect(() => {
     if (!user) return;
     setActivity(readActivity(user.id));
   }, [user]);
 
-  // Computed stats. Must run before any early return so hook order is stable.
-  const stats = useMemo(() => {
-    if (!activity) {
-      return {
-        sessions: 0,
-        wordsLookedUp: 0,
-        flashcardsRemembered: 0,
-        totalMinutes: 0,
-      };
-    }
-    const totalMs = activity.sessions.reduce((sum, s) => sum + s.dwellMs, 0);
-    return {
-      sessions: activity.sessions.length,
-      wordsLookedUp: activity.wordsLookedUp,
-      flashcardsRemembered: activity.flashcardsRemembered,
-      totalMinutes: Math.round(totalMs / 60_000),
-    };
-  }, [activity]);
-
-  const weekSeries = useMemo(() => buildWeekSeries(activity), [activity]);
+  const interestLabels = useMemo(() => {
+    const labels = new Map(INTERESTS.map((it) => [it.id, it.label]));
+    return user?.interests.map((id) => labels.get(id) ?? id) ?? [];
+  }, [user?.interests]);
 
   if (!user) return null;
 
@@ -61,7 +41,7 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
     try {
-      const { sessionId } = await generateSession(user.id);
+      const { sessionId } = await generateSession(user.id, getCondition());
       navigate(`/read/${sessionId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -71,22 +51,22 @@ export default function HomePage() {
   }
 
   const recentSessions = (activity?.sessions ?? []).slice().reverse().slice(0, 3);
+  const latestSession = recentSessions[0] ?? null;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="max-w-4xl mx-auto space-y-6"
+      className="mx-auto max-w-5xl space-y-4"
     >
-      {/* Greeting */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="font-heading text-3xl font-bold text-text">
-            {greet()}, {user.name}
+            Hi, {user.name}
           </h1>
           <p className="mt-1 text-sm text-text/55 font-body">
-            Here's where you are with your Dutch.
+            Ready for a short Dutch reading session.
           </p>
         </div>
         <span
@@ -97,46 +77,49 @@ export default function HomePage() {
         </span>
       </div>
 
-      {/* Quick start */}
-      <div className="bg-white rounded-2xl shadow-xl shadow-black/8 px-7 py-7 flex items-center justify-between gap-6 flex-wrap">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 text-primary">
-            <BookOpen size={22} strokeWidth={2} />
+      <div className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
+        <div className="flex flex-wrap items-center justify-between gap-5">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <BookOpen size={22} strokeWidth={2} />
+            </div>
+            <div>
+              <h2 className="font-heading text-lg font-bold text-text">
+                New reading
+              </h2>
+              <p className="text-xs text-text/55 font-body">
+                Generate one Dutch text for this session.
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-heading text-lg font-bold text-text">
-              Start a reading task
-            </h2>
-            <p className="text-xs text-text/55 font-body">
-              Read one Dutch text, then answer a short survey.
-            </p>
-          </div>
+          <motion.button
+            type="button"
+            onClick={handleStart}
+            disabled={loading}
+            whileTap={{ scale: loading ? 1 : 0.97 }}
+            className={[
+              "inline-flex items-center gap-2 rounded-lg px-5 py-3",
+              "text-sm font-heading font-semibold text-white",
+              "bg-primary transition-opacity",
+              loading ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
+            ].join(" ")}
+          >
+            {loading ? (
+              <>
+                <Spinner />
+                Generating…
+              </>
+            ) : (
+              <>
+                <BookOpen size={16} strokeWidth={2.5} />
+                Start reading
+                <ArrowRight size={16} strokeWidth={2.5} />
+              </>
+            )}
+          </motion.button>
         </div>
-        <motion.button
-          type="button"
-          onClick={handleStart}
-          disabled={loading}
-          whileTap={{ scale: loading ? 1 : 0.97 }}
-          className={[
-            "inline-flex items-center gap-2 rounded-xl px-5 py-3",
-            "text-sm font-heading font-semibold text-white",
-            "bg-primary transition-opacity",
-            loading ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
-          ].join(" ")}
-        >
-          {loading ? (
-            <>
-              <Spinner />
-              Generating…
-            </>
-          ) : (
-            <>
-              <Sparkles size={16} strokeWidth={2.5} />
-              Start Reading
-              <ArrowRight size={16} strokeWidth={2.5} />
-            </>
-          )}
-        </motion.button>
+        {loading && <ReadingGenerationStatus className="w-full sm:w-auto" />}
+        {!loading && <StudyPath latestTitle={latestSession?.title ?? null} />}
       </div>
 
       {error && (
@@ -150,56 +133,26 @@ export default function HomePage() {
         </motion.div>
       )}
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard
-          icon={<BookOpen size={16} />}
-          label="Readings"
-          value={stats.sessions}
-          tone="primary"
+      <div className="grid gap-4 md:grid-cols-5">
+        <StudySetup
+          level={user.cefrLevel}
+          interests={interestLabels}
+          onEdit={() => navigate("/settings")}
         />
-        <StatCard
-          icon={<Search size={16} />}
-          label="Words looked up"
-          value={stats.wordsLookedUp}
-          tone="slate"
-        />
-        <StatCard
-          icon={<Layers size={16} />}
-          label="Flashcards learned"
-          value={stats.flashcardsRemembered}
-          tone="amber"
-        />
-        <StatCard
-          icon={<Clock size={16} />}
-          label="Total time"
-          value={`${stats.totalMinutes}m`}
-          tone="slate"
+        <NextStep
+          latestTitle={latestSession?.title ?? null}
+          onReview={
+            latestSession
+              ? () =>
+                  navigate(
+                    `/flashcards?sessionId=${encodeURIComponent(latestSession.sessionId)}`
+                  )
+              : undefined
+          }
         />
       </div>
 
-      {/* Weekly activity + CEFR progress */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 bg-white rounded-2xl shadow-xl shadow-black/8 px-6 py-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-heading text-sm font-bold text-text">
-              This week
-            </h3>
-            <span className="text-xs font-body text-text/40">Minutes per day</span>
-          </div>
-          <WeekBars data={weekSeries} />
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-xl shadow-black/8 px-6 py-6">
-          <h3 className="font-heading text-sm font-bold text-text mb-4">
-            CEFR progress
-          </h3>
-          <CefrLadder current={user.cefrLevel ?? "A1"} />
-        </div>
-      </div>
-
-      {/* Recent readings */}
-      <div className="bg-white rounded-2xl shadow-xl shadow-black/8 px-6 py-6">
+      <div className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-heading text-sm font-bold text-text">
             Recent readings
@@ -215,7 +168,7 @@ export default function HomePage() {
         </div>
         {recentSessions.length === 0 ? (
           <p className="text-sm font-body text-text/45">
-            No readings yet. Click <span className="font-semibold">Start Reading</span> above to generate your first reading.
+            No readings yet.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -224,7 +177,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => navigate(`/read/${s.sessionId}`)}
-                  className="w-full text-left flex items-center justify-between gap-3 rounded-xl border border-black/8 px-4 py-3 hover:border-primary/30 hover:bg-primary/[0.02] transition-colors"
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-black/8 px-4 py-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.02]"
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-heading font-semibold text-text truncate">
@@ -245,134 +198,152 @@ export default function HomePage() {
   );
 }
 
-// Sub-components
-function StatCard({
-  icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number | string;
-  tone: "primary" | "slate" | "amber";
-}) {
-  const TONES: Record<string, { bg: string; text: string }> = {
-    primary: { bg: "bg-primary/10",      text: "text-primary" },
-    slate:   { bg: "bg-black/[0.04]",    text: "text-text/60" },
-    amber:   { bg: "bg-amber-100",       text: "text-amber-700" },
-  };
-  const t = TONES[tone];
-  return (
-    <div className="bg-white rounded-2xl shadow-lg shadow-black/5 px-5 py-4">
-      <div className="flex items-center gap-2 mb-2">
-        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg ${t.bg} ${t.text}`}>
-          {icon}
-        </span>
-        <span className="text-[11px] font-body font-semibold text-text/50 uppercase tracking-wide">
-          {label}
-        </span>
-      </div>
-      <p className="font-heading text-2xl font-bold text-text">{value}</p>
-    </div>
-  );
-}
+function StudyPath({ latestTitle }: { latestTitle: string | null }) {
+  const items = [
+    { label: "Read", detail: "Dutch text", icon: BookOpen, active: true },
+    { label: "Review", detail: latestTitle ? "Words ready" : "After reading", icon: Layers, active: Boolean(latestTitle) },
+    { label: "Check", detail: "Vocabulary", icon: ClipboardCheck, active: Boolean(latestTitle) },
+  ];
 
-function WeekBars({ data }: { data: { label: string; minutes: number }[] }) {
-  const max = Math.max(1, ...data.map((d) => d.minutes));
   return (
-    <div className="flex items-end gap-2 h-28">
-      {data.map((d, i) => {
-        const height = (d.minutes / max) * 100;
-        const today = i === data.length - 1;
-        return (
-          <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
-            <div className="w-full flex-1 flex items-end">
-              <motion.div
-                initial={{ height: 0 }}
-                animate={{ height: `${height}%` }}
-                transition={{ duration: 0.5, delay: i * 0.05, ease: [0.22, 1, 0.36, 1] }}
-                className={[
-                  "w-full rounded-t-lg",
-                  today ? "bg-primary" : "bg-primary/30",
-                  d.minutes === 0 ? "bg-black/8" : "",
-                ].join(" ")}
-                style={{ minHeight: 2 }}
-                title={`${d.minutes.toFixed(1)} min`}
-              />
-            </div>
-            <span className="text-[10px] font-body text-text/40">{d.label}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function CefrLadder({ current }: { current: string }) {
-  const idx = LEVELS.findIndex((l) => l === current);
-  const pct = idx < 0 ? 0 : ((idx + 1) / LEVELS.length) * 100;
-  return (
-    <div>
-      <div className="h-2.5 rounded-full bg-black/8 overflow-hidden mb-3">
-        <motion.div
-          className="h-full rounded-full bg-gradient-to-r from-primary to-secondary"
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-        />
-      </div>
-      <div className="flex justify-between">
-        {LEVELS.map((l, i) => (
+    <div className="mt-5 grid gap-2 border-t border-black/6 pt-4 sm:grid-cols-3">
+      {items.map(({ label, detail, icon: Icon, active }) => (
+        <div
+          key={label}
+          className={[
+            "flex items-center gap-3 rounded-lg border px-3 py-2.5",
+            active
+              ? "border-primary/15 bg-primary/[0.035]"
+              : "border-black/8 bg-black/[0.015]",
+          ].join(" ")}
+        >
           <span
-            key={l}
             className={[
-              "text-[11px] font-heading font-bold",
-              i <= idx ? "text-primary" : "text-text/25",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+              active ? "bg-primary/10 text-primary" : "bg-black/5 text-text/35",
             ].join(" ")}
           >
-            {l}
+            <Icon size={16} />
           </span>
-        ))}
-      </div>
-      <p className="mt-4 text-xs font-body text-text/50 leading-relaxed">
-        {idx >= 0 && idx < LEVELS.length - 1 ? (
-          <>Keep reading to progress past <span className="font-semibold text-text">{LEVELS[idx + 1]}</span>.</>
-        ) : idx === LEVELS.length - 1 ? (
-          "You're at the top. Nice."
-        ) : (
-          "Complete the assessment to set your level."
-        )}
-      </p>
+          <span className="min-w-0">
+            <span className="block font-heading text-sm font-semibold text-text">
+              {label}
+            </span>
+            <span className="block truncate text-xs font-body text-text/45">
+              {detail}
+            </span>
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
 
-// Helpers
-function greet() {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
+function StudySetup({
+  level,
+  interests,
+  onEdit,
+}: {
+  level: string | null;
+  interests: string[];
+  onEdit: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5 md:col-span-2">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="font-heading text-sm font-bold text-text">
+          Study setup
+        </h3>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="text-xs font-body font-semibold text-primary hover:underline"
+        >
+          Edit
+        </button>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <p className="text-[11px] font-body font-semibold uppercase tracking-wide text-text/45">
+            Current level
+          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <span
+              className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 font-heading text-sm font-bold text-white"
+              style={{ backgroundColor: "var(--color-secondary)" }}
+            >
+              {level ?? "—"}
+            </span>
+            <span className="text-xs font-body text-text/45">
+              Set by the vocabulary assessment.
+            </span>
+          </div>
+        </div>
+        <div>
+          <p className="text-[11px] font-body font-semibold uppercase tracking-wide text-text/45">
+            Topics
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {interests.length > 0 ? (
+              interests.map((label) => (
+                <span
+                  key={label}
+                  className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-body font-semibold text-primary"
+                >
+                  {label}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs font-body text-text/45">
+                Choose topics before generating a reading.
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
-function buildWeekSeries(
-  activity: Activity | null
-): { label: string; minutes: number }[] {
-  const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const out: { label: string; minutes: number }[] = [];
-  const today = new Date();
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    const key = `${y}-${m}-${day}`;
-    const minutes = activity?.dailyMinutes?.[key] ?? 0;
-    out.push({ label: DAY_LABELS[d.getDay()], minutes });
-  }
-  return out;
+function NextStep({
+  latestTitle,
+  onReview,
+}: {
+  latestTitle: string | null;
+  onReview?: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5 md:col-span-3">
+      <h3 className="font-heading text-sm font-bold text-text">
+        Next step
+      </h3>
+      {latestTitle ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-body text-text/45">Latest reading</p>
+            <p className="mt-1 truncate font-heading text-sm font-semibold text-text">
+              {latestTitle}
+            </p>
+            <p className="mt-1 text-xs font-body text-text/50">
+              Review selected words before the vocabulary check.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onReview}
+            className="inline-flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/[0.04] px-3 py-2 text-xs font-heading font-semibold text-primary hover:bg-primary/[0.08]"
+          >
+            Review words
+            <ArrowRight size={13} />
+          </button>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm font-body text-text/50">
+          Start a reading first. Review and vocabulary check will appear after that.
+        </p>
+      )}
+    </section>
+  );
 }
 
 function relTime(iso: string): string {

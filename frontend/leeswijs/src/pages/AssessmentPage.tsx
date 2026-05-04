@@ -1,27 +1,25 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ArrowRight, BookOpen, Sparkles, SkipForward } from "lucide-react";
+import { Check, ArrowRight, BookOpen, SkipForward } from "lucide-react";
 import { getAssessmentBatch, submitAssessment, saveProfile } from "../services/api";
 import { useStore } from "../store";
 import type { AssessmentBatch, AssessmentResult } from "../types";
 
-// Constants
 const TOTAL_BATCHES = 3;
 
 const LEVEL_META: Record<
   string,
   { label: string; description: string; color: string; fill: number }
 > = {
-  A1: { label: "A1 — Beginner",       description: "You're just starting out. Great time to build a foundation!",      color: "#94a3b8", fill: 8  },
-  A2: { label: "A2 — Elementary",     description: "You know the basics. Reading simple texts will feel rewarding.",    color: "#60a5fa", fill: 24 },
-  B1: { label: "B1 — Intermediate",   description: "You can handle everyday topics. Your vocabulary is growing well.", color: "#0D7377", fill: 48 },
-  B2: { label: "B2 — Upper-Intermediate", description: "You read complex texts with ease. Impressive range!",          color: "#7c3aed", fill: 68 },
-  C1: { label: "C1 — Advanced",       description: "Near-native reading ability. Very few words will trip you up.",    color: "#F2A541", fill: 84 },
-  C2: { label: "C2 — Mastery",        description: "You read Dutch like a native. The full range is open to you.",     color: "#ef4444", fill: 100 },
+  A1: { label: "A1 Beginner",            description: "Just starting Dutch.",                          color: "#94a3b8", fill: 8  },
+  A2: { label: "A2 Elementary",          description: "Basic everyday phrases.",                       color: "#60a5fa", fill: 24 },
+  B1: { label: "B1 Intermediate",        description: "Can read short articles on familiar topics.",   color: "#0D7377", fill: 48 },
+  B2: { label: "B2 Upper-Intermediate",  description: "Comfortable with longer, more detailed texts.", color: "#7c3aed", fill: 68 },
+  C1: { label: "C1 Advanced",            description: "Strong vocabulary, handles complex topics.",    color: "#F2A541", fill: 84 },
+  C2: { label: "C2 Proficient",          description: "Near-native reading.",                          color: "#ef4444", fill: 100 },
 };
 
-// Component
 type Phase = "assessment" | "analyzing" | "results";
 
 export default function AssessmentPage() {
@@ -33,12 +31,11 @@ export default function AssessmentPage() {
   const [batchNum,     setBatchNum]     = useState(1);
   const [batch,        setBatch]        = useState<AssessmentBatch | null>(null);
   const [knownIds,     setKnownIds]     = useState<Set<string>>(new Set());
-  const [allKnown,     setAllKnown]     = useState<string[]>([]);
-  const [allUnknown,   setAllUnknown]   = useState<string[]>([]);
+  const [allWordsSeen, setAllWordsSeen] = useState<AssessmentBatch["words"]>([]);
+  const [allKnownIds,  setAllKnownIds]  = useState<Set<string>>(new Set());
   const [result,       setResult]       = useState<AssessmentResult | null>(null);
   const [loadingBatch, setLoadingBatch] = useState(true);
 
-  // Fetch batch on mount and whenever batchNum changes
   useEffect(() => {
     let cancelled = false;
     setLoadingBatch(true);
@@ -65,44 +62,48 @@ export default function AssessmentPage() {
   async function handleNextBatch() {
     if (!batch) return;
 
-    const batchKnown   = batch.words.filter((w) =>  knownIds.has(w.wordId)).map((w) => w.wordId);
-    const batchUnknown = batch.words.filter((w) => !knownIds.has(w.wordId)).map((w) => w.wordId);
-    const cumulativeKnown   = [...allKnown,   ...batchKnown];
-    const cumulativeUnknown = [...allUnknown, ...batchUnknown];
+    const cumulativeWords = [...allWordsSeen, ...batch.words];
+    const cumulativeKnownIds = new Set([...allKnownIds, ...knownIds]);
 
     if (batchNum < TOTAL_BATCHES) {
-      setAllKnown(cumulativeKnown);
-      setAllUnknown(cumulativeUnknown);
+      setAllWordsSeen(cumulativeWords);
+      setAllKnownIds(cumulativeKnownIds);
       setBatchNum((n) => n + 1);
       return;
     }
 
-    // Final batch — submit and analyze
     setPhase("analyzing");
+
+    const realWords    = cumulativeWords.filter((w) => !w.isPseudo);
+    const pseudoWords  = cumulativeWords.filter((w) =>  w.isPseudo);
+    const realKnown    = realWords.filter((w) => cumulativeKnownIds.has(w.wordId)).length;
+    const pseudoFalse  = pseudoWords.filter((w) => cumulativeKnownIds.has(w.wordId)).length;
+    const correctedScore = computeLextaleScore(
+      realKnown, realWords.length, pseudoFalse, pseudoWords.length,
+    );
+
+    const cumulativeKnown   = cumulativeWords.filter((w) =>  cumulativeKnownIds.has(w.wordId)).map((w) => w.wordId);
+    const cumulativeUnknown = cumulativeWords.filter((w) => !cumulativeKnownIds.has(w.wordId)).map((w) => w.wordId);
 
     const assessmentResult: AssessmentResult = {
       knownWordIds:   cumulativeKnown,
       unknownWordIds: cumulativeUnknown,
-      estimatedLevel: inferLevel(cumulativeKnown.length),
-      confidenceScore: Math.min(0.95, 0.5 + cumulativeKnown.length * 0.007),
+      estimatedLevel: inferLevelFromScore(correctedScore),
+      confidenceScore: Math.min(0.95, 0.5 + Math.max(0, correctedScore) * 0.45),
     };
 
     await submitAssessment(assessmentResult);
 
-    // Update user's CEFR level + record the timestamp so Settings can show
-    // "Last assessed N days ago" and gate the retake flow. Persist so the
-    // MainLayout guard lets them through on the next login.
     if (user) {
       const updated = {
         ...user,
-        cefrLevel: assessmentResult.estimatedLevel as ReturnType<typeof inferLevel>,
+        cefrLevel: assessmentResult.estimatedLevel as CefrLevelKey,
         assessedAt: new Date().toISOString(),
       };
       setUser(updated);
       void saveProfile(updated);
     }
 
-    // Hold analyzing screen for 2 s for effect
     setTimeout(() => {
       setResult(assessmentResult);
       setPhase("results");
@@ -114,7 +115,6 @@ export default function AssessmentPage() {
     handleNextBatch();
   }
 
-  // Render
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -145,7 +145,6 @@ export default function AssessmentPage() {
   );
 }
 
-// AssessmentView
 function AssessmentView({
   batch, batchNum, totalBatches, knownIds, loading, onToggle, onNext, onSkip,
 }: {
@@ -168,7 +167,6 @@ function AssessmentView({
       exit={{ opacity: 0, x: -30 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
     >
-      {/* Step + batch progress */}
       <div className="flex items-center justify-between mb-6">
         <StepIndicator current={2} total={2} />
         <span className="text-xs font-body text-text/40">
@@ -176,7 +174,6 @@ function AssessmentView({
         </span>
       </div>
 
-      {/* Batch progress bar */}
       <div className="mb-6 h-1.5 rounded-full bg-black/8 overflow-hidden">
         <motion.div
           className="h-full rounded-full bg-primary"
@@ -186,17 +183,15 @@ function AssessmentView({
         />
       </div>
 
-      {/* Heading */}
       <div className="mb-5">
         <h1 className="font-heading text-2xl font-bold text-text">
-          Let's find your level
+          Vocabulary check
         </h1>
         <p className="mt-1 text-sm text-text/50 font-body">
-          Tap the words you already know — no pressure, just be honest!
+          Click the words you know. Skip the ones you don't.
         </p>
       </div>
 
-      {/* Word count badge */}
       <div className="mb-4 flex items-center gap-2">
         <motion.div
           key={knownCount}
@@ -215,7 +210,6 @@ function AssessmentView({
         </span>
       </div>
 
-      {/* Word chips */}
       {loading ? (
         <ChipSkeleton />
       ) : (
@@ -237,7 +231,6 @@ function AssessmentView({
         </motion.div>
       )}
 
-      {/* Actions */}
       <div className="mt-7 flex flex-col gap-2.5">
         <motion.button
           type="button"
@@ -262,7 +255,6 @@ function AssessmentView({
   );
 }
 
-// WordChip
 function WordChip({
   dutch, isKnown, onToggle,
 }: {
@@ -311,7 +303,6 @@ function WordChip({
   );
 }
 
-// Skeleton while batch loads
 function ChipSkeleton() {
   return (
     <div className="flex flex-wrap gap-2.5">
@@ -326,7 +317,6 @@ function ChipSkeleton() {
   );
 }
 
-// AnalyzingView
 function AnalyzingView() {
   return (
     <motion.div
@@ -336,7 +326,6 @@ function AnalyzingView() {
       transition={{ duration: 0.35 }}
       className="flex flex-col items-center justify-center py-12 gap-6"
     >
-      {/* Spinning ring */}
       <div className="relative w-20 h-20">
         <motion.div
           animate={{ rotate: 360 }}
@@ -361,7 +350,6 @@ function AnalyzingView() {
         </motion.p>
       </div>
 
-      {/* Animated dots */}
       <div className="flex gap-1.5">
         {[0, 1, 2, 3].map((i) => (
           <motion.div
@@ -376,7 +364,6 @@ function AnalyzingView() {
   );
 }
 
-// ResultsView
 function ResultsView({
   result,
   onStart,
@@ -395,7 +382,6 @@ function ResultsView({
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       className="flex flex-col items-center text-center"
     >
-      {/* Sparkle icon */}
       <motion.div
         initial={{ scale: 0, rotate: -20 }}
         animate={{ scale: 1, rotate: 0 }}
@@ -403,7 +389,7 @@ function ResultsView({
         className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl"
         style={{ backgroundColor: `${meta.color}18` }}
       >
-        <Sparkles size={30} style={{ color: meta.color }} strokeWidth={1.6} />
+        <BookOpen size={30} style={{ color: meta.color }} strokeWidth={1.6} />
       </motion.div>
 
       <motion.h2
@@ -415,7 +401,6 @@ function ResultsView({
         Your level is
       </motion.h2>
 
-      {/* CEFR badge */}
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -432,7 +417,7 @@ function ResultsView({
         transition={{ delay: 0.4 }}
         className="text-base font-heading font-semibold text-text mb-1"
       >
-        {meta.label.split("—")[1]?.trim()}
+        {meta.label.split(" ").slice(1).join(" ")}
       </motion.p>
       <motion.p
         initial={{ opacity: 0 }}
@@ -443,10 +428,8 @@ function ResultsView({
         {meta.description}
       </motion.p>
 
-      {/* Level gauge */}
       <LevelGauge fill={meta.fill} color={meta.color} />
 
-      {/* Stats row */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -464,7 +447,6 @@ function ResultsView({
         />
       </motion.div>
 
-      {/* CTA */}
       <motion.button
         type="button"
         onClick={onStart}
@@ -500,7 +482,6 @@ function Stat({
   );
 }
 
-// LevelGauge
 const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
 
 function LevelGauge({ fill, color }: { fill: number; color: string }) {
@@ -511,7 +492,6 @@ function LevelGauge({ fill, color }: { fill: number; color: string }) {
       transition={{ delay: 0.6 }}
       className="w-full"
     >
-      {/* Bar */}
       <div className="h-3 rounded-full bg-black/8 overflow-hidden mb-2">
         <motion.div
           className="h-full rounded-full"
@@ -521,7 +501,6 @@ function LevelGauge({ fill, color }: { fill: number; color: string }) {
           transition={{ delay: 0.65, duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
         />
       </div>
-      {/* Level labels */}
       <div className="flex justify-between">
         {LEVELS.map((lvl) => (
           <span
@@ -537,7 +516,6 @@ function LevelGauge({ fill, color }: { fill: number; color: string }) {
   );
 }
 
-// StepIndicator
 function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex items-center gap-3">
@@ -582,15 +560,24 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
   );
 }
 
-// Helpers
 type CefrLevelKey = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
-function inferLevel(knownCount: number): CefrLevelKey {
-  // 3 batches × 20 words = 60 words total
-  if (knownCount <= 6)  return "A1";
-  if (knownCount <= 15) return "A2";
-  if (knownCount <= 28) return "B1";
-  if (knownCount <= 40) return "B2";
-  if (knownCount <= 52) return "C1";
+function computeLextaleScore(
+  realKnown: number,
+  realTotal: number,
+  pseudoClaimed: number,
+  pseudoTotal: number,
+): number {
+  const hitRate       = realTotal   > 0 ? realKnown    / realTotal   : 0;
+  const falseAlarmRate = pseudoTotal > 0 ? pseudoClaimed / pseudoTotal : 0;
+  return hitRate - falseAlarmRate;
+}
+
+function inferLevelFromScore(score: number): CefrLevelKey {
+  if (score <= 0.10) return "A1";
+  if (score <= 0.25) return "A2";
+  if (score <= 0.47) return "B1";
+  if (score <= 0.67) return "B2";
+  if (score <= 0.87) return "C1";
   return "C2";
 }

@@ -4,15 +4,9 @@ import type { HighlightedWord } from "../../types";
 type Props = {
   text: string;
   highlights: HighlightedWord[];
-  // Called when a highlighted (blue/yellow) word is clicked.
-  // This feeds the 3-intent log: see_examples / add_to_learn / ignore.
   onHighlightClick: (wordId: string) => void;
-  // Called when any non-highlighted word is clicked.
-  // Used for the quick-lookup tooltip + auto-add to flashcards.
   onPlainWordClick: (word: string, el: HTMLElement) => void;
   activeWordId?: string | null;
-  // The non-highlighted word the tooltip is currently showing, so we can
-  // draw a ring around it.
   activePlainWord?: string | null;
 };
 
@@ -24,8 +18,6 @@ type Token =
   | { kind: "word"; text: string }
   | { kind: "gap"; text: string };
 
-// Walk the text linearly, emitting plain segments between non-overlapping
-// highlights so React renders stable keys and the DOM stays flat.
 function buildSegments(text: string, highlights: HighlightedWord[]): Segment[] {
   const sorted = [...highlights].sort((a, b) => a.startIndex - b.startIndex);
   const segments: Segment[] = [];
@@ -48,9 +40,6 @@ function buildSegments(text: string, highlights: HighlightedWord[]): Segment[] {
   return segments;
 }
 
-// Split a plain segment into words (clickable) and "gaps" (whitespace /
-// punctuation). Uses unicode letter class so Dutch diacritics (ë, ü, …)
-// stay attached to their word.
 function tokenize(text: string): Token[] {
   const tokens: Token[] = [];
   const re = /[\p{L}][\p{L}'-]*|[^\p{L}]+/gu;
@@ -75,7 +64,6 @@ export default function HighlightedText({
   return (
     <article className="font-body text-[17px] leading-[1.85] text-text whitespace-pre-wrap">
       {segments.map((seg, i) => {
-        // Highlighted word (yellow/blue) — keeps the full WordModal flow.
         if (seg.kind === "highlight") {
           const isUnknown = seg.word.highlightType === "unknown";
           const isActive = activeWordId === seg.word.wordId;
@@ -96,7 +84,6 @@ export default function HighlightedText({
           );
         }
 
-        // Plain segment — split further so every word becomes clickable.
         const tokens = tokenize(seg.text);
         return (
           <span key={i}>

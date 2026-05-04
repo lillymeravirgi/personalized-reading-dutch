@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { RotateCw } from "lucide-react";
+import { ArrowRight, RotateCcw, RotateCw } from "lucide-react";
 import type { FlashcardItem as FlashcardItemType } from "../../types";
 import SpeakButton from "../SpeakButton";
 
@@ -13,7 +13,6 @@ type Props = {
 export default function FlashcardItem({ card, flipped, onFlip, onRate }: Props) {
   return (
     <div className="flex flex-col items-center gap-5 w-full">
-      {/* Card */}
       <div
         role="button"
         tabIndex={0}
@@ -33,7 +32,6 @@ export default function FlashcardItem({ card, flipped, onFlip, onRate }: Props) 
           className="relative w-full h-full"
           style={{ transformStyle: "preserve-3d" }}
         >
-          {/* Front — Dutch word */}
           <CardFace>
             <ModeBadge mode={card.mode} />
             <div className="flex-1 flex flex-col items-center justify-center gap-2 px-6">
@@ -57,7 +55,6 @@ export default function FlashcardItem({ card, flipped, onFlip, onRate }: Props) 
             </div>
           </CardFace>
 
-          {/* Back — English + example */}
           <CardFace back>
             <ModeBadge mode={card.mode} />
             <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 w-full">
@@ -86,7 +83,6 @@ export default function FlashcardItem({ card, flipped, onFlip, onRate }: Props) 
         </motion.div>
       </div>
 
-      {/* Rate buttons (only after flip) */}
       <AnimatePresence>
         {flipped && (
           <motion.div
@@ -94,10 +90,22 @@ export default function FlashcardItem({ card, flipped, onFlip, onRate }: Props) 
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
             transition={{ duration: 0.3 }}
-            className="flex items-center justify-center gap-10"
+            className="grid w-full max-w-md grid-cols-2 gap-3 px-1"
           >
-            <RateIcon emoji="❌" title="Forgot (←)"     onClick={() => onRate(false)} />
-            <RateIcon emoji="✅" title="Remembered (→)" onClick={() => onRate(true)} />
+            <RateButton
+              icon={<RotateCcw size={16} />}
+              label="Review again"
+              title="Review again (left arrow)"
+              tone="practice"
+              onClick={() => onRate(false)}
+            />
+            <RateButton
+              icon={<ArrowRight size={16} />}
+              label="Know this"
+              title="Know this (right arrow)"
+              tone="known"
+              onClick={() => onRate(true)}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -105,7 +113,6 @@ export default function FlashcardItem({ card, flipped, onFlip, onRate }: Props) 
   );
 }
 
-// Sub-components
 function CardFace({
   children,
   back = false,
@@ -141,13 +148,17 @@ function ModeBadge({ mode }: { mode: "learning" | "review" }) {
   );
 }
 
-function RateIcon({
-  emoji,
+function RateButton({
+  icon,
+  label,
   title,
+  tone,
   onClick,
 }: {
-  emoji: string;
+  icon: React.ReactNode;
+  label: string;
   title: string;
+  tone: "practice" | "known";
   onClick: () => void;
 }) {
   return (
@@ -156,13 +167,18 @@ function RateIcon({
       onClick={onClick}
       title={title}
       aria-label={title}
-      whileTap={{ scale: 0.85 }}
-      whileHover={{ scale: 1.12 }}
+      whileTap={{ scale: 0.96 }}
       transition={{ type: "spring", stiffness: 400, damping: 18 }}
-      className="text-5xl leading-none select-none bg-transparent outline-none focus:outline-none"
-      style={{ filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.12))" }}
+      className={[
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2.5",
+        "text-sm font-heading font-semibold transition-colors",
+        tone === "known"
+          ? "border-primary/25 bg-primary/10 text-primary hover:bg-primary/15"
+          : "border-black/10 bg-white text-text/70 hover:bg-black/[0.03]",
+      ].join(" ")}
     >
-      {emoji}
+      {icon}
+      {label}
     </motion.button>
   );
 }

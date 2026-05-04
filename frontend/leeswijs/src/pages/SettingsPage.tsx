@@ -5,7 +5,7 @@ import {
   Settings as SettingsIcon,
   User as UserIcon,
   Award,
-  Sparkles,
+  Tags,
   Lock,
   Eye,
   EyeOff,
@@ -30,8 +30,6 @@ export default function SettingsPage() {
   const user     = useStore((s) => s.user);
   const setUser  = useStore((s) => s.setUser);
 
-  // Local form state, initialised from the current user.
-  const [displayName,  setDisplayName]  = useState("");
   const [interests,    setInterestsSet] = useState<Set<InterestId>>(new Set());
   const [pwOpen,       setPwOpen]       = useState(false);
   const [saving,       setSaving]       = useState(false);
@@ -40,19 +38,16 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!user) return;
-    setDisplayName(user.name);
     setInterestsSet(new Set(user.interests as InterestId[]));
   }, [user]);
 
   if (!user) return null;
 
-  const dirty =
-    displayName !== user.name ||
-    !sameSet(interests, new Set(user.interests as InterestId[]));
+  const dirty = !sameSet(interests, new Set(user.interests as InterestId[]));
 
   const validInterestCount =
     interests.size >= MIN_INTERESTS && interests.size <= MAX_INTERESTS;
-  const canSave = dirty && displayName.trim().length > 0 && validInterestCount;
+  const canSave = dirty && validInterestCount;
 
   function toggleInterest(id: InterestId) {
     setInterestsSet((prev) => {
@@ -75,7 +70,6 @@ export default function SettingsPage() {
     try {
       const updated = {
         ...user,
-        name: displayName.trim(),
         interests: Array.from(interests),
       };
       setUser(updated);
@@ -93,22 +87,27 @@ export default function SettingsPage() {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-      className="max-w-2xl mx-auto"
+      className="mx-auto max-w-3xl space-y-4"
     >
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary">
-          <SettingsIcon size={18} strokeWidth={2} />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <SettingsIcon size={17} strokeWidth={2} />
+          </div>
+          <div>
+            <h1 className="font-heading text-2xl font-bold text-text">Settings</h1>
+            <p className="text-sm font-body text-text/50">
+              Check your study details and update your topic choices.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-text">Settings</h1>
-          <p className="text-sm font-body text-text/50">
-            Update your profile and preferences.
-          </p>
-        </div>
+        {dirty && (
+          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-body font-semibold text-primary">
+            Unsaved changes
+          </span>
+        )}
       </div>
 
-      {/* Toast / error */}
       <AnimatePresence>
         {toast && (
           <motion.div
@@ -134,52 +133,40 @@ export default function SettingsPage() {
         )}
       </AnimatePresence>
 
-      {/* Account */}
-      <Section title="Account" icon={<UserIcon size={14} />}>
-        {/* Username (fixed login ID) */}
-        <div className="flex items-center justify-between gap-3 pb-3 mb-3 border-b border-black/6">
-          <div>
-            <p className="text-[10px] font-heading font-semibold uppercase tracking-wide text-text/50">
-              Username
-            </p>
-            <p className="text-sm font-body text-text/80 mt-0.5">{user.id}</p>
+      <Section title="Study setup" icon={<UserIcon size={14} />}>
+        <div className="divide-y divide-black/8">
+          <div className="flex items-center justify-between gap-4 py-3">
+            <div>
+              <p className="text-xs font-body font-semibold uppercase tracking-wide text-text/50">
+                Username
+              </p>
+              <p className="mt-1 font-body text-sm text-text">{user.id}</p>
+            </div>
+            <span className="rounded-full bg-black/[0.04] px-2.5 py-1 text-[11px] font-body text-text/45">
+              fixed
+            </span>
           </div>
-          <span className="text-[10px] font-body text-text/40 italic">fixed</span>
-        </div>
 
-        {/* Preferred name (editable display name) */}
-        <Field label="What would you like to be called?">
-          <input
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            maxLength={32}
-            placeholder="e.g. Alice"
-            className="w-full rounded-xl border border-black/12 bg-white px-3.5 py-2.5 text-sm font-body text-text placeholder:text-text/30 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
-          />
-          <p className="mt-1.5 text-[11px] font-body text-text/40">
-            Shown in greetings and the top bar. Does not affect research data.
-          </p>
-        </Field>
-
-        {/* CEFR level (read-only; retake = re-run assessment) */}
-        <Field label="CEFR level" icon={<Award size={13} />}>
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-4 py-4">
             <div className="flex items-center gap-3">
               <span
-                className="inline-flex items-center justify-center w-10 h-10 rounded-xl font-heading text-sm font-bold text-white"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg font-heading text-sm font-bold text-white"
                 style={{ backgroundColor: "var(--color-secondary)" }}
               >
                 {user.cefrLevel ?? "—"}
               </span>
               <div>
-                <p className="text-xs font-body font-semibold text-text/70">
+                <p className="flex items-center gap-1.5 text-xs font-body font-semibold uppercase tracking-wide text-text/50">
+                  <Award size={13} />
+                  CEFR level
+                </p>
+                <p className="mt-1 text-sm font-body font-semibold text-text/75">
                   {user.assessedAt
                     ? `Assessed ${relDays(user.assessedAt)}`
                     : "Never assessed"}
                 </p>
-                <p className="text-[11px] font-body text-text/45 mt-0.5">
-                  Set automatically by the vocab assessment.
+                <p className="mt-0.5 text-xs font-body text-text/45">
+                  Set by the vocabulary assessment.
                 </p>
               </div>
             </div>
@@ -193,15 +180,11 @@ export default function SettingsPage() {
               Retake
             </motion.button>
           </div>
-          <p className="mt-1.5 text-[11px] font-body text-text/40">
-            Re-assess yourself weekly to keep the level accurate.
-          </p>
-        </Field>
+        </div>
 
-        {/* Interests */}
         <Field
           label="Interests"
-          icon={<Sparkles size={13} />}
+          icon={<Tags size={13} />}
           hint={`${interests.size} selected · choose ${MIN_INTERESTS}–${MAX_INTERESTS}`}
         >
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -217,21 +200,18 @@ export default function SettingsPage() {
                   disabled={disabled}
                   whileTap={disabled ? {} : { scale: 0.95 }}
                   className={[
-                    "flex items-center gap-1.5 rounded-lg border-2 px-2.5 py-2 text-xs font-body font-semibold transition-colors",
+                    "flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs font-body font-semibold transition-colors",
                     active
-                      ? "shadow-sm"
+                      ? "border-primary bg-primary/[0.06] text-primary"
                       : disabled
-                      ? "border-black/8 bg-black/[0.02] opacity-40 cursor-not-allowed"
-                      : "border-black/10 bg-white hover:border-black/25 hover:bg-black/[0.02]",
+                      ? "border-black/8 bg-black/[0.02] text-text/25 cursor-not-allowed"
+                      : "border-black/12 bg-white text-text/65 hover:border-black/25 hover:bg-black/[0.02]",
                   ].join(" ")}
-                  style={
-                    active
-                      ? { borderColor: it.color, backgroundColor: `${it.color}12`, color: it.color }
-                      : { color: "#78716c" }
-                  }
+                  aria-pressed={active}
                 >
                   <Icon size={13} strokeWidth={1.8} />
-                  {it.label}
+                  <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                  {active && <Check size={12} strokeWidth={2.8} />}
                 </motion.button>
               );
             })}
@@ -243,8 +223,10 @@ export default function SettingsPage() {
           )}
         </Field>
 
-        {/* Save */}
-        <div className="flex justify-end pt-2">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-black/8 pt-4">
+          <p className="text-xs font-body text-text/45">
+            Topic choices affect the next generated reading where the assigned condition allows it.
+          </p>
           <motion.button
             type="button"
             onClick={handleSave}
@@ -259,14 +241,13 @@ export default function SettingsPage() {
             ].join(" ")}
           >
             {saving ? <Spinner /> : <Save size={14} />}
-            Save changes
+            Save
           </motion.button>
         </div>
       </Section>
 
-      {/* Security */}
       <Section title="Security" icon={<Lock size={14} />}>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-heading font-semibold text-text">
               Password
@@ -287,7 +268,6 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* Change Password modal */}
       <ChangePasswordModal
         open={pwOpen}
         onClose={() => setPwOpen(false)}
@@ -298,7 +278,6 @@ export default function SettingsPage() {
   );
 }
 
-// Section helpers
 function Section({
   title,
   icon,
@@ -309,15 +288,15 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white rounded-2xl shadow-xl shadow-black/8 px-6 py-5 mb-4">
-      <div className="flex items-center gap-2 mb-4">
+    <section className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
+      <div className="mb-4 flex items-center gap-2">
         {icon && <span className="text-text/40">{icon}</span>}
         <h2 className="font-heading text-sm font-bold text-text uppercase tracking-wide">
           {title}
         </h2>
       </div>
       <div>{children}</div>
-    </div>
+    </section>
   );
 }
 
@@ -333,8 +312,8 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-4 last:mb-0">
-      <div className="flex items-center justify-between gap-2 mb-1.5">
+    <div className="mt-5">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <label className="flex items-center gap-1.5 text-xs font-body font-semibold text-text/60 uppercase tracking-wide">
           {icon && <span className="text-text/40">{icon}</span>}
           {label}
@@ -374,7 +353,6 @@ function relDays(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-// Change Password modal
 function ChangePasswordModal({
   open,
   onClose,
@@ -394,7 +372,6 @@ function ChangePasswordModal({
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState<string | null>(null);
 
-  // Reset form + listen for Escape while open.
   useEffect(() => {
     if (!open) return;
     setOldPw(""); setNewPw(""); setConfirmPw("");

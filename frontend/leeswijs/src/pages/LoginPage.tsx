@@ -5,7 +5,6 @@ import { User as UserIcon, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lu
 import { login } from "../services/api";
 import { useStore } from "../store";
 
-// Validation
 function validateUsername(value: string) {
   return value.trim().length >= 3
     ? null
@@ -16,7 +15,6 @@ function validatePassword(value: string) {
   return value.length >= 4 ? null : "Password must be at least 4 characters.";
 }
 
-// Component
 export default function LoginPage() {
   const navigate = useNavigate();
   const setUser = useStore((s) => s.setUser);
@@ -45,9 +43,6 @@ export default function LoginPage() {
     try {
       const user = await login(username, password);
       setUser(user);
-      // Route new participants through the interest + placement flow before
-      // the main app. Returning users (interests already set) skip straight
-      // to /home.
       const isNewUser = user.interests.length === 0;
       navigate(isNewUser ? "/onboarding" : "/home", { replace: true });
     } catch (err) {
@@ -65,15 +60,13 @@ export default function LoginPage() {
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9"
     >
-      {/* Heading */}
       <div className="mb-7">
-        <h1 className="font-heading text-2xl font-bold text-text">Welcome back</h1>
+        <h1 className="font-heading text-2xl font-bold text-text">Log in</h1>
         <p className="mt-1 text-sm text-text/50 font-body">
-          Log in to continue your Dutch journey.
+          Use the account the research team gave you.
         </p>
       </div>
 
-      {/* Server error banner */}
       {serverError && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
@@ -86,7 +79,6 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        {/* Username */}
         <Field
           label="Username"
           error={usernameError}
@@ -106,7 +98,6 @@ export default function LoginPage() {
           </InputWrapper>
         </Field>
 
-        {/* Password */}
         <Field
           label="Password"
           error={passwordError}
@@ -135,7 +126,6 @@ export default function LoginPage() {
           </InputWrapper>
         </Field>
 
-        {/* Submit */}
         <motion.button
           type="submit"
           disabled={submitting}
@@ -158,23 +148,19 @@ export default function LoginPage() {
         </motion.button>
       </form>
 
-      {/* Credentials hint */}
       <div className="mt-6 rounded-xl border border-black/8 bg-black/[0.02] px-4 py-3">
         <p className="text-xs text-text/60 font-body leading-relaxed">
-          Your username and password are provided by the research team.
-          Please contact us if you don't have yours yet.
+          Don't have an account? Ask the research team.
         </p>
       </div>
 
-      {/* Language flag accent */}
       <p className="mt-5 text-center text-xs text-text/30 font-body">
-        🇳🇱 Learning Dutch, one article at a time.
+        Dutch reading study
       </p>
     </motion.div>
   );
 }
 
-// Sub-components
 function Field({
   label,
   error,

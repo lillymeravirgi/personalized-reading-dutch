@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from "react";
 
 const MAX_TICK_DELTA_MS = 5_000;
 
-// Dwell timer that pauses on tab blur so "open tab in background" doesn't
-// inflate the reading time. Tick interval is 1s for cheap UI updates.
 export function useReadingTimer(active: boolean = true) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const runningRef = useRef(false);

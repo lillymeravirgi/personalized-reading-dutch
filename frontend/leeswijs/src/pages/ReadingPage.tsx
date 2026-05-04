@@ -5,15 +5,18 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  Sparkles,
+  BookPlus,
+  Loader2,
 } from "lucide-react";
 
 import {
   getReadingSession,
   defineWord,
+  isBackendNotReadyMessage,
   logSession,
   logDwellTime,
   logWordLookup,
+  continueSession,
 } from "../services/api";
 import { useStore } from "../store";
 import { useReadingTimer } from "../hooks/useReadingTimer";
@@ -35,27 +38,23 @@ export default function ReadingPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
 
-  // R8.1: select primitives, not object literals.
   const currentSession = useStore((s) => s.currentSession);
   const isLoading = useStore((s) => s.isLoadingSession);
   const setCurrentSession = useStore((s) => s.setCurrentSession);
   const setLoadingSession = useStore((s) => s.setLoadingSession);
   const clearSession = useStore((s) => s.clearSession);
-  const interactions = useStore((s) => s.interactions);
   const user = useStore((s) => s.user);
 
   const [error, setError] = useState<string | null>(null);
   const [activeWordId, setActiveWordId] = useState<string | null>(null);
   const [plainLookup, setPlainLookup] = useState<PlainLookup | null>(null);
+  const [continuing, setContinuing] = useState(false);
+  const [continueError, setContinueError] = useState<string | null>(null);
   const { elapsedMs } = useReadingTimer(!!currentSession && !error);
 
-  // Keep a ref of elapsedMs so the unmount cleanup can read the last value
-  // without re-subscribing each tick.
   const elapsedRef = useRef(0);
   useEffect(() => { elapsedRef.current = elapsedMs; }, [elapsedMs]);
 
-  // Click on a non-highlighted word: quick lookup only. It does not count
-  // toward WEI and does not silently add words to the learner's deck.
   async function handlePlainWordClick(word: string, el: HTMLElement) {
     const rect = el.getBoundingClientRect();
     const anchor = {
@@ -68,9 +67,24 @@ export default function ReadingPage() {
     setPlainLookup({ word, english: null, loading: true, anchor });
     try {
       const english = await defineWord(word);
-      setPlainLookup({ word, english, loading: false, anchor });
-    } catch {
-      setPlainLookup({ word, english: null, loading: false, anchor });
+      setPlainLookup({
+        word,
+        english,
+        loading: false,
+        anchor,
+        message: english ? undefined : "Translation is not available yet.",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      setPlainLookup({
+        word,
+        english: null,
+        loading: false,
+        anchor,
+        message: isBackendNotReadyMessage(message)
+          ? "Translation for non-highlighted words needs backend support."
+          : "Translation is not available yet.",
+      });
     }
   }
 
@@ -108,8 +122,6 @@ export default function ReadingPage() {
     };
   }, [clearSession]);
 
-  // Push the session into the user's activity log the first time it loads,
-  // and persist the accumulated dwell time when leaving the page.
   useEffect(() => {
     if (!user || !currentSession) return;
     logSession(user.id, {
@@ -127,11 +139,6 @@ export default function ReadingPage() {
     };
   }, [user, currentSession]);
 
-  const sessionInteractionCount = useMemo(
-    () => interactions.filter((i) => i.sessionId === sessionId).length,
-    [interactions, sessionId]
-  );
-
   const activeWord: HighlightedWord | null = useMemo(() => {
     if (!currentSession || !activeWordId) return null;
     return (
@@ -144,12 +151,32 @@ export default function ReadingPage() {
     navigate(`/survey/${encodeURIComponent(sessionId)}`);
   }
 
+  async function handleContinue() {
+    if (!sessionId || !user || continuing) return;
+    setContinuing(true);
+    setContinueError(null);
+    try {
+      const { sessionId: nextId } = await continueSession(user.id, sessionId);
+      logDwellTime(user.id, sessionId, elapsedRef.current);
+      navigate(`/read/${encodeURIComponent(nextId)}`);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not continue this reading.";
+      setContinueError(
+        isBackendNotReadyMessage(message)
+          ? "Continue reading needs backend support. Please finish this reading."
+          : message
+      );
+      setContinuing(false);
+    }
+  }
+
   if (isLoading && !currentSession) {
     return (
       <div className="max-w-3xl mx-auto py-12 text-center">
         <div className="inline-flex items-center gap-2 text-text/60 font-body text-sm">
-          <Sparkles size={16} className="animate-pulse" />
-          Loading your reading…
+          <Loader2 size={16} className="animate-spin" />
+          Loading
         </div>
       </div>
     );
@@ -194,7 +221,6 @@ export default function ReadingPage() {
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
       className="max-w-3xl mx-auto"
     >
-      {/* Header */}
       <header className="mb-6">
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-white uppercase tracking-wide">
@@ -219,21 +245,20 @@ export default function ReadingPage() {
             <span className="w-2 h-2 rounded-sm bg-yellow-300" />
             {yellowCount} learning
           </span>
-          <span>
-            {sessionInteractionCount} / {currentSession.highlights.length} looked up
-          </span>
         </div>
       </header>
 
-      {/* Legend hint */}
-      <div className="mb-4 text-xs text-text/50 font-body">
-        Click any <span className="bg-yellow-100 text-yellow-900 px-1 rounded">yellow</span>{" "}
-        or <span className="bg-blue-100 text-blue-900 px-1 rounded">blue</span>{" "}
-        word to decide how to study it. Click any other word for a quick translation.
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-body text-text/50">
+        <span className="rounded-full bg-blue-100 px-2.5 py-1 font-semibold text-blue-900">
+          New words
+        </span>
+        <span className="rounded-full bg-yellow-100 px-2.5 py-1 font-semibold text-yellow-900">
+          Learning words
+        </span>
       </div>
 
-      {/* Reading body */}
-      <div className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9 mb-6">
+
+      <div className="mb-6 rounded-lg border border-black/8 bg-white px-6 py-7 shadow-sm shadow-black/5 sm:px-8 sm:py-9">
         <HighlightedText
           text={currentSession.text}
           highlights={currentSession.highlights}
@@ -244,20 +269,59 @@ export default function ReadingPage() {
         />
       </div>
 
-      {/* Finish CTA */}
       <div className="flex flex-col items-end gap-2">
-        <motion.button
-          type="button"
-          onClick={handleFinish}
-          whileTap={{ scale: 0.97 }}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
-        >
-          <CheckCircle2 size={16} strokeWidth={2.3} />
-          Finish reading
-        </motion.button>
-        <p className="max-w-xs text-right text-xs font-body text-text/45">
-          After this, please answer a short study survey.
-        </p>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <motion.button
+            type="button"
+            onClick={handleContinue}
+            disabled={continuing}
+            whileTap={{ scale: continuing ? 1 : 0.97 }}
+            className={[
+              "inline-flex items-center gap-2 rounded-lg px-5 py-2.5",
+              "text-sm font-heading font-semibold",
+              "border border-primary/40 text-primary bg-white",
+              "transition-colors",
+              continuing
+                ? "opacity-60 cursor-wait"
+                : "hover:bg-primary/[0.06]",
+            ].join(" ")}
+          >
+            {continuing ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Continuing
+              </>
+            ) : (
+              <>
+                <BookPlus size={16} strokeWidth={2.3} />
+                Continue reading
+              </>
+            )}
+          </motion.button>
+          <motion.button
+            type="button"
+            onClick={handleFinish}
+            disabled={continuing}
+            whileTap={{ scale: continuing ? 1 : 0.97 }}
+            className={[
+              "inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5",
+              "text-sm font-heading font-semibold text-white",
+              continuing ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
+            ].join(" ")}
+          >
+            <CheckCircle2 size={16} strokeWidth={2.3} />
+            Finish reading
+          </motion.button>
+        </div>
+        {continueError ? (
+          <p className="max-w-xs text-right text-xs font-body text-red-600">
+            {continueError}
+          </p>
+        ) : (
+          <p className="text-right text-xs font-body text-text/45 sm:whitespace-nowrap">
+            Read more on this topic, or finish when ready.
+          </p>
+        )}
       </div>
 
       <WordModal
