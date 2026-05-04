@@ -4,6 +4,7 @@ import AuthLayout from "./layouts/AuthLayout";
 import MainLayout from "./layouts/MainLayout";
 
 import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import AssessmentPage from "./pages/AssessmentPage";
 import HomePage from "./pages/HomePage";
@@ -20,10 +21,11 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AuthLayout />}>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/assessment" element={<AssessmentPage />} />
-        </Route>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />  {/* add this */}
+        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="/assessment" element={<AssessmentPage />} />
+      </Route>
 
         <Route element={<MainLayout />}>
           <Route path="/home" element={<HomePage />} />

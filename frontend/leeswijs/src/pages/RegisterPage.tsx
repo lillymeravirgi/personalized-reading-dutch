@@ -1,55 +1,56 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { User as UserIcon, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
-import { login } from "../services/api";
-import { useStore } from "../store";
+import { User, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
 
-function validateUsername(value: string) {
-  return value.trim().length >= 3
+function validateName(value: string) {
+  return value.trim().length >= 2 ? null : "Enter your full name.";
+}
+
+function validateEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
     ? null
-    : "Username must be at least 3 characters.";
+    : "Enter a valid email address.";
 }
 
 function validatePassword(value: string) {
-  return value.length >= 4 ? null : "Password must be at least 4 characters.";
+  return value.length >= 6 ? null : "Password must be at least 6 characters.";
 }
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const navigate = useNavigate();
-  const setUser = useStore((s) => s.setUser);
-  const setLoadingUser = useStore((s) => s.setLoadingUser);
 
-  const [username, setUsername] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ username: false, password: false });
+  const [touched, setTouched] = useState({ name: false, email: false, password: false });
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const usernameError = touched.username ? validateUsername(username) : null;
-  const passwordError = touched.password ? validatePassword(password) : null;
-  const isFormValid = !validateUsername(username) && !validatePassword(password);
+  const nameError     = touched.name     ? validateName(name)         : null;
+  const emailError    = touched.email    ? validateEmail(email)        : null;
+  const passwordError = touched.password ? validatePassword(password)  : null;
+  const isFormValid   = !validateName(name) && !validateEmail(email) && !validatePassword(password);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ username: true, password: true });
+    setTouched({ name: true, email: true, password: true });
     if (!isFormValid) return;
 
     setSubmitting(true);
     setServerError(null);
-    setLoadingUser(true);
 
     try {
-      const user = await login(username, password);
-      setUser(user);
-      const isNewUser = user.interests.length === 0;
-      navigate(isNewUser ? "/onboarding" : "/home", { replace: true });
+      // TODO: replace with your real register API call
+      // const response = await createUser({ name, email, password });
+      // if (!response.success) throw new Error(response.error ?? "Registration failed.");
+      // setUser(response.data);
+      navigate("/Onboarding");
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
-      setLoadingUser(false);
     }
   }
 
@@ -60,13 +61,15 @@ export default function LoginPage() {
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9"
     >
+      {/* Heading */}
       <div className="mb-7">
-        <h1 className="font-heading text-2xl font-bold text-text">Welcome back</h1>
+        <h1 className="font-heading text-2xl font-bold text-text">Create your account</h1>
         <p className="mt-1 text-sm text-text/50 font-body">
-          Log in to continue your Dutch journey.
+          Start your Dutch reading journey today.
         </p>
       </div>
 
+      {/* Server error banner */}
       {serverError && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
@@ -79,28 +82,46 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <Field label="Username" error={usernameError} htmlFor="login-username">
-          <InputWrapper icon={<UserIcon size={16} />} hasError={!!usernameError}>
+        {/* Full Name */}
+        <Field label="Full Name" error={nameError} htmlFor="register-name">
+          <InputWrapper icon={<User size={16} />} hasError={!!nameError}>
             <input
-              id="login-username"
+              id="register-name"
               type="text"
-              autoComplete="username"
-              placeholder="e.g. user01"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, username: true }))}
+              autoComplete="name"
+              placeholder="Enter your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => setTouched((t) => ({ ...t, name: true }))}
               className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
             />
           </InputWrapper>
         </Field>
 
-        <Field label="Password" error={passwordError} htmlFor="login-password">
+        {/* Email */}
+        <Field label="Email Address" error={emailError} htmlFor="register-email">
+          <InputWrapper icon={<Mail size={16} />} hasError={!!emailError}>
+            <input
+              id="register-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+              className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
+            />
+          </InputWrapper>
+        </Field>
+
+        {/* Password */}
+        <Field label="Password" error={passwordError} htmlFor="register-password">
           <InputWrapper icon={<Lock size={16} />} hasError={!!passwordError}>
             <input
-              id="login-password"
+              id="register-password"
               type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              placeholder="••••••••"
+              autoComplete="new-password"
+              placeholder="Create a password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onBlur={() => setTouched((t) => ({ ...t, password: true }))}
@@ -118,6 +139,7 @@ export default function LoginPage() {
           </InputWrapper>
         </Field>
 
+        {/* Submit */}
         <motion.button
           type="submit"
           disabled={submitting}
@@ -129,25 +151,36 @@ export default function LoginPage() {
             submitting ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
           ].join(" ")}
         >
-          {submitting ? <Spinner /> : <>Log In<ArrowRight size={16} strokeWidth={2.5} /></>}
+          {submitting ? (
+            <Spinner />
+          ) : (
+            <>
+              Get started
+              <ArrowRight size={16} strokeWidth={2.5} />
+            </>
+          )}
         </motion.button>
       </form>
 
+      {/* Divider */}
       <div className="relative my-6">
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-black/8" />
         </div>
         <div className="relative flex justify-center">
-          <span className="bg-white px-3 text-xs text-text/35 font-body">New here?</span>
+          <span className="bg-white px-3 text-xs text-text/35 font-body">
+            Already have an account?
+          </span>
         </div>
       </div>
 
+      {/* Log in */}
       <button
         type="button"
-        onClick={() => navigate("/register")}
+        onClick={() => navigate("/login")}
         className="w-full flex items-center justify-center gap-2 rounded-xl border border-black/12 px-5 py-2.5 text-sm font-body font-semibold text-text/70 hover:bg-black/[0.03] hover:text-text transition-colors"
       >
-        Create Account
+        Log In
       </button>
 
       <p className="mt-6 text-center text-xs text-text/30 font-body">
@@ -157,7 +190,14 @@ export default function LoginPage() {
   );
 }
 
-function Field({ label, error, htmlFor, children }: {
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function Field({
+  label,
+  error,
+  htmlFor,
+  children,
+}: {
   label: string;
   error: string | null;
   htmlFor: string;
@@ -165,7 +205,10 @@ function Field({ label, error, htmlFor, children }: {
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={htmlFor} className="block text-xs font-body font-semibold text-text/60 uppercase tracking-wide">
+      <label
+        htmlFor={htmlFor}
+        className="block text-xs font-body font-semibold text-text/60 uppercase tracking-wide"
+      >
         {label}
       </label>
       {children}
@@ -183,17 +226,25 @@ function Field({ label, error, htmlFor, children }: {
   );
 }
 
-function InputWrapper({ icon, hasError, children }: {
+function InputWrapper({
+  icon,
+  hasError,
+  children,
+}: {
   icon: React.ReactNode;
   hasError: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className={[
-      "flex items-center gap-3 rounded-xl border px-3.5 py-2.5 transition-colors",
-      "focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50",
-      hasError ? "border-red-300 bg-red-50/40" : "border-black/12 bg-black/[0.02] hover:border-black/20",
-    ].join(" ")}>
+    <div
+      className={[
+        "flex items-center gap-3 rounded-xl border px-3.5 py-2.5 transition-colors",
+        "focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50",
+        hasError
+          ? "border-red-300 bg-red-50/40"
+          : "border-black/12 bg-black/[0.02] hover:border-black/20",
+      ].join(" ")}
+    >
       <span className={hasError ? "text-red-400" : "text-text/30"}>{icon}</span>
       {children}
     </div>
