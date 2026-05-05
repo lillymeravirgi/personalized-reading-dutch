@@ -52,6 +52,8 @@ class User(Base):
     learning_purpose: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     native_language: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     estimated_cefr: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     topics: Mapped[list["UserTopic"]] = relationship("UserTopic", back_populates="user", cascade="all, delete-orphan")
     vocab_vectors: Mapped[list["UserVocabularyVector"]] = relationship("UserVocabularyVector", back_populates="user", cascade="all, delete-orphan")

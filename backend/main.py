@@ -9,6 +9,7 @@ from app.routers import (
     auth,
     experiment,
     flashcards,
+    interests,
     krs,
     lexicon,
     session,
@@ -56,6 +57,7 @@ app.include_router(assessment.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(experiment.router, prefix="/api")
 app.include_router(flashcards.router, prefix="/api")
+app.include_router(interests.router, prefix="/api")
 app.include_router(krs.router, prefix="/api")
 app.include_router(lexicon.router, prefix="/api")
 app.include_router(session.router, prefix="/api")
