@@ -25,7 +25,32 @@ from app.routers import (
 async def lifespan(app: FastAPI):
     # Create / migrate tables on startup (idempotent)
     Base.metadata.create_all(bind=engine)
+    _ensure_sqlite_columns()
     yield
+
+
+def _ensure_sqlite_columns() -> None:
+    """Small dev migration for older SQLite databases created before auth fields."""
+    if engine.dialect.name != "sqlite":
+        return
+
+    with engine.begin() as conn:
+        user_columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+        }
+        if "email" not in user_columns:
+            conn.exec_driver_sql("ALTER TABLE users ADD COLUMN email VARCHAR(255)")
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)")
+        if "password_hash" not in user_columns:
+            conn.exec_driver_sql("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)")
+
+        session_columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(reading_sessions)").fetchall()
+        }
+        if "survey_signal" not in session_columns:
+            conn.exec_driver_sql("ALTER TABLE reading_sessions ADD COLUMN survey_signal JSON")
 
 
 app = FastAPI(

@@ -1,7 +1,8 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { User, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { registerUser } from "../services/api";
 
 function validateName(value: string) {
   return value.trim().length >= 2 ? null : "Enter your full name.";
@@ -42,11 +43,8 @@ export default function RegisterPage() {
     setServerError(null);
 
     try {
-      // TODO: replace with your real register API call
-      // const response = await createUser({ name, email, password });
-      // if (!response.success) throw new Error(response.error ?? "Registration failed.");
-      // setUser(response.data);
-      navigate("/Onboarding");
+      await registerUser(name, email, password);
+      navigate("/login");
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -184,13 +182,13 @@ export default function RegisterPage() {
       </button>
 
       <p className="mt-6 text-center text-xs text-text/30 font-body">
-        🇳🇱 Learning Dutch, one article at a time.
+        Learning Dutch, one article at a time.
       </p>
     </motion.div>
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// Sub-components
 
 function Field({
   label,

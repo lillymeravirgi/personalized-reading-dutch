@@ -1,16 +1,26 @@
 # LearnDutch
 
-LearnDutch is an HCI course group project for studying personalized Dutch reading support for second-language learners. The frontend app is in `frontend/leeswijs`.The main goal is to run a clean experiment and collect usable data about reading engagement,
-perceived difficulty, cognitive load, and vocabulary learning.
+LearnDutch is an HCI course group project for studying personalized Dutch reading support for second-language learners. The frontend app is in `frontend/leeswijs`.
 
+The main goal is to run a clean experiment and collect usable data about reading engagement, willingness to continue reading, cognitive load, and vocabulary learning.
 
 ## Research Questions
 
-**RQ1.** Does personalized reading content adapted to a learner's vocabulary level and interests reduce perceived reading difficulty compared with a non-personalized baseline?
+**RQ1.** Does personalized reading content increase learners' willingness to continue reading compared with a non-personalized baseline
 
-**RQ2.** Does interest-based and vocabulary-aware personalization increase user engagement during reading compared with a non-personalized baseline?
+**RQ2.** Does interest-based and vocabulary-aware personalization increase engagement while maintaining an appropriate cognitive load compared with a non-personalized baseline
 
-**RQ3.** 
+**RQ3.** Does personalized reading content improve vocabulary acquisition and 24-hour retention compared with a non-personalized baseline
+
+## Experiment Protocol
+
+The study uses a within-subject, counterbalanced design. Each participant completes both conditions:
+
+- **Adaptive:** CEFR-matched, interest-based, vocabulary-aware, with cross-session adaptation.
+- **Baseline:** CEFR-matched, general/random topic selection, static CEFR vocabulary, no cross-session adaptation.
+
+The protocol is grounded in Flow Theory and the Zone of Proximal Development. The system does not aim to make texts simply easier; it aims to keep texts appropriately challenging and engaging.
+
 
 ## Stack
 
@@ -85,48 +95,47 @@ VITE_USE_MOCK=true
 ## Project Structure
 
 ```text
-Dutch learning/
-├── README.md
-├── backend/
-│   ├── main.py
-│   ├── seed.py
-│   ├── requirements.txt
-│   ├── .env.example
-│   └── app/
-│       ├── config.py
-│       ├── database.py
-│       ├── deps.py
-│       ├── models.py
-│       ├── schemas.py
-│       ├── session_generator.py
-│       ├── krs_service.py
-│       ├── topic_service.py
-│       ├── validator.py
-│       └── routers/
-│           ├── assessment.py
-│           ├── auth.py
-│           ├── experiment.py
-│           ├── flashcards.py
-│           ├── krs.py
-│           ├── lexicon.py
-│           ├── session.py
-│           ├── surveys.py
-│           ├── telemetry.py
-│           ├── users.py
-│           ├── vocab_test.py
-│           └── vocabulary.py
-└── frontend/
-    └── leeswijs/
-        ├── package.json
-        └── src/
-            ├── App.tsx
-            ├── main.tsx
-            ├── components/
-            ├── hooks/
-            ├── layouts/
-            ├── mocks/
-            ├── pages/
-            ├── services/api.ts
-            ├── store/index.ts
-            └── types/
+personalized-reading-dutch/
+|-- backend/
+|   |-- main.py
+|   |-- seed.py
+|   |-- requirements.txt
+|   |-- .env.example
+|   `-- app/
+|       |-- config.py
+|       |-- database.py
+|       |-- deps.py
+|       |-- models.py
+|       |-- schemas.py
+|       |-- session_generator.py
+|       |-- krs_service.py
+|       |-- topic_service.py
+|       |-- validator.py
+|       `-- routers/
+|           |-- assessment.py
+|           |-- auth.py
+|           |-- experiment.py
+|           |-- flashcards.py
+|           |-- krs.py
+|           |-- lexicon.py
+|           |-- session.py
+|           |-- surveys.py
+|           |-- telemetry.py
+|           |-- users.py
+|           |-- vocab_test.py
+|           `-- vocabulary.py
+`-- frontend/
+    `-- leeswijs/
+        |-- package.json
+        `-- src/
+            |-- App.tsx
+            |-- main.tsx
+            |-- components/
+            |-- hooks/
+            |-- layouts/
+            |-- mocks/
+            |-- pages/
+            |-- services/api.ts
+            |-- store/index.ts
+            `-- types/
 ```

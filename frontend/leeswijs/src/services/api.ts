@@ -37,6 +37,11 @@ apiClient.interceptors.request.use((config) => {
     config.headers = config.headers ?? {};
     (config.headers as Record<string, string>)["X-User-Id"] = userId;
   }
+  const token = getPersistedAuthToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
@@ -202,6 +207,14 @@ function getPersistedUserId(): string | null {
     if (isBackendNotReadyMessage(message)) {
       throw new Error(message);
     }
+    return null;
+  }
+}
+
+function getPersistedAuthToken(): string | null {
+  try {
+    return localStorage.getItem("leeswijs-token");
+  } catch {
     return null;
   }
 }
@@ -851,6 +864,7 @@ export async function submitSurvey(
 }
 
 type LoginPayload = {
+  access_token?: string;
   user_id: string;
   username: string;
   display_name: string;
@@ -938,6 +952,13 @@ export async function login(username: string, password: string): Promise<User> {
       username,
       password,
     });
+    if (data.access_token) {
+      try {
+        localStorage.setItem("leeswijs-token", data.access_token);
+      } catch {
+        // X-User-Id still supports the prototype flow if storage fails.
+      }
+    }
 
     return {
       id: data.user_id,
@@ -953,6 +974,29 @@ export async function login(username: string, password: string): Promise<User> {
       (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
     throw new Error(detail ?? "Login failed.");
   }
+}
+
+export async function registerUser(
+  name: string,
+  email: string,
+  password: string
+): Promise<void> {
+  if (USE_MOCK) {
+    await delay(400);
+    return;
+  }
+  const userIdBase = email
+    .split("@")[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .slice(0, 30);
+  const userId = `${userIdBase || "user"}_${Date.now()}`;
+  await apiClient.post("/auth/signup", {
+    user_id: userId,
+    email,
+    password,
+    learning_purpose: `Registered as ${name.trim()}`,
+  });
 }
 
 export async function saveProfile(user: User): Promise<void> {
