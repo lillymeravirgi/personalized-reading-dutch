@@ -17,6 +17,7 @@ class SignupRequest(BaseModel):
     user_id: str
     email: EmailStr
     password: str
+    display_name: str | None = None
     age: int | None = None
     location: str | None = None
     education_level: str | None = None
@@ -46,6 +47,7 @@ class AuthResponse(BaseModel):
 class UserResponse(BaseModel):
     user_id: str
     email: str | None = None
+    display_name: str | None = None
     age: int | None = None
     location: str | None = None
     education_level: str | None = None
@@ -86,7 +88,7 @@ def _account_response(user: User, account: UserAccount | None, db: Session) -> A
         for row in db.query(UserTopic).filter(UserTopic.user_id == user.user_id).all()
     ]
     username = account.username if account else (user.email or user.user_id)
-    display_name = account.display_name if account else username
+    display_name = account.display_name if account else (user.display_name or username)
     created_at = None
     if account and account.created_at:
         created_at = account.created_at.isoformat()
@@ -114,6 +116,7 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)):
         user_id=payload.user_id,
         email=payload.email,
         password_hash=hash_password(payload.password),
+        display_name=payload.display_name,
         age=payload.age,
         location=payload.location,
         education_level=payload.education_level,

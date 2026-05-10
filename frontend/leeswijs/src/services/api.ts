@@ -995,7 +995,7 @@ export async function registerUser(
     user_id: userId,
     email,
     password,
-    learning_purpose: `Registered as ${name.trim()}`,
+    display_name: name.trim(),
   });
 }
 

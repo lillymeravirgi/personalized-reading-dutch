@@ -44,6 +44,8 @@ def _ensure_sqlite_columns() -> None:
             conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)")
         if "password_hash" not in user_columns:
             conn.exec_driver_sql("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)")
+        if "display_name" not in user_columns:
+            conn.exec_driver_sql("ALTER TABLE users ADD COLUMN display_name VARCHAR(255)")
 
         session_columns = {
             row[1]

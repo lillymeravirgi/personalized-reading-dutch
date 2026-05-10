@@ -46,6 +46,7 @@ class User(Base):
     __tablename__ = "users"
 
     user_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     age: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     education_level: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

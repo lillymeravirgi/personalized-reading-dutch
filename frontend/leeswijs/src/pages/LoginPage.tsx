@@ -79,13 +79,13 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <Field label="Username" error={usernameError} htmlFor="login-username">
+        <Field label="Email or Username" error={usernameError} htmlFor="login-username">
           <InputWrapper icon={<UserIcon size={16} />} hasError={!!usernameError}>
             <input
               id="login-username"
               type="text"
-              autoComplete="username"
-              placeholder="e.g. user01"
+              autoComplete="username email"
+              placeholder="you@example.com"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               onBlur={() => setTouched((t) => ({ ...t, username: true }))}
