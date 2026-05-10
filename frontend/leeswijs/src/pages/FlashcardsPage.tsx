@@ -22,8 +22,9 @@ export default function FlashcardsPage() {
   const setLoadingCards  = useStore((s) => s.setLoadingFlashcards);
   const resetSession     = useStore((s) => s.resetSession);
   const user             = useStore((s) => s.user);
+  const currentSession   = useStore((s) => s.currentSession);
   const latestSession = user ? readActivity(user.id).sessions.slice(-1)[0] : null;
-  const effectiveSessionId = sessionId ?? latestSession?.sessionId ?? null;
+  const effectiveSessionId = sessionId ?? currentSession?.sessionId ?? latestSession?.sessionId ?? null;
 
   const [complete,      setComplete]      = useState(false);
   const [rememberedIds, setRememberedIds] = useState<Set<string>>(new Set());

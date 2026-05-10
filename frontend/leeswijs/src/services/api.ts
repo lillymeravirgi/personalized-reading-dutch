@@ -11,6 +11,7 @@ import type {
   ApiResponse,
   VocabTest,
   VocabTestPhase,
+  VocabTestQuestion,
   VocabTestResult,
   BilingualSentence,
   HighlightedWord,
@@ -21,6 +22,7 @@ import {
   mockFlashcards,
   mockAssessmentBatches,
   mockVocabTest,
+  mockVocabulary,
 } from "../mocks/data";
 
 export const apiClient = axios.create({
@@ -436,13 +438,50 @@ export async function getFlashcards(
   }
 }
 
+function generateMockVocabTest(sessionId: string, phase: VocabTestPhase): VocabTest {
+  const learnedIds = getLearnedWordIds(sessionId);
+  const learnedWords = learnedIds
+    .map((id) => mockVocabulary.find((w) => w.wordId === id))
+    .filter((w): w is (typeof mockVocabulary)[number] => w !== undefined);
+
+  if (learnedWords.length < 3) {
+    return { ...mockVocabTest, sessionId, phase };
+  }
+
+  const learnedEnglish = new Set(learnedWords.map((w) => w.english));
+  const distractorPool = [
+    ...mockVocabulary
+      .filter((w) => !learnedEnglish.has(w.english))
+      .map((w) => w.english),
+    "development", "choice", "environment", "question",
+    "system", "example", "problem", "change", "growth", "result",
+  ].filter((d, i, arr) => arr.indexOf(d) === i);
+
+  const questions: VocabTestQuestion[] = learnedWords.map((word, index) => {
+    const distractors = distractorPool.filter((d) => d !== word.english).slice(0, 3);
+    const correctIndex = index % 4;
+    const opts = [...distractors];
+    opts.splice(correctIndex, 0, word.english);
+    return {
+      questionId: `mock-${sessionId}-${word.wordId}`,
+      wordId: word.wordId,
+      dutch: word.dutch,
+      prompt: `What does "${word.dutch}" mean?`,
+      options: opts,
+      correctIndex,
+    };
+  });
+
+  return { sessionId, phase, questions };
+}
+
 export async function getVocabTest(
   sessionId: string,
   phase: VocabTestPhase = "IMMEDIATE"
 ): Promise<ApiResponse<VocabTest>> {
   if (USE_MOCK) {
     await delay();
-    return ok({ ...mockVocabTest, sessionId, phase });
+    return ok(generateMockVocabTest(sessionId, phase));
   }
   try {
     const { data } = await apiClient.get<ApiResponse<VocabTest> | VocabTest>(
@@ -568,8 +607,31 @@ export type Activity = {
   dailyMinutes: Record<string, number>;
 };
 
-const ACTIVITY_KEY_PREFIX = "leeswijs-activity-";
-const CONDITION_KEY       = "leeswijs-condition";
+const ACTIVITY_KEY_PREFIX  = "leeswijs-activity-";
+const CONDITION_KEY        = "leeswijs-condition";
+const LEARNED_KEY_PREFIX   = "leeswijs-session-";
+const LEARNED_KEY_SUFFIX   = "-learned";
+
+function getLearnedWordIds(sessionId: string): string[] {
+  try {
+    const raw = localStorage.getItem(LEARNED_KEY_PREFIX + sessionId + LEARNED_KEY_SUFFIX);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? (parsed as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+  } catch { return []; }
+}
+
+function addLearnedWordId(sessionId: string, wordId: string): void {
+  try {
+    const key = LEARNED_KEY_PREFIX + sessionId + LEARNED_KEY_SUFFIX;
+    const existing = getLearnedWordIds(sessionId);
+    if (!existing.includes(wordId)) {
+      localStorage.setItem(key, JSON.stringify([...existing, wordId]));
+    }
+  } catch { return; }
+}
 const MAX_READING_DWELL_MS = 2 * 60 * 60 * 1000;
 const MAX_DAILY_MINUTES    = 8 * 60;
 
@@ -827,6 +889,9 @@ export async function logInteraction(
 ): Promise<ApiResponse<null>> {
   if (USE_MOCK) {
     await delay(100);
+    if (interaction.action === "add_to_learn" && interaction.sessionId) {
+      addLearnedWordId(interaction.sessionId, interaction.wordId);
+    }
     return ok(null);
   }
   const wordId = toNumericId(interaction.wordId, "word");
