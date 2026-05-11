@@ -5,7 +5,6 @@ import {
   BookOpen,
   ArrowRight,
   ChevronRight,
-  Clock,
   Search,
 } from "lucide-react";
 
@@ -13,7 +12,7 @@ import {
   generateSession,
   getCondition,
   readActivity,
-  type SessionLogEntry,
+  type Activity,
 } from "../services/api";
 import ReadingGenerationStatus from "../components/ReadingGenerationStatus";
 import { useStore } from "../store";
@@ -22,7 +21,7 @@ export default function ReadingHistoryPage() {
   const navigate = useNavigate();
   const user = useStore((s) => s.user);
 
-  const [sessions, setSessions] = useState<SessionLogEntry[]>([]);
+  const [sessions, setSessions] = useState<Activity["sessions"]>([]);
   const [query,    setQuery]    = useState("");
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
@@ -145,12 +144,6 @@ export default function ReadingHistoryPage() {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span
-                      className="text-[10px] font-heading font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
-                      style={{ backgroundColor: "var(--color-secondary)", color: "#fff" }}
-                    >
-                      {s.cefrLevel}
-                    </span>
                     <span className="text-[10px] font-heading font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
                       {s.topic}
                     </span>
@@ -160,11 +153,6 @@ export default function ReadingHistoryPage() {
                   </p>
                   <p className="text-xs font-body text-text/45 mt-1 flex items-center gap-3">
                     <span>{relTime(s.createdAt)}</span>
-                    {s.dwellMs > 0 && (
-                      <span className="inline-flex items-center gap-1">
-                        <Clock size={11} /> {Math.max(1, Math.round(s.dwellMs / 60_000))}m
-                      </span>
-                    )}
                   </p>
                 </div>
                 <ChevronRight size={16} className="text-text/30 shrink-0" />

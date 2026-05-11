@@ -11,7 +11,7 @@ from app.schemas import KRSRunResponse
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/krs", tags=["KRS"])
 
-BLUE_WORD_THRESHOLD = 20  # auto-trigger when Blue pool drops below this
+BLUE_WORD_THRESHOLD = 25  # matches GATEKEEPER_FLOOR in krs_service.py
 
 
 def _maybe_trigger_krs(user_id: str) -> None:

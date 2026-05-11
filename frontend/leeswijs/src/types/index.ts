@@ -1,15 +1,45 @@
+// ── CEFR ──────────────────────────────────────────────────────────────────────
 export type CefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
+export const READING_STYLES = [
+  "Narrative (Story)",
+  "Discussion",
+  "Diary/Journal Entry",
+  "Descriptive",
+  "Dialogue",
+  "News",
+] as const;
+export type ReadingStyle = (typeof READING_STYLES)[number];
+
+export const PURPOSES = ["work", "study", "integration", "travel", "other"] as const;
+export type Purpose = (typeof PURPOSES)[number];
+
+// ── User ──────────────────────────────────────────────────────────────────────
 export interface User {
   id: string;
-  name: string;
+  user_id: string;
   email: string;
+  name: string;               // alias for display_name
+  display_name: string;
   interests: string[];
   cefrLevel: CefrLevel | null;
   assessedAt: string | null;
-  createdAt: string;
+  createdAt: string | null;
+  onboarding_completed: boolean;
+
+  // Personal profile fields
+  age?: number | null;
+  city?: string | null;
+  gender?: string | null;
+  job?: string | null;
+  academic_background?: string | null;
+  mother_language?: string | null;
+  other_languages?: string | null;
+  purpose?: Purpose | null;
+  preferred_styles?: ReadingStyle[];
 }
 
+// ── Vocabulary ────────────────────────────────────────────────────────────────
 export interface BilingualSentence {
   nl: string;
   en: string;
@@ -31,6 +61,15 @@ export interface VocabularyWord {
 export type HighlightType = "unknown" | "learning";
 export type UsageFrequency = "common" | "moderate" | "rare";
 
+export interface LexiconEntry {
+  word_id: number;
+  word: string;
+  translation: string;
+  cefr_level: string;
+  examples?: Array<BilingualSentence> | null;
+  use_cases?: Array<BilingualSentence> | null;
+}
+
 export interface HighlightedWord {
   wordId: string;
   dutch: string;
@@ -42,29 +81,80 @@ export interface HighlightedWord {
   usageFrequency: UsageFrequency;
 }
 
+export interface TextToken {
+  text: string;
+  type: "word" | "punctuation" | "space";
+  status?: "new" | "learning" | "known" | null;
+  wordId?: string | null;
+}
+
+// ── Reading Session ───────────────────────────────────────────────────────────
 export interface ReadingSession {
   sessionId: string;
   text: string;
+  tokens: TextToken[];
   title: string;
   topic: string;
   cefrLevel: string;
   highlights: HighlightedWord[];
   isAdaptive: boolean;
+  readingNumber: number;
+  surveyCompleted: boolean;
+  wordTranslations: Record<string, string>;  // { dutch: english }
 }
 
-export type ReviewInterval = "1d" | "2d" | "4d" | "1w" | "1m" | "never" | null;
+export interface SessionSummary {
+  session_id: number;
+  user_id: string;
+  title: string;
+  topic_used: string | null;
+  condition: string;
+  reading_number: number;
+  survey_completed: boolean;
+  created_at?: string | null;
+}
+
+export interface ReadingProductivity {
+  session_name: string;
+  duration_min: number;
+  date: string | null;
+}
+
+export interface DashboardStats {
+  cefr_level: string;
+  acquisition_score: number;
+  total_known: number;
+  total_learning: number;
+  total_mastered: number;
+  to_review: number;
+  reviewed_today: number;
+  daily_progress: number;
+  readings_completed: number;
+  readings_total: number;
+  productivity_data?: ReadingProductivity[];
+  avg_duration_min?: number;
+  time_today_min: number;
+  time_week_min: number;
+  time_month_min: number;
+  is_new: boolean;
+}
+
+// ── Flashcards ────────────────────────────────────────────────────────────────
+export type ReviewInterval = "today" | "1d" | "2d" | "4d" | "1w" | "1m" | "never" | null;
 
 export interface FlashcardItem {
   wordId: string;
   dutch: string;
   english: string;
-  exampleSentence: BilingualSentence;
+  examples: BilingualSentence[];
+  exampleSentence: BilingualSentence;   // kept for compat — equals examples[0]
   difficulty: number;
   mode: "learning" | "review";
   nextReviewDate: string | null;
   reviewInterval: ReviewInterval;
 }
 
+// ── Interactions ──────────────────────────────────────────────────────────────
 export type InteractionAction = "see_examples" | "add_to_learn" | "ignore";
 export type InteractionWeight = 5 | 2 | 1;
 
@@ -76,23 +166,28 @@ export interface WordInteraction {
   timestamp: string;
 }
 
+// ── Survey ────────────────────────────────────────────────────────────────────
 export type LikertScale = 1 | 2 | 3 | 4 | 5;
 export type TLXScale = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export interface SurveyResponse {
   sessionId: string;
   worthMyTime: LikertScale;
+  // NOT shown to user — sent with neutral default (3)
   appropriateChallenge: LikertScale;
   comprehension: LikertScale;
+  // UES-SF (RQ2)
   focusedAttention: LikertScale;
   reward: LikertScale;
   perceivedRelevance: LikertScale;
+  // NASA-TLX
   mentalEffort: TLXScale;
+  // Manipulation check
   perceivedPersonalization: LikertScale;
+  duration_seconds?: number;
 }
 
-export type VocabTestPhase = "IMMEDIATE" | "DELAYED_24H";
-
+// ── Vocabulary Test ───────────────────────────────────────────────────────────
 export interface VocabTestQuestion {
   questionId: string;
   wordId: string;
@@ -102,28 +197,20 @@ export interface VocabTestQuestion {
   correctIndex: number;
 }
 
-export interface VocabTest {
-  sessionId: string;
-  phase: VocabTestPhase;
-  questions: VocabTestQuestion[];
-}
-
 export interface VocabTestAnswer {
-  questionId: string;
-  wordId: string;
-  selectedIndex: number;
-  isCorrect: boolean;
+  word_id: string;
+  chosen_answer: string;
+  is_correct: boolean;
 }
 
 export interface VocabTestResult {
-  sessionId: string;
-  phase: VocabTestPhase;
+  sessionGroupId: number;
   answers: VocabTestAnswer[];
   correct: number;
   total: number;
-  submittedAt: string;
 }
 
+// ── Assessment ────────────────────────────────────────────────────────────────
 export interface AssessmentWord {
   wordId: string;
   dutch: string;
@@ -131,11 +218,14 @@ export interface AssessmentWord {
   isPseudo?: boolean;
 }
 
-export interface AssessmentBatch {
+export interface AssessmentBatchData {
   batchNumber: number;
-  words: AssessmentWord[];
   totalBatches: number;
+  words: AssessmentWord[];
 }
+
+// Backward-compat alias (AssessmentPage still uses this name)
+export type AssessmentBatch = AssessmentBatchData;
 
 export interface AssessmentResult {
   knownWordIds: string[];
@@ -144,6 +234,7 @@ export interface AssessmentResult {
   confidenceScore: number;
 }
 
+// ── API helpers ───────────────────────────────────────────────────────────────
 export type ApiResponse<T> =
   | { success: true; data: T }
   | { success: false; error: string };

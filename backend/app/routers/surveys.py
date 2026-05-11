@@ -1,24 +1,12 @@
 """
+surveys.py — Post-reading survey submission.
 
-1. Validate and save survey response to the DB (SurveyResult table).
-2. Compute a lightweight "survey signal" and persist it to ReadingSession so
-   the session_generator can use it when building the next LLM prompt.
-
-Survey → Prompt influence logic
-  The signal has two axes that the prompt uses:
-    • challenge_direction: "easier" | "same" | "harder"
-        Driven by ZPD-1 (appropriate_challenge) and TLX-MD (mental_effort).
-        If the learner found the text too easy (low challenge, low effort) →
-        next text should be harder. If overwhelmed → easier. Otherwise → same.
-    • engagement_boost: bool
-        True when UES composite < 3 — signals that topics/style should be
-        refreshed to re-engage the learner.
-
-  These are stored on ReadingSession.survey_signal (JSON column) and read
-  by session_generator.build_prompt() before calling the LLM.
+Challenge direction is derived from TLX-MD only (spec item 9).
+The appropriateChallenge field is not shown to users; the frontend
+sends a neutral default of 3. The backend only uses TLX-MD as proxy.
 """
 
-import json
+import datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -32,59 +20,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/surveys", tags=["Surveys"])
 
 
-# ── Helpers
-
 def _compute_survey_signal(payload: SurveyResponse) -> dict:
     """
     Derive a structured signal from survey answers.
-    This is stored on the session and consumed by the LLM prompt builder.
+    TLX-MD (mental_effort 1–7) is the sole difficulty proxy (spec §9).
     """
-    # ── Challenge direction
-    # ZPD-1: 1=way too easy … 5=way too hard
-    # TLX-MD: 1=very low effort … 7=very high effort
-    challenge = payload.appropriate_challenge
-    effort = payload.mental_effort          # 1–7, rescale to 1–5 for comparison
-    effort_rescaled = round(1 + (effort - 1) * (4 / 6))   # maps 1→1, 7→5
+    tlx_md = payload.mental_effort   # 1–7
 
-    avg_difficulty = (challenge + effort_rescaled) / 2
-
-    if avg_difficulty <= 2.0:
-        challenge_direction = "harder"    # learner was under-challenged
-    elif avg_difficulty >= 4.0:
-        challenge_direction = "easier"   # learner was overwhelmed
+    if tlx_md >= 5:
+        challenge_direction = "easier"
+    elif tlx_md <= 2:
+        challenge_direction = "harder"
     else:
-        challenge_direction = "same"     # in the ZPD sweet spot
+        challenge_direction = "same"
 
-    # ── Engagement boost needed?
-    # UES composite: average of focused_attention, reward, perceived_relevance
+    # Engagement boost (UES composite < 3)
     ues_composite = (
         payload.focused_attention + payload.reward + payload.perceived_relevance
     ) / 3
-    engagement_boost = ues_composite < 3.0   # below midpoint → refresh topics
+    engagement_boost = ues_composite < 3.0
 
-    # ── Worth continuing? (RQ1-W3)
-    worth_continuing = payload.worth_my_time >= 4   # 4 or 5 = positive
-
-    # ── Perceived relevance signal (manipulation check)
+    worth_continuing  = payload.worth_my_time >= 4
     felt_personalised = payload.perceived_personalization >= 4
 
     return {
         "challenge_direction": challenge_direction,
-        "engagement_boost": engagement_boost,
-        "worth_continuing": worth_continuing,
-        "felt_personalised": felt_personalised,
-        "ues_composite": round(ues_composite, 2),
-        "avg_difficulty": round(avg_difficulty, 2),
+        "tlx_md":             tlx_md,
+        "engagement_boost":   engagement_boost,
+        "worth_continuing":   worth_continuing,
+        "felt_personalised":  felt_personalised,
+        "ues_composite":      round(ues_composite, 2),
     }
 
 
 @router.post("")
 def submit_survey(payload: SurveyResponse, db: Session = Depends(get_db)):
-    """
-    1. Save all 8 survey fields to SurveyResult.
-    2. Compute and persist survey_signal on the parent ReadingSession.
-    """
-    # ── 1. Verify session exists
     session = db.query(ReadingSession).filter(
         ReadingSession.session_id == payload.session_id
     ).first()
@@ -94,16 +64,13 @@ def submit_survey(payload: SurveyResponse, db: Session = Depends(get_db)):
             detail=f"session_id={payload.session_id} not found",
         )
 
-    # ── 2. Upsert SurveyResult (one per session)
+    # Upsert SurveyResult
     existing = db.query(SurveyResult).filter(
         SurveyResult.session_id == payload.session_id
     ).first()
 
-    if existing:
-        # Overwrite if participant re-submits (shouldn't normally happen)
-        row = existing
-    else:
-        row = SurveyResult(session_id=payload.session_id)
+    row = existing or SurveyResult(session_id=payload.session_id)
+    if not existing:
         db.add(row)
 
     row.worth_my_time             = payload.worth_my_time
@@ -115,12 +82,18 @@ def submit_survey(payload: SurveyResponse, db: Session = Depends(get_db)):
     row.mental_effort             = payload.mental_effort
     row.perceived_personalization = payload.perceived_personalization
 
-    # ── 3. Compute prompt signal and attach to session
+    if payload.duration_seconds and payload.duration_seconds > 0:
+        session.duration_seconds = payload.duration_seconds
+    elif session.created_at:
+        delta = datetime.datetime.utcnow() - session.created_at
+        session.duration_seconds = max(1, int(delta.total_seconds()))
+
+    # Compute and persist signal
     signal = _compute_survey_signal(payload)
-    session.survey_signal = signal          # JSON column on ReadingSession
-    logger.info(
-        f"[Survey] session={payload.session_id} signal={signal}"
-    )
+    session.survey_signal    = signal
+    session.survey_completed = True   # ← unlock next reading generation
+
+    logger.info("[Survey] session=%d signal=%s", payload.session_id, signal)
 
     try:
         db.commit()

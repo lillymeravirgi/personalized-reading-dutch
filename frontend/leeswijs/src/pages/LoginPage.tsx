@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { User as UserIcon, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
 import { login } from "../services/api";
 import { useStore } from "../store";
 
-function validateUsername(value: string) {
-  return value.trim().length >= 3
+function validateEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
     ? null
-    : "Username must be at least 3 characters.";
+    : "Enter a valid email address.";
 }
 
 function validatePassword(value: string) {
@@ -20,20 +20,20 @@ export default function LoginPage() {
   const setUser = useStore((s) => s.setUser);
   const setLoadingUser = useStore((s) => s.setLoadingUser);
 
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ username: false, password: false });
+  const [touched, setTouched] = useState({ email: false, password: false });
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const usernameError = touched.username ? validateUsername(username) : null;
+  const emailError    = touched.email    ? validateEmail(email)       : null;
   const passwordError = touched.password ? validatePassword(password) : null;
-  const isFormValid = !validateUsername(username) && !validatePassword(password);
+  const isFormValid   = !validateEmail(email) && !validatePassword(password);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ username: true, password: true });
+    setTouched({ email: true, password: true });
     if (!isFormValid) return;
 
     setSubmitting(true);
@@ -41,10 +41,9 @@ export default function LoginPage() {
     setLoadingUser(true);
 
     try {
-      const user = await login(username, password);
+      const user = await login(email, password);
       setUser(user);
-      const isNewUser = user.interests.length === 0;
-      navigate(isNewUser ? "/onboarding" : "/home", { replace: true });
+      navigate(user.onboarding_completed ? "/home" : "/onboarding", { replace: true });
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -79,16 +78,16 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <Field label="Username" error={usernameError} htmlFor="login-username">
-          <InputWrapper icon={<UserIcon size={16} />} hasError={!!usernameError}>
+        <Field label="Email Address" error={emailError} htmlFor="login-email">
+          <InputWrapper icon={<Mail size={16} />} hasError={!!emailError}>
             <input
-              id="login-username"
-              type="text"
-              autoComplete="username"
-              placeholder="e.g. user01"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, username: true }))}
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setTouched((t) => ({ ...t, email: true }))}
               className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
             />
           </InputWrapper>

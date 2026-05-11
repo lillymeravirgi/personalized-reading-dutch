@@ -16,10 +16,10 @@ import {
 import { useStore } from "../store";
 
 const NAV_ITEMS = [
-  { to: "/home", label: "Home", icon: Home },
-  { to: "/reading", label: "Reading", icon: BookOpen },
-  { to: "/flashcards", label: "Flashcards", icon: Layers },
-  { to: "/profile", label: "Profile", icon: User },
+  { to: "/home",       label: "Dashboard", icon: Home },
+  { to: "/reading",   label: "Reading",   icon: BookOpen },
+  { to: "/flashcards",label: "Flashcards",icon: Layers },
+  { to: "/profile",   label: "Profile",   icon: User },
 ] as const;
 
 export default function MainLayout() {
@@ -29,8 +29,7 @@ export default function MainLayout() {
   const currentLabel = getPageLabel(location.pathname);
 
   if (!user) return <Navigate to="/login" replace />;
-  if (user.interests.length === 0) return <Navigate to="/onboarding" replace />;
-  if (!user.cefrLevel)             return <Navigate to="/assessment" replace />;
+  if (!user.onboarding_completed) return <Navigate to="/onboarding" replace />;
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -103,9 +102,9 @@ export default function MainLayout() {
 }
 
 function getPageLabel(pathname: string): string {
-  if (pathname.startsWith("/read/")) return "Reading";
-  if (pathname.startsWith("/vocab-test")) return "Vocabulary check";
-  if (pathname.startsWith("/settings")) return "Settings";
+  if (pathname.startsWith("/read/"))       return "Reading";
+  if (pathname.startsWith("/vocab-test"))  return "Vocabulary check";
+  if (pathname.startsWith("/settings"))    return "Settings";
   return NAV_ITEMS.find((item) => pathname.startsWith(item.to))?.label ?? "Study session";
 }
 
