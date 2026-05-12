@@ -4,11 +4,12 @@ Executes the K-probability topic roll, injects Blue and Yellow words,
 generates a reading text via Gemini, and persists the ReadingSession.
 
 Survey → Prompt:
-  Before calling the LLM, _survey_signal_prompt_block() reads the survey_signal
-  JSON stored on the user's most recent completed session and translates it into
-  natural-language instructions (challenge direction, engagement refresh, etc.).
-  These are injected into the prompt so each new text adapts to how the learner
-  experienced the previous one.
+  _survey_signal_prompt_block() reads the survey_signal stored on the user's
+  most recent completed session. The TLX-MD score is the difficulty proxy:
+    TLX-MD ≥ 5 → easier next session
+    TLX-MD ≤ 2 → harder next session
+    TLX-MD 3-4 → keep same level
+  This happens silently (not shown to the user).
 """
 
 from __future__ import annotations
@@ -66,7 +67,7 @@ Your goal is to write highly personalized reading materials for L2 Dutch learner
 Your writing must adhere to three strict pillars:
 
 1. CEFR Alignment: Strictly follow the specified CEFR level's grammatical structures and sentence lengths.
-2. Contextual Relevance: Use the user's location and purpose to make the text feel 'real.'
+2. Contextual Relevance: Use the user's city, job, purpose, and background to make the text feel 'real'.
 3. Lexical Injection: Naturally weave every word from the provided Target Lists into the narrative.
 
 Formatting Rule: Every time you use a word from the provided 'Target Lists,' \
@@ -79,14 +80,26 @@ _NEUTRAL_POOL = [
     "film", "natuur", "gezondheid", "wetenschap",
 ]
 
+READING_STYLES = [
+    "Narrative (Story)",
+    "Discussion",
+    "Diary/Journal Entry",
+    "Descriptive",
+    "Dialogue",
+    "News",
+]
 
+
+# ─────────────────────────────────────────────
 #  Survey → Prompt signal
+# ─────────────────────────────────────────────
 
 def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
     """
     Translate the survey_signal stored on the previous session into
-    natural-language instructions injected into the LLM prompt.
-    Returns "" when there is no prior survey data (first session).
+    natural-language instructions for the LLM.
+    Uses TLX-MD as the sole difficulty proxy (not shown to user).
+    Returns "" on first session.
     """
     if session is None or not session.survey_signal:
         return ""
@@ -94,23 +107,23 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
     sig = session.survey_signal
     lines: list[str] = []
 
-    # ── Challenge direction (ZPD / Flow Theory)
-    direction = sig.get("challenge_direction", "same")
-    if direction == "easier":
+    # ── Challenge direction — driven by TLX-MD only (as per spec)
+    tlx_md = sig.get("tlx_md", 4)  # raw NASA-TLX score 1-7
+    if tlx_md >= 5:
         lines.append(
-            "The learner found the previous text TOO DIFFICULT. "
-            "Use slightly simpler sentence structures and prefer words closer to "
-            "their known vocabulary. Avoid long subordinate clauses."
+            "The learner found the previous text TOO DIFFICULT (high mental effort). "
+            "Use simpler sentence structures and prefer more familiar vocabulary. "
+            "Avoid long subordinate clauses and low-frequency words."
         )
-    elif direction == "harder":
+    elif tlx_md <= 2:
         lines.append(
-            "The learner found the previous text TOO EASY. "
-            "Introduce more varied sentence structures and include a higher "
-            "proportion of target (blue) words. Aim for slightly greater lexical density."
+            "The learner found the previous text TOO EASY (very low mental effort). "
+            "Slightly increase complexity — introduce more varied sentence structures "
+            "and include a higher proportion of target (blue) words."
         )
     else:
         lines.append(
-            "The previous text was at the right challenge level. "
+            "The previous text was at the right difficulty level (TLX-MD 3-4). "
             "Maintain a similar difficulty and sentence complexity."
         )
 
@@ -118,17 +131,16 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
     if sig.get("engagement_boost"):
         lines.append(
             "The learner's engagement score was LOW. "
-            "Vary the genre or narrative style of this text (e.g. switch from "
-            "informational to story-based, or use an unexpected setting). "
-            "Make the topic feel fresh and surprising."
+            "Vary the genre or narrative style (e.g. switch from informational to story-based, "
+            "or use an unexpected setting). Make the topic feel fresh and surprising."
         )
 
     # ── Perceived personalisation (manipulation check failed)
     if not sig.get("felt_personalised", True):
         lines.append(
-            "The learner did NOT feel the previous text was personalised to them. "
+            "The learner did NOT feel the previous text was personalised. "
             "Make the connection to their stated interests more explicit — "
-            "mention those interests directly in the text context."
+            "mention those interests directly in the text."
         )
 
     return "\n".join(lines)
@@ -150,7 +162,10 @@ def generate_session(
     if not user:
         raise ValueError(f"User '{user_id}' not found.")
 
-    # 1. Fetch previous session's survey signal (drives prompt adaptation)
+    # 1. Determine reading number (max 3 in experiment; unlimited after)
+    reading_number = _next_reading_number(user_id, db)
+
+    # 2. Fetch previous session's survey signal (drives prompt adaptation)
     prev_session = (
         db.query(ReadingSession)
         .filter(
@@ -162,17 +177,17 @@ def generate_session(
     )
     survey_block = _survey_signal_prompt_block(prev_session)
 
-    # 2. Topic Roll
+    # 3. Topic Roll
     selected_topic = _topic_roll(user_id, K, db)
 
-    # 3. Word Injection
+    # 4. Word Injection
     blue_entries   = _fetch_blue_words(user_id, db)
     yellow_entries = _fetch_yellow_words(user_id, db)
 
     blue_words   = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
     yellow_words = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
 
-    # 4. Generate reading text (survey_block injected into prompt)
+    # 5. Generate reading text
     story_json = _generate_story_content(
         user=user,
         selected_topic=selected_topic,
@@ -183,32 +198,52 @@ def generate_session(
         survey_block=survey_block,
     )
 
-    # 5. Persist session
+    # 6. Build word_translations dict (all highlighted words → translation)
+    word_translations: dict[str, str] = {}
+    for w in blue_words + yellow_words:
+        word_translations[w["word"].lower()] = w["translation"]
+
+    # 7. Persist session
     session = ReadingSession(
         user_id=user_id,
         title=story_json.get("title", ""),
         content=story_json.get("content", ""),
         topic_used=selected_topic,
         condition=condition,
+        reading_number=reading_number,
+        survey_completed=False,
+        word_translations=word_translations,
     )
     db.add(session)
     db.commit()
     db.refresh(session)
 
     return {
-        "session_id":  session.session_id,
-        "title":       story_json.get("title", ""),
-        "content":     story_json.get("content", ""),
-        "topic_used":  selected_topic,
-        "blue_words":  blue_words,
-        "yellow_words": yellow_words,
-        "metadata":    story_json.get("metadata", {}),
+        "session_id":       session.session_id,
+        "title":            story_json.get("title", ""),
+        "content":          story_json.get("content", ""),
+        "topic_used":       selected_topic,
+        "blue_words":       blue_words,
+        "yellow_words":     yellow_words,
+        "word_translations":word_translations,
+        "metadata":         story_json.get("metadata", {}),
+        "reading_number":   reading_number,
+        "condition":        condition.value,
     }
 
 
 # ─────────────────────────────────────────────
-#  Topic Roll
+#  Helpers
 # ─────────────────────────────────────────────
+
+def _next_reading_number(user_id: str, db: Session) -> int:
+    count = (
+        db.query(ReadingSession)
+        .filter(ReadingSession.user_id == user_id)
+        .count()
+    )
+    return count + 1
+
 
 def _topic_roll(user_id: str, K: float, db: Session) -> str:
     hated = {
@@ -244,10 +279,6 @@ def _topic_roll(user_id: str, K: float, db: Session) -> str:
     return random.choice(candidates)
 
 
-# ─────────────────────────────────────────────
-#  Word Injection (5% of pool, min 1, max 5)
-# ─────────────────────────────────────────────
-
 def _fetch_blue_words(user_id: str, db: Session) -> list[RecommendedVocabulary]:
     all_recs = (
         db.query(RecommendedVocabulary)
@@ -279,6 +310,7 @@ def _lex_to_dict(entry: Lexicon) -> dict:
         "word":        entry.word,
         "translation": entry.translation,
         "cefr_level":  entry.cefr_level,
+        "examples":    entry.examples or [],
     }
 
 
@@ -298,33 +330,49 @@ def _generate_story_content(
     blue_str   = ", ".join(blue_words)   if blue_words   else "(none)"
     yellow_str = ", ".join(yellow_words) if yellow_words else "(none)"
 
-    # survey_block is "" on the first session → the section is skipped cleanly
     survey_section = (
         f"\n### FEEDBACK FROM LEARNER'S PREVIOUS SESSION\n{survey_block}\n"
         if survey_block else ""
     )
 
+    # Build rich profile section
+    languages = user.other_languages or "none specified"
+    styles    = ", ".join(user.preferred_styles or []) or "any"
+    purpose   = user.purpose or user.learning_purpose or "general learning"
+    city      = user.city or user.location or "their city"
+    job       = user.job or "not specified"
+    academic  = user.academic_background or user.education_level or "not specified"
+    mother_l  = user.mother_language or user.native_language or "not specified"
+
     prompt = f"""\
 ### USER PROFILE
-- Age: {user.age}
-- Location: {user.location} (Incorporate local landmarks or regional context)
-- Education Level: {user.education_level}
-- Learning Goal: {user.learning_purpose}
-- Current Level: {user.estimated_cefr} Dutch
+- Name: {user.display_name or "the learner"}
+- Age: {user.age or "unknown"}
+- City: {city} (incorporate local landmarks or regional context where natural)
+- Gender: {user.gender or "not specified"}
+- Job / Occupation: {job}
+- Academic Background: {academic}
+- Mother Language: {mother_l}
+- Other Languages: {languages}
+- Purpose of Learning Dutch: {purpose}
+- Current CEFR Level: {user.estimated_cefr or "B1"} Dutch
+- Preferred Reading Styles: {styles}
 
 ### CONTENT CONFIGURATION
 - Selected Topic: {selected_topic}
 - Narrative Style: {narrative_style}
 
 ### MANDATORY VOCABULARY INJECTION
-1. BLUE WORDS (New Recommendations): {blue_str}
-2. YELLOW WORDS (Active Learning): {yellow_str}
+1. BLUE WORDS (New Recommendations — must appear at least once): {blue_str}
+2. YELLOW WORDS (Active Learning — reinforce by using them naturally): {yellow_str}
 {survey_section}
 ### INSTRUCTIONS
 Write a cohesive Dutch text of approximately {word_count_range} words.
-- Ensure ALL Blue and Yellow words are used at least once.
-- Ensure the difficulty does not exceed {user.estimated_cefr}.
-- Relate the text back to the user's goal of '{user.learning_purpose}'.
+- Ensure ALL Blue and Yellow words appear at least once, bracketed as [[word]].
+- Ensure difficulty does not exceed CEFR {user.estimated_cefr or "B1"}.
+- Connect the text to the learner's goal: '{purpose}'.
+- Match the narrative style: {narrative_style}.
+- Make the text feel genuinely personalised — reference their city, job, or background naturally.
 
 ### OUTPUT SPECIFICATION
 Return ONLY a valid JSON object with these exact keys:
@@ -333,7 +381,8 @@ Return ONLY a valid JSON object with these exact keys:
   "content": "The full Dutch text with [[target_words]] bracketed",
   "metadata": {{
     "topic_used": "{selected_topic}",
-    "cefr_actual": "{user.estimated_cefr}",
+    "cefr_actual": "{user.estimated_cefr or "B1"}",
+    "narrative_style": "{narrative_style}",
     "injected_blue_count": 0,
     "injected_yellow_count": 0
   }}
@@ -341,17 +390,13 @@ Return ONLY a valid JSON object with these exact keys:
 """
 
     logger.info(
-        "[SessionGen] generating text for user=%s topic=%s level=%s blue=%d yellow=%d survey=%s",
-        user.user_id,
-        selected_topic,
-        user.estimated_cefr,
-        len(blue_words),
-        len(yellow_words),
-        "yes" if survey_block else "none",
+        "[SessionGen] generating text for user=%s topic=%s level=%s style=%s blue=%d yellow=%d survey=%s",
+        user.user_id, selected_topic, user.estimated_cefr, narrative_style,
+        len(blue_words), len(yellow_words), "yes" if survey_block else "none",
     )
 
     last_error = None
-    for attempt in range(1, 4):  # up to 3 attempts
+    for attempt in range(1, 4):
         try:
             response = _client.models.generate_content(
                 model=GEMINI_MODEL,
@@ -362,11 +407,7 @@ Return ONLY a valid JSON object with these exact keys:
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
             result = json.loads(text)
-            logger.info(
-                "[SessionGen] generated title=%r topic=%s",
-                result.get("title"),
-                selected_topic,
-            )
+            logger.info("[SessionGen] generated title=%r", result.get("title"))
             return result
         except Exception as e:
             last_error = e
@@ -382,4 +423,136 @@ Return ONLY a valid JSON object with these exact keys:
     logger.error(f"[SessionGen] All attempts failed: {last_error}")
     raise GenerationFailedError(
         "The text generator could not create a reading right now. Please try again."
+    ) from last_error
+
+
+# ─────────────────────────────────────────────
+#  Continuation generator (Continue button)
+# ─────────────────────────────────────────────
+
+def generate_continuation(
+    user_id: str,
+    previous_session: ReadingSession,
+    condition: ConditionType,
+    db: Session,
+) -> dict:
+    """
+    Generate a genuine story continuation from the previous session's text.
+    Carries the narrative forward rather than starting a fresh topic.
+    """
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise ValueError(f"User '{user_id}' not found.")
+
+    reading_number = _next_reading_number(user_id, db)
+
+    blue_entries   = _fetch_blue_words(user_id, db)
+    yellow_entries = _fetch_yellow_words(user_id, db)
+    blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
+    yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
+
+    word_translations: dict[str, str] = {}
+    for w in blue_words + yellow_words:
+        word_translations[w["word"].lower()] = w["translation"]
+
+    blue_str   = ", ".join(w["word"] for w in blue_words)   or "(none)"
+    yellow_str = ", ".join(w["word"] for w in yellow_words) or "(none)"
+
+    # Trim previous content for the prompt (first 800 chars is enough context)
+    prev_content  = (previous_session.content or "")[:800]
+    prev_topic    = previous_session.topic_used or "Dutch everyday life"
+    cefr_level    = user.estimated_cefr or "B1"
+
+    continuation_prompt = f"""\
+### CONTINUATION TASK
+You are continuing the Dutch story that was started below. The learner is at CEFR {cefr_level}.
+
+### PREVIOUS STORY EXCERPT (for context – do NOT repeat this)
+\"\"\"{prev_content}...\"\"\"
+
+### VOCABULARY TO WEAVE IN
+1. NEW WORDS (wrap in [[word]]): {blue_str}
+2. REVIEW WORDS (wrap in [[word]]): {yellow_str}
+
+### INSTRUCTIONS
+- Continue the narrative naturally for approximately 180–220 Dutch words.
+- Write EXACTLY two (2) paragraphs.
+- Maintain the same characters, setting and tone as the excerpt above.
+- Wrap every Blue/Yellow word in [[double brackets]] when it appears.
+- Ensure the Dutch is natural and grammatically correct for the specified level.
+- Do not exceed CEFR {cefr_level} difficulty.
+
+### OUTPUT SPECIFICATION
+Return ONLY valid JSON:
+{{
+  "title": "A short continuation headline in Dutch",
+  "content": "The continuation text with [[target_words]] bracketed",
+  "metadata": {{
+    "topic_used": "{prev_topic}",
+    "cefr_actual": "{cefr_level}",
+    "narrative_style": "Continuation",
+    "injected_blue_count": 0,
+    "injected_yellow_count": 0
+  }}
+}}
+"""
+
+    logger.info(
+        "[SessionGen] generating continuation for user=%s prev_session=%s",
+        user_id, previous_session.session_id,
+    )
+
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            response = _client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=continuation_prompt,
+                config={"system_instruction": _SYSTEM_INSTRUCTION},
+            )
+            text = response.text.strip()
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+            story_json = json.loads(text)
+            logger.info("[SessionGen] continuation title=%r", story_json.get("title"))
+
+            # Append to existing session
+            previous_session.content += "\n\n" + story_json.get("content", "")
+            
+            # Merge translations
+            existing_translations = previous_session.word_translations or {}
+            existing_translations.update(word_translations)
+            previous_session.word_translations = existing_translations
+            
+            # Use SQLAlchemy flag_modified if word_translations is JSON
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(previous_session, "word_translations")
+            
+            db.commit()
+            db.refresh(previous_session)
+
+            return {
+                "session_id":       previous_session.session_id,
+                "title":            previous_session.title,
+                "content":          previous_session.content,
+                "topic_used":       prev_topic,
+                "blue_words":       blue_words,
+                "yellow_words":     yellow_words,
+                "word_translations":existing_translations,
+                "metadata":         story_json.get("metadata", {}),
+                "reading_number":   reading_number,
+                "condition":        condition.value,
+            }
+        except Exception as e:
+            last_error = e
+            if _is_rate_limit_error(e):
+                raise GenerationRateLimitError(
+                    "The text generator is temporarily rate limited. Please wait a moment."
+                ) from e
+            logger.warning(f"[SessionGen] Continuation attempt {attempt} failed: {e}")
+            if attempt < 3:
+                time.sleep(2)
+
+    raise GenerationFailedError(
+        "Could not generate a continuation. Please try again."
     ) from last_error

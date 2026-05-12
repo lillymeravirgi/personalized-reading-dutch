@@ -1,12 +1,9 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
 import { registerUser } from "../services/api";
-
-function validateName(value: string) {
-  return value.trim().length >= 2 ? null : "Enter your full name.";
-}
+import { useStore } from "../store";
 
 function validateEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -18,33 +15,43 @@ function validatePassword(value: string) {
   return value.length >= 6 ? null : "Password must be at least 6 characters.";
 }
 
+function validateConfirm(password: string, confirm: string) {
+  return password === confirm ? null : "Passwords do not match.";
+}
+
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const setUser  = useStore((s) => s.setUser);
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email,    setEmail]   = useState("");
   const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ name: false, email: false, password: false });
+  const [touched, setTouched] = useState({ email: false, password: false, confirm: false });
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const nameError     = touched.name     ? validateName(name)         : null;
-  const emailError    = touched.email    ? validateEmail(email)        : null;
-  const passwordError = touched.password ? validatePassword(password)  : null;
-  const isFormValid   = !validateName(name) && !validateEmail(email) && !validatePassword(password);
+  const emailError    = touched.email    ? validateEmail(email)                  : null;
+  const passwordError = touched.password ? validatePassword(password)            : null;
+  const confirmError  = touched.confirm  ? validateConfirm(password, confirm)    : null;
+  const isFormValid   =
+    !validateEmail(email) &&
+    !validatePassword(password) &&
+    !validateConfirm(password, confirm);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ name: true, email: true, password: true });
+    setTouched({ email: true, password: true, confirm: true });
     if (!isFormValid) return;
 
     setSubmitting(true);
     setServerError(null);
 
     try {
-      await registerUser(name, email, password);
-      navigate("/login");
+      const user = await registerUser(email, password);
+      setUser(user);
+      // Always go to onboarding after registration
+      navigate("/onboarding", { replace: true });
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -59,7 +66,6 @@ export default function RegisterPage() {
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9"
     >
-      {/* Heading */}
       <div className="mb-7">
         <h1 className="font-heading text-2xl font-bold text-text">Create your account</h1>
         <p className="mt-1 text-sm text-text/50 font-body">
@@ -67,7 +73,6 @@ export default function RegisterPage() {
         </p>
       </div>
 
-      {/* Server error banner */}
       {serverError && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
@@ -80,22 +85,6 @@ export default function RegisterPage() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        {/* Full Name */}
-        <Field label="Full Name" error={nameError} htmlFor="register-name">
-          <InputWrapper icon={<User size={16} />} hasError={!!nameError}>
-            <input
-              id="register-name"
-              type="text"
-              autoComplete="name"
-              placeholder="Enter your name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, name: true }))}
-              className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
-            />
-          </InputWrapper>
-        </Field>
-
         {/* Email */}
         <Field label="Email Address" error={emailError} htmlFor="register-email">
           <InputWrapper icon={<Mail size={16} />} hasError={!!emailError}>
@@ -137,6 +126,22 @@ export default function RegisterPage() {
           </InputWrapper>
         </Field>
 
+        {/* Confirm Password */}
+        <Field label="Confirm Password" error={confirmError} htmlFor="register-confirm">
+          <InputWrapper icon={<Lock size={16} />} hasError={!!confirmError}>
+            <input
+              id="register-confirm"
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              placeholder="Repeat your password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              onBlur={() => setTouched((t) => ({ ...t, confirm: true }))}
+              className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
+            />
+          </InputWrapper>
+        </Field>
+
         {/* Submit */}
         <motion.button
           type="submit"
@@ -160,7 +165,6 @@ export default function RegisterPage() {
         </motion.button>
       </form>
 
-      {/* Divider */}
       <div className="relative my-6">
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-black/8" />
@@ -172,7 +176,6 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      {/* Log in */}
       <button
         type="button"
         onClick={() => navigate("/login")}
@@ -182,7 +185,7 @@ export default function RegisterPage() {
       </button>
 
       <p className="mt-6 text-center text-xs text-text/30 font-body">
-        Learning Dutch, one article at a time.
+        🇳🇱 Learning Dutch, one article at a time.
       </p>
     </motion.div>
   );
@@ -190,12 +193,7 @@ export default function RegisterPage() {
 
 // Sub-components
 
-function Field({
-  label,
-  error,
-  htmlFor,
-  children,
-}: {
+function Field({ label, error, htmlFor, children }: {
   label: string;
   error: string | null;
   htmlFor: string;
@@ -224,11 +222,7 @@ function Field({
   );
 }
 
-function InputWrapper({
-  icon,
-  hasError,
-  children,
-}: {
+function InputWrapper({ icon, hasError, children }: {
   icon: React.ReactNode;
   hasError: boolean;
   children: React.ReactNode;

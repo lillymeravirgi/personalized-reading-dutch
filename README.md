@@ -1,6 +1,6 @@
-# LearnDutch
+# Learn Dutch 
 
-LearnDutch is an HCI course group project for studying personalized Dutch reading support for second-language learners. The frontend app is in `frontend/leeswijs`.
+Learn Dutch is an HCI course group project for studying personalized Dutch reading support for second-language learners. The frontend app is in `frontend/leeswijs`.
 
 The main goal is to run a clean experiment and collect usable data about reading engagement, willingness to continue reading, cognitive load, and vocabulary learning.
 
@@ -30,9 +30,10 @@ The protocol is grounded in Flow Theory and the Zone of Proximal Development. Th
 - **API prefix:** `/api`
 - **Prototype auth:** login endpoint plus `X-User-Id` header for user-scoped API calls
 
-## How to Run
+## Quick Start
 
-You need Python 3.11, Node.js 20+, and a Gemini API key.
+You need Python 3.11+, Node.js 20+, and a Gemini API key.
+
 
 ### Backend
 
@@ -43,7 +44,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# Add your GOOGLE_API_KEY in backend/.env
+# Add GOOGLE_API_KEY in backend/.env
 
 python seed.py
 uvicorn main:app --port 8000 --reload
@@ -57,22 +58,24 @@ http://localhost:8000/docs
 
 ### Frontend
 
+Open a second terminal:
+
 ```bash
 cd frontend/leeswijs
 npm install
-npm run dev -- --port 3000
+VITE_API_BASE_URL=http://localhost:8000/api npm run dev -- --host 127.0.0.1 --port 5174
 ```
 
 App:
 
 ```text
-http://localhost:3000/login
+http://127.0.0.1:5174/login
 ```
 
-For a frontend-only demo:
+You can also use Vite's default port if it is free:
 
 ```bash
-VITE_USE_MOCK=true npm run dev -- --port 3000
+npm run dev
 ```
 
 ## Environment Variables
@@ -89,8 +92,16 @@ Optional frontend variables:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api
-VITE_USE_MOCK=true
 ```
+
+## Local Run Checklist
+
+If the app does not load after pulling:
+
+- Make sure the backend is running on `http://localhost:8000`.
+- Make sure `backend/.env` exists and contains `GOOGLE_API_KEY`.
+- Run `python seed.py` if `backend/dev.db` does not exist.
+- Set `VITE_API_BASE_URL=http://localhost:8000/api` when starting the frontend.
 
 ## Project Structure
 

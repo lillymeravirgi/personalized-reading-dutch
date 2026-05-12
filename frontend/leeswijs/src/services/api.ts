@@ -1,1119 +1,749 @@
-import axios from "axios";
+/**
+ * api.ts — All backend communication for Leeswijs.
+ * No mock data. All calls go to the real FastAPI backend.
+ */
+import axios, { AxiosError } from "axios";
 import type {
-  User,
-  CefrLevel,
-  ReadingSession,
-  FlashcardItem,
-  AssessmentResult,
-  AssessmentBatch,
-  WordInteraction,
-  SurveyResponse,
   ApiResponse,
-  VocabTest,
-  VocabTestPhase,
+  AssessmentBatchData,
+  LexiconEntry,
+  ReadingSession,
+  SessionSummary,
+  SurveyResponse,
+  TextToken,
+  User,
+  VocabTestAnswer,
   VocabTestQuestion,
-  VocabTestResult,
-  BilingualSentence,
-  HighlightedWord,
 } from "../types";
-import {
-  mockUser,
-  mockReadingSession,
-  mockFlashcards,
-  mockAssessmentBatches,
-  mockVocabTest,
-  mockVocabulary,
-} from "../mocks/data";
+
+// ── Axios client ──────────────────────────────────────────────────────────────
+
+const BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+  "http://localhost:8000/api";
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api",
-  timeout: 10_000,
+  baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
+  timeout: 30_000,
 });
 
-const SESSION_GENERATION_TIMEOUT_MS = 60_000;
-
 apiClient.interceptors.request.use((config) => {
-  const userId = getPersistedUserId();
-  if (userId) {
-    config.headers = config.headers ?? {};
-    (config.headers as Record<string, string>)["X-User-Id"] = userId;
-  }
-  const token = getPersistedAuthToken();
-  if (token) {
-    config.headers = config.headers ?? {};
-    (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  const raw = localStorage.getItem("leeswijs-store");
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as { state?: { user?: { id?: string } } };
+      const uid = parsed?.state?.user?.id;
+      if (uid) config.headers["X-User-Id"] = uid;
+    } catch {
+      /* ignore */
+    }
   }
   return config;
 });
 
-const delay = (ms = 300) => new Promise<void>((res) => setTimeout(res, ms));
-
-function ok<T>(data: T): ApiResponse<T> {
-  return { success: true, data };
-}
-
-function fail<T>(error: string): ApiResponse<T> {
-  return { success: false, error };
-}
-
-export const BACKEND_NOT_READY_MESSAGE =
-  "This feature needs backend support.";
-
-export function isBackendNotReadyMessage(message: string | null | undefined): boolean {
-  return message === BACKEND_NOT_READY_MESSAGE;
-}
-
-function apiErrorMessage(err: unknown, fallback: string): string {
-  const detail =
-    (err as { response?: { data?: { detail?: unknown } } })?.response?.data
-      ?.detail;
-
-  if (axios.isAxiosError(err)) {
-    if (err.response?.status === 404 || err.response?.status === 405) {
-      return BACKEND_NOT_READY_MESSAGE;
-    }
-    if (err.code === "ECONNABORTED") {
-      return "The request took too long. Please try again.";
-    }
+function extractError(err: unknown): string {
+  if (err instanceof AxiosError) {
+    const detail = err.response?.data?.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((d) => d.msg ?? d).join("; ");
+    return err.message;
   }
-
-  if (typeof detail === "string" && detail.trim()) return detail;
-
-  return fallback;
+  return err instanceof Error ? err.message : "An unexpected error occurred.";
 }
 
-function asApiResponse<T>(data: T | ApiResponse<T>): ApiResponse<T> {
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    "success" in data &&
-    typeof (data as { success: unknown }).success === "boolean"
-  ) {
-    return data as ApiResponse<T>;
-  }
-  return ok(data as T);
-}
-
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
-
-type BackendWordInfo = {
-  word_id: number;
-  word: string;
-  translation: string;
-  cefr_level: string;
-  examples?: BilingualSentence[] | null;
+type BackendAssessmentWord = {
+  word_id: string | number;
+  dutch: string;
+  english?: string | null;
+  is_pseudo?: boolean;
 };
 
-type BackendSessionPayload = {
-  session_id: number;
-  title: string;
-  content: string;
-  topic_used: string | null;
-  condition: "ADAPTIVE" | "BASELINE";
-  blue_words: BackendWordInfo[];
-  yellow_words: BackendWordInfo[];
+type BackendAssessmentBatch = {
+  batch_number: number;
+  total_batches: number;
+  words?: BackendAssessmentWord[];
 };
 
-function toReadingSession(payload: BackendSessionPayload): ReadingSession {
-  if (isBackendGenerationFailure(payload.content)) {
-    throw new Error(
-      "This reading was not created correctly because the text generator was rate limited. Please start a new reading."
-    );
-  }
+type BackendTextToken = {
+  text: string;
+  type: TextToken["type"];
+  status?: TextToken["status"];
+  word_id?: string | number | null;
+};
 
-  const { text, highlights } = extractHighlights(
-    payload.content,
-    payload.blue_words,
-    payload.yellow_words
-  );
+// ─────────────────────────────────────────────────────────────────────────────
+//  Auth
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const level =
-    payload.blue_words[0]?.cefr_level ??
-    payload.yellow_words[0]?.cefr_level ??
-    "A1";
+interface BackendAuthResponse {
+  user_id: string;
+  email: string;
+  display_name?: string;
+  estimated_cefr?: string;
+  onboarding_completed: boolean;
+}
 
+function mapAuthResponseToUser(data: BackendAuthResponse): User {
   return {
-    sessionId: String(payload.session_id),
-    text,
-    title: payload.title,
-    topic: payload.topic_used ?? "general",
-    cefrLevel: level,
-    highlights,
-    isAdaptive: payload.condition === "ADAPTIVE",
+    id:                   data.user_id,
+    user_id:              data.user_id,
+    email:                data.email,
+    name:                 data.display_name || data.email.split("@")[0],
+    display_name:         data.display_name || "",
+    interests:            [],
+    cefrLevel:            (data.estimated_cefr as User["cefrLevel"]) ?? null,
+    assessedAt:           null,
+    createdAt:            new Date().toISOString(),
+    onboarding_completed: data.onboarding_completed,
+    preferred_styles:     [],
   };
 }
 
-function isBackendGenerationFailure(content: string): boolean {
-  return content.trim().startsWith("Er is een fout opgetreden bij het genereren");
-}
-
-function extractHighlights(
-  content: string,
-  blueWords: BackendWordInfo[],
-  yellowWords: BackendWordInfo[]
-): { text: string; highlights: HighlightedWord[] } {
-  const blueByWord = byWord(blueWords);
-  const yellowByWord = byWord(yellowWords);
-  const highlights: HighlightedWord[] = [];
-  let text = "";
-  let cursor = 0;
-  const marker = /\[\[([^\]]+)\]\]/g;
-
-  for (const match of content.matchAll(marker)) {
-    const full = match[0];
-    const word = match[1].trim();
-    const start = match.index ?? 0;
-    text += content.slice(cursor, start);
-
-    const cleanStart = text.length;
-    text += word;
-    const cleanEnd = text.length;
-
-    const key = word.toLowerCase();
-    const blue = blueByWord.get(key);
-    const yellow = yellowByWord.get(key);
-    const source = blue ?? yellow;
-    if (source) {
-      highlights.push({
-        wordId: String(source.word_id),
-        dutch: word,
-        english: source.translation,
-        startIndex: cleanStart,
-        endIndex: cleanEnd,
-        highlightType: blue ? "unknown" : "learning",
-        exampleSentences: source.examples ?? [],
-        usageFrequency: "common",
-      });
-    }
-
-    cursor = start + full.length;
-  }
-
-  text += content.slice(cursor);
-  return { text, highlights };
-}
-
-function byWord(words: BackendWordInfo[]): Map<string, BackendWordInfo> {
-  return new Map(words.map((word) => [word.word.toLowerCase(), word]));
-}
-
-function getPersistedUserId(): string | null {
+/** Create a new account (email + password). */
+export async function registerUser(
+  email: string,
+  password: string,
+): Promise<User> {
   try {
-    const raw = localStorage.getItem("leeswijs-store");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { state?: { user?: { id?: string } } };
-    return parsed.state?.user?.id ?? null;
+    const { data } = await apiClient.post<BackendAuthResponse>("/auth/register", {
+      email,
+      password,
+    });
+    return mapAuthResponseToUser(data);
   } catch (err) {
-    const message = apiErrorMessage(err, "Translation is not available yet.");
-    if (isBackendNotReadyMessage(message)) {
-      throw new Error(message);
-    }
-    return null;
+    throw new Error(extractError(err));
   }
 }
 
-function getPersistedAuthToken(): string | null {
+/** Log in with email + password. */
+export async function login(email: string, password: string): Promise<User> {
   try {
-    return localStorage.getItem("leeswijs-token");
+    const { data } = await apiClient.post<BackendAuthResponse>("/auth/login", {
+      email,
+      password,
+    });
+    return mapAuthResponseToUser(data);
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  User / Profile
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Fetch the current user's full profile from the backend. */
+export async function fetchMe(userId: string): Promise<User> {
+  try {
+    const { data } = await apiClient.get<{ success: boolean; data: Record<string, unknown> }>(
+      "/users/me",
+      { headers: { "X-User-Id": userId } },
+    );
+    const d = data.data;
+    return {
+      id:                   String(d.id ?? d.user_id ?? ""),
+      user_id:              String(d.user_id ?? ""),
+      email:                String(d.email ?? ""),
+      name:                 String(d.display_name || d.name || ""),
+      display_name:         String(d.display_name ?? ""),
+      interests:            Array.isArray(d.interests) ? (d.interests as string[]) : [],
+      cefrLevel:            (d.cefrLevel as User["cefrLevel"]) ?? null,
+      assessedAt:           null,
+      createdAt:            String(d.createdAt ?? ""),
+      onboarding_completed: Boolean(d.onboarding_completed),
+      age:                  typeof d.age === "number" ? d.age : null,
+      city:                 typeof d.city === "string" ? d.city : null,
+      gender:               typeof d.gender === "string" ? d.gender : null,
+      job:                  typeof d.job === "string" ? d.job : null,
+      academic_background:  typeof d.academic_background === "string" ? d.academic_background : null,
+      mother_language:      typeof d.mother_language === "string" ? d.mother_language : null,
+      other_languages:      typeof d.other_languages === "string" ? d.other_languages : null,
+      purpose:              typeof d.purpose === "string" ? (d.purpose as User["purpose"]) : null,
+      preferred_styles:     Array.isArray(d.preferred_styles) ? (d.preferred_styles as User["preferred_styles"]) : [],
+    };
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
+/** Save full profile update (all editable fields). */
+export async function saveProfile(user: Partial<User> & { id: string }): Promise<void> {
+  try {
+    await apiClient.put(
+      "/users/me/profile",
+      {
+        display_name:        user.display_name,
+        age:                 user.age,
+        city:                user.city,
+        gender:              user.gender,
+        job:                 user.job,
+        academic_background: user.academic_background,
+        mother_language:     user.mother_language,
+        other_languages:     user.other_languages,
+        purpose:             user.purpose,
+        preferred_styles:    user.preferred_styles,
+        interests:           user.interests,
+        estimated_cefr:      user.cefrLevel,
+      },
+      { headers: { "X-User-Id": user.id } },
+    );
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
+/** Mark onboarding as completed. */
+export async function completeOnboarding(userId: string): Promise<void> {
+  try {
+    await apiClient.post(
+      "/users/me/complete-onboarding",
+      {},
+      { headers: { "X-User-Id": userId } },
+    );
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Onboarding
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Save Step 1 personal info. */
+export async function savePersonalInfo(
+  userId: string,
+  info: {
+    display_name?: string;
+    age?: number;
+    city?: string;
+    gender?: string;
+    job?: string;
+    academic_background?: string;
+    mother_language?: string;
+    other_languages?: string;
+    purpose?: string;
+    preferred_styles?: string[];
+    self_reported_cefr?: string;
+  },
+): Promise<void> {
+  try {
+    await apiClient.post("/onboarding/personal-info", { user_id: userId, ...info });
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
+/** Trigger KRS → select 7 onboarding flashcard words. Returns LexiconEntry[]. */
+export async function selectOnboardingWords(userId: string, isRefill: boolean = false): Promise<LexiconEntry[]> {
+  try {
+    const { data } = await apiClient.post<{ words: LexiconEntry[] }>(
+      `/onboarding/words/${userId}?is_refill=${isRefill}`,
+    );
+    return data.words ?? [];
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
+/** Get the stored 7 onboarding words for a user. */
+export async function getOnboardingWords(userId: string): Promise<LexiconEntry[]> {
+  try {
+    const { data } = await apiClient.get<{ words: LexiconEntry[] }>(
+      `/onboarding/words/${userId}`,
+    );
+    return data.words ?? [];
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Assessment
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generate a vocabulary batch via Gemini.
+ * batchNumber: 1, 2, or 3.
+ * selfReportedCefr: from Step 1 dropdown.
+ * knownWords / allWords: provided for batches 2 & 3 to target the boundary.
+ */
+export async function getAssessmentBatch(
+  batchNumber: number,
+  userId: string,
+  selfReportedCefr: string,
+  knownWords?: string[],
+  allWords?: string[],
+): Promise<ApiResponse<AssessmentBatchData>> {
+  try {
+    const { data } = await apiClient.post<BackendAssessmentBatch>(
+      "/assessment/batch/generate",
+      {
+        user_id:           userId,
+        batch_number:      batchNumber,
+        self_reported_cefr: selfReportedCefr,
+        known_words:       knownWords ?? [],
+        all_words:         allWords ?? [],
+      },
+    );
+    return {
+      success: true,
+      data: {
+        batchNumber:  data.batch_number as number,
+        totalBatches: data.total_batches as number,
+        words:        (data.words ?? []).map((w) => ({
+          wordId:   String(w.word_id),
+          dutch:    String(w.dutch),
+          english:  typeof w.english === "string" ? w.english : undefined,
+          isPseudo: Boolean(w.is_pseudo),
+        })),
+      },
+    };
+  } catch (err) {
+    return { success: false, error: extractError(err) };
+  }
+}
+
+/** Submit the final assessment result. */
+export async function submitAssessment(
+  userId: string,
+  batchNumber: number,
+  knownWordIds: string[],
+  allWordIds: string[],
+  estimatedLevel: string,
+  confidenceScore: number,
+  isFinal: boolean,
+): Promise<void> {
+  try {
+    await apiClient.post("/assessment/submit", {
+      user_id:        userId,
+      batch_number:   batchNumber,
+      known_word_ids: knownWordIds,
+      all_word_ids:   allWordIds,
+      estimated_level: estimatedLevel,
+      confidence_score: confidenceScore,
+      is_final:       isFinal,
+    });
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Reading sessions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ConditionType = "ADAPTIVE" | "BASELINE";
+
+/** Returns "ADAPTIVE" for odd sessions, "BASELINE" for even (counterbalancing). */
+export function getCondition(sessionNumber?: number): ConditionType {
+  if (sessionNumber === undefined) return "ADAPTIVE";
+  return sessionNumber % 2 === 1 ? "ADAPTIVE" : "BASELINE";
+}
+
+function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
+  const content = String(data.content ?? "");
+  const rawBlue   = (data.blue_words   as Array<Record<string, unknown>>) ?? [];
+  const rawYellow = (data.yellow_words as Array<Record<string, unknown>>) ?? [];
+  const wordTranslations = (data.word_translations as Record<string, string>) ?? {};
+
+  function buildHighlights(
+    rows: Array<Record<string, unknown>>,
+    type: "unknown" | "learning",
+  ) {
+    const out: ReadingSession["highlights"] = [];
+    for (const row of rows) {
+      const word = String(row.word ?? "");
+      const rx = new RegExp(`\\[\\[${word}\\]\\]`, "gi");
+      let m: RegExpExecArray | null;
+      while ((m = rx.exec(content)) !== null) {
+        out.push({
+          wordId:        String(row.word_id ?? ""),
+          dutch:         word,
+          english:       String(row.translation ?? ""),
+          startIndex:    m.index,
+          endIndex:      m.index + m[0].length,
+          highlightType: type,
+          exampleSentences: Array.isArray(row.examples)
+            ? (row.examples as Array<{ nl: string; en: string }>)
+            : [],
+          usageFrequency: "common",
+        });
+      }
+    }
+    return out;
+  }
+
+  return {
+    sessionId:        String(data.session_id ?? ""),
+    title:            String(data.title ?? ""),
+    text:             content.replace(/\[\[([^\]]+)\]\]/g, "$1"),
+    tokens:           ((data.tokens ?? []) as BackendTextToken[]).map((t) => ({
+      text:   String(t.text),
+      type:   t.type,
+      status: t.status,
+      wordId: t.word_id ? String(t.word_id) : null,
+    })),
+    topic:            String(data.topic_used ?? ""),
+    cefrLevel:        "B1",
+    highlights:       [
+      ...buildHighlights(rawBlue,   "unknown"),
+      ...buildHighlights(rawYellow, "learning"),
+    ],
+    isAdaptive:       String(data.condition) === "ADAPTIVE",
+    readingNumber:    Number(data.reading_number ?? 1),
+    surveyCompleted:  Boolean(data.survey_completed),
+    wordTranslations,
+  };
+}
+
+/** Generate a new reading session. */
+export async function generateSession(
+  userId: string,
+  condition: ConditionType,
+  narrativeStyle?: string,
+): Promise<{ sessionId: string; readingNumber: number }> {
+  const { data } = await apiClient.post<Record<string, unknown>>("/session/generate", {
+    user_id:        userId,
+    condition,
+    narrative_style: narrativeStyle ?? "Narrative (Story)",
+  });
+  return {
+    sessionId:     String(data.session_id),
+    readingNumber: Number(data.reading_number ?? 1),
+  };
+}
+
+/** Fetch a full reading session by ID. */
+export async function getReadingSession(
+  sessionId: string,
+  userId?: string,
+): Promise<ApiResponse<ReadingSession>> {
+  try {
+    const { data } = await apiClient.get<Record<string, unknown>>(
+      `/session/${sessionId}`,
+      { params: { user_id: userId } },
+    );
+    return { success: true, data: mapSessionResponse(data) };
+  } catch (err) {
+    return { success: false, error: extractError(err) };
+  }
+}
+
+/** List all sessions for a user. */
+export async function listSessions(userId: string): Promise<SessionSummary[]> {
+  try {
+    const { data } = await apiClient.get<SessionSummary[]>("/session/list", {
+      params: { user_id: userId },
+    });
+    return data;
+  } catch {
+    return [];
+  }
+}
+
+/** Continue a reading session (extend same topic). */
+export async function continueSession(
+  userId: string,
+  previousSessionId: string,
+  narrativeStyle?: string,
+): Promise<ReadingSession> {
+  const { data } = await apiClient.post<Record<string, unknown>>("/session/continue", {
+    user_id:             userId,
+    previous_session_id: previousSessionId,
+    narrative_style:     narrativeStyle,
+  });
+  return mapSessionResponse(data);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Vocabulary
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Define an unknown word (looks up lexicon or calls Gemini). */
+export async function defineWord(word: string): Promise<LexiconEntry | null> {
+  try {
+    const { data } = await apiClient.get<LexiconEntry>(
+      `/lexicon/define/${encodeURIComponent(word)}`,
+    );
+    return data;
   } catch {
     return null;
   }
 }
 
-function toNumericId(value: string, label: string): number {
-  const n = Number(value);
-  if (!Number.isFinite(n)) {
-    throw new Error(`Cannot send ${label} id '${value}' to the backend yet.`);
-  }
-  return n;
-}
-
-function toBackendIntent(action: WordInteraction["action"]) {
-  if (action === "see_examples") return "DEEP_PROCESSING";
-  if (action === "add_to_learn") return "ACQUISITION_INTENT";
-  return "WORD_AVOIDANCE";
-}
-
-export async function getUser(): Promise<ApiResponse<User>> {
-  if (USE_MOCK) {
-    await delay();
-    return ok(mockUser);
-  }
-  const { data } = await apiClient.get<ApiResponse<User>>("/users/me");
-  return data;
-}
-
-export async function getReadingSession(
-  sessionId: string,
-  userId?: string
-): Promise<ApiResponse<ReadingSession>> {
-  if (USE_MOCK) {
-    await delay();
-    return ok({ ...mockReadingSession, sessionId });
-  }
-  const { data } = await apiClient.get<BackendSessionPayload>(
-    `/session/${Number(sessionId)}`,
-    { params: { user_id: userId ?? getPersistedUserId() } }
-  );
-  return ok(toReadingSession(data));
-}
-
-type GenerateSessionPayload = {
-  session_id: number;
-  title: string;
-  content: string;
-  topic_used: string | null;
-};
-
-export async function generateSession(
+/** Add a word to the user's learning list. */
+export async function addToLearnList(
   userId: string,
-  condition?: "ADAPTIVE" | "BASELINE"
-): Promise<{ sessionId: string }> {
-  if (USE_MOCK) {
-    await delay(600);
-    return { sessionId: mockReadingSession.sessionId };
-  }
-  try {
-    const body =
-      condition === undefined ? { user_id: userId } : { user_id: userId, condition };
-    const { data } = await apiClient.post<GenerateSessionPayload>(
-      "/session/generate",
-      body,
-      { timeout: SESSION_GENERATION_TIMEOUT_MS }
-    );
-    return { sessionId: String(data.session_id) };
-  } catch (err) {
-    const timeout =
-      axios.isAxiosError(err) && err.code === "ECONNABORTED";
-    throw new Error(
-      apiErrorMessage(
-        err,
-        (timeout
-          ? "The text generator is taking longer than expected. Please try again."
-          : "Could not generate a new session.")
-      )
-    );
-  }
+  wordId: number,
+  reviewIntervalDays?: number,
+): Promise<void> {
+  await apiClient.patch("/vocab/add-to-learn", {
+    user_id:               userId,
+    word_id:               wordId,
+    review_interval_days:  reviewIntervalDays,
+  });
 }
 
-export async function continueSession(
+export async function markKnown(
   userId: string,
-  previousSessionId: string,
-): Promise<{ sessionId: string }> {
-  if (USE_MOCK) {
-    await delay(600);
-    return { sessionId: mockReadingSession.sessionId };
-  }
+  wordId: number,
+): Promise<void> {
+  await apiClient.patch("/vocab/mark-known", {
+    user_id: userId,
+    word_id: wordId,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Survey
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function submitSurvey(
+  payload: SurveyResponse,
+): Promise<ApiResponse<{ signal: Record<string, unknown> }>> {
   try {
-    const { data } = await apiClient.post<GenerateSessionPayload>(
-      "/session/continue",
+    const { data } = await apiClient.post<{ success: boolean; signal: Record<string, unknown> }>(
+      "/surveys",
       {
-        user_id: userId,
-        previous_session_id: Number(previousSessionId),
+        sessionId:                String(payload.sessionId),
+        worthMyTime:              payload.worthMyTime,
+        appropriateChallenge:     payload.appropriateChallenge,
+        comprehension:            payload.comprehension,
+        focusedAttention:         payload.focusedAttention,
+        reward:                   payload.reward,
+        perceivedRelevance:       payload.perceivedRelevance,
+        mentalEffort:             payload.mentalEffort,
+        perceivedPersonalization: payload.perceivedPersonalization,
       },
-      { timeout: SESSION_GENERATION_TIMEOUT_MS },
     );
-    return { sessionId: String(data.session_id) };
+    return { success: true, data: { signal: data.signal } };
   } catch (err) {
-    throw new Error(apiErrorMessage(err, "Could not generate a continuation."));
+    return { success: false, error: extractError(err) };
   }
 }
 
-type BackendFlashcardItem = {
-  word_id: string;
+// ─────────────────────────────────────────────────────────────────────────────
+//  Flashcards
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { FlashcardItem } from "../types";
+
+export interface FlashcardsResponse {
+  cards: FlashcardItem[];
+  due_count: number;
+  not_due_count: number;
+  reviewed_today: number;
+  total: number;
+}
+
+export interface DiscoverCard {
+  wordId: string;
   dutch: string;
   english: string;
-  example_sentence: { nl: string; en: string };
-  difficulty: number;
-  mode: "learning" | "review" | string;
-  next_review_date: string | null;
-  review_interval: string | null;
-};
-
-function toFlashcardItem(b: BackendFlashcardItem): FlashcardItem {
-  return {
-    wordId: b.word_id,
-    dutch: b.dutch,
-    english: b.english,
-    exampleSentence: { nl: b.example_sentence.nl, en: b.example_sentence.en },
-    difficulty: b.difficulty,
-    mode: b.mode === "review" ? "review" : "learning",
-    nextReviewDate: b.next_review_date,
-    reviewInterval: (b.review_interval as FlashcardItem["reviewInterval"]) ?? null,
-  };
+  examples: { nl: string; en: string }[];
+  cefrLevel?: string;
 }
 
-function flashcardsFromSession(session: ReadingSession): FlashcardItem[] {
-  const seen = new Set<string>();
-  return session.highlights
-    .filter((word) => {
-      if (seen.has(word.wordId)) return false;
-      seen.add(word.wordId);
-      return true;
-    })
-    .slice(0, 8)
-    .map((word) => ({
-      wordId: word.wordId,
-      dutch: word.dutch,
-      english: word.english,
-      exampleSentence:
-        word.exampleSentences[0] ?? {
-          nl: word.dutch,
-          en: word.english,
-        },
-      difficulty: word.highlightType === "unknown" ? 0.65 : 0.45,
-      mode: word.highlightType === "learning" ? "review" : "learning",
-      nextReviewDate: null,
-      reviewInterval: null,
-    }));
-}
-
-function vocabTestFromSession(
-  session: ReadingSession,
-  phase: VocabTestPhase
-): VocabTest {
-  const fallbackDistractors = [
-    "development",
-    "choice",
-    "environment",
-    "question",
-    "system",
-    "example",
-    "sound",
-    "problem",
-  ];
-  const words = flashcardsFromSession(session).slice(0, 5);
-  const allMeanings = words.map((word) => word.english).filter(Boolean);
-
+function normalizeCard(card: FlashcardItem): FlashcardItem {
+  const examples = card.examples ?? [];
   return {
-    sessionId: session.sessionId,
-    phase,
-    questions: words.map((word, index) => {
-      const distractors = [...allMeanings, ...fallbackDistractors]
-        .filter((option) => option !== word.english)
-        .filter((option, optionIndex, arr) => arr.indexOf(option) === optionIndex)
-        .slice(0, 3);
-      const correctIndex = index % 4;
-      const options = [...distractors];
-      options.splice(correctIndex, 0, word.english);
-      return {
-        questionId: `local-${session.sessionId}-${word.wordId}`,
-        wordId: word.wordId,
-        dutch: word.dutch,
-        prompt: `What does ${word.dutch} mean?`,
-        options,
-        correctIndex,
-      };
-    }),
+    ...card,
+    examples,
+    exampleSentence: examples[0] ?? { nl: card.dutch, en: card.english },
   };
 }
 
 export async function getFlashcards(
-  sessionId?: string | null,
-  userId?: string
-): Promise<ApiResponse<FlashcardItem[]>> {
-  if (USE_MOCK) {
-    await delay();
-    return ok(mockFlashcards);
-  }
-  const effectiveUserId = userId ?? getPersistedUserId();
-  if (!effectiveUserId) return ok([]);
+  _sessionId?: string | null,
+  userId?: string | null,
+): Promise<ApiResponse<FlashcardsResponse>> {
+  if (!userId) return { success: false, error: "No user" };
   try {
-    const { data } = await apiClient.get<BackendFlashcardItem[]>("/flashcards", {
-      params: { user_id: effectiveUserId },
+    const { data } = await apiClient.get<FlashcardsResponse>("/flashcards", {
+      params: { user_id: userId },
     });
-    return ok(data.map(toFlashcardItem));
-  } catch (err) {
-    const message = apiErrorMessage(err, "Could not load flashcards.");
-    if (sessionId && isBackendNotReadyMessage(message)) {
-      try {
-        const session = await getReadingSession(sessionId, effectiveUserId);
-        if (session.success) return ok(flashcardsFromSession(session.data));
-      } catch {
-        return fail("Review words from this reading are not available yet.");
-      }
-    }
-    return fail(message);
-  }
-}
-
-function generateMockVocabTest(sessionId: string, phase: VocabTestPhase): VocabTest {
-  const learnedIds = getLearnedWordIds(sessionId);
-  const learnedWords = learnedIds
-    .map((id) => mockVocabulary.find((w) => w.wordId === id))
-    .filter((w): w is (typeof mockVocabulary)[number] => w !== undefined);
-
-  if (learnedWords.length < 3) {
-    return { ...mockVocabTest, sessionId, phase };
-  }
-
-  const learnedEnglish = new Set(learnedWords.map((w) => w.english));
-  const distractorPool = [
-    ...mockVocabulary
-      .filter((w) => !learnedEnglish.has(w.english))
-      .map((w) => w.english),
-    "development", "choice", "environment", "question",
-    "system", "example", "problem", "change", "growth", "result",
-  ].filter((d, i, arr) => arr.indexOf(d) === i);
-
-  const questions: VocabTestQuestion[] = learnedWords.map((word, index) => {
-    const distractors = distractorPool.filter((d) => d !== word.english).slice(0, 3);
-    const correctIndex = index % 4;
-    const opts = [...distractors];
-    opts.splice(correctIndex, 0, word.english);
     return {
-      questionId: `mock-${sessionId}-${word.wordId}`,
-      wordId: word.wordId,
-      dutch: word.dutch,
-      prompt: `What does "${word.dutch}" mean?`,
-      options: opts,
-      correctIndex,
+      success: true,
+      data: {
+        ...data,
+        cards: (data.cards ?? []).map(normalizeCard),
+      },
     };
-  });
-
-  return { sessionId, phase, questions };
-}
-
-export async function getVocabTest(
-  sessionId: string,
-  phase: VocabTestPhase = "IMMEDIATE"
-): Promise<ApiResponse<VocabTest>> {
-  if (USE_MOCK) {
-    await delay();
-    return ok(generateMockVocabTest(sessionId, phase));
-  }
-  try {
-    const { data } = await apiClient.get<ApiResponse<VocabTest> | VocabTest>(
-      "/vocab-test/start",
-      { params: { session_id: sessionId, phase } }
-    );
-    return asApiResponse(data);
   } catch (err) {
-    const message = apiErrorMessage(err, "Could not load the vocabulary test.");
-    if (isBackendNotReadyMessage(message)) {
-      try {
-        const session = await getReadingSession(
-          sessionId,
-          getPersistedUserId() ?? undefined
-        );
-        if (session.success) return ok(vocabTestFromSession(session.data, phase));
-      } catch {
-        return fail("Vocabulary check for this reading is not available yet.");
-      }
-    }
-    return fail(message);
+    return { success: false, error: extractError(err) };
   }
 }
 
-export async function submitVocabTestResult(
-  result: VocabTestResult
-): Promise<ApiResponse<VocabTestResult>> {
-  if (USE_MOCK) {
-    await delay();
-    return ok(result);
-  }
+/** Fetch pre-buffered KRS recommendations (non-blocking, uses existing DB buffer). */
+export async function discoverPrefetch(
+  userId: string,
+): Promise<{ words: DiscoverCard[]; remaining: number }> {
   try {
-    const { data } = await apiClient.post<ApiResponse<VocabTestResult> | VocabTestResult>(
-      "/vocab-test/submit",
-      result
+    const { data } = await apiClient.get<{ words: DiscoverCard[]; remaining: number }>(
+      "/flashcards/discover-prefetch",
+      { params: { user_id: userId } },
     );
-    return asApiResponse(data);
-  } catch (err) {
-    const message = apiErrorMessage(err, "Could not submit the vocabulary test.");
-    if (isBackendNotReadyMessage(message)) {
-      return ok(result);
-    }
-    return fail(message);
-  }
-}
-
-type BackendAssessmentWord = {
-  word_id: string;
-  dutch: string;
-  english?: string | null;
-  is_pseudo: boolean;
-};
-type BackendAssessmentBatch = {
-  batch_number: number;
-  total_batches: number;
-  words: BackendAssessmentWord[];
-};
-
-function toAssessmentBatch(payload: BackendAssessmentBatch): AssessmentBatch {
-  return {
-    batchNumber: payload.batch_number,
-    totalBatches: payload.total_batches,
-    words: payload.words.map((w) => ({
-      wordId: w.word_id,
-      dutch: w.dutch,
-      english: w.english ?? undefined,
-      isPseudo: w.is_pseudo,
-    })),
-  };
-}
-
-export async function getAssessmentBatch(
-  batchNumber: number
-): Promise<ApiResponse<AssessmentBatch>> {
-  if (USE_MOCK) {
-    await delay();
-    const batch =
-      mockAssessmentBatches[batchNumber - 1] ?? mockAssessmentBatches[0];
-    return ok(batch);
-  }
-  const { data } = await apiClient.get<BackendAssessmentBatch>(
-    `/assessment/batch/${batchNumber}`
-  );
-  return ok(toAssessmentBatch(data));
-}
-
-export async function submitAssessment(
-  result: AssessmentResult
-): Promise<ApiResponse<AssessmentResult>> {
-  if (USE_MOCK) {
-    await delay();
-    return ok(result);
-  }
-  const userId = getPersistedUserId();
-  await apiClient.post("/assessment/submit", {
-    user_id: userId,
-    known_word_ids: result.knownWordIds,
-    unknown_word_ids: result.unknownWordIds,
-    estimated_level: result.estimatedLevel,
-    confidence_score: result.confidenceScore,
-  });
-  if (userId) {
-    apiClient.post(`/krs/run/${encodeURIComponent(userId)}`).catch(() => {});
-  }
-  return ok(result);
-}
-
-export type SessionLogEntry = {
-  sessionId: string;
-  title: string;
-  topic: string;
-  cefrLevel: string;
-  isAdaptive: boolean;
-  createdAt: string;
-  dwellMs: number;
-};
-
-export type Activity = {
-  sessions: SessionLogEntry[];
-  wordsLookedUp: number;
-  flashcardsRemembered: number;
-  flashcardsForgot: number;
-  dailyMinutes: Record<string, number>;
-};
-
-const ACTIVITY_KEY_PREFIX  = "leeswijs-activity-";
-const CONDITION_KEY        = "leeswijs-condition";
-const LEARNED_KEY_PREFIX   = "leeswijs-session-";
-const LEARNED_KEY_SUFFIX   = "-learned";
-
-function getLearnedWordIds(sessionId: string): string[] {
-  try {
-    const raw = localStorage.getItem(LEARNED_KEY_PREFIX + sessionId + LEARNED_KEY_SUFFIX);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed)
-      ? (parsed as unknown[]).filter((x): x is string => typeof x === "string")
-      : [];
-  } catch { return []; }
-}
-
-function addLearnedWordId(sessionId: string, wordId: string): void {
-  try {
-    const key = LEARNED_KEY_PREFIX + sessionId + LEARNED_KEY_SUFFIX;
-    const existing = getLearnedWordIds(sessionId);
-    if (!existing.includes(wordId)) {
-      localStorage.setItem(key, JSON.stringify([...existing, wordId]));
-    }
-  } catch { return; }
-}
-const MAX_READING_DWELL_MS = 2 * 60 * 60 * 1000;
-const MAX_DAILY_MINUTES    = 8 * 60;
-
-function emptyActivity(): Activity {
-  return {
-    sessions: [],
-    wordsLookedUp: 0,
-    flashcardsRemembered: 0,
-    flashcardsForgot: 0,
-    dailyMinutes: {},
-  };
-}
-
-function safeNumber(value: unknown, max: number): number {
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.min(n, max);
-}
-
-function sanitizeActivity(activity: Partial<Activity>): Activity {
-  const sessions = Array.isArray(activity.sessions)
-    ? activity.sessions
-        .map((entry) => {
-          const s = entry as Partial<SessionLogEntry>;
-          if (!s.sessionId) return null;
-          return {
-            sessionId: String(s.sessionId),
-            title: String(s.title ?? "Untitled reading"),
-            topic: String(s.topic ?? ""),
-            cefrLevel: String(s.cefrLevel ?? ""),
-            isAdaptive: Boolean(s.isAdaptive),
-            createdAt: String(s.createdAt ?? new Date().toISOString()),
-            dwellMs: safeNumber(s.dwellMs, MAX_READING_DWELL_MS),
-          };
-        })
-        .filter((entry): entry is SessionLogEntry => entry !== null)
-    : [];
-
-  const dailyMinutes: Record<string, number> = {};
-  for (const [key, value] of Object.entries(activity.dailyMinutes ?? {})) {
-    dailyMinutes[key] = safeNumber(value, MAX_DAILY_MINUTES);
-  }
-
-  return {
-    sessions,
-    wordsLookedUp: safeNumber(activity.wordsLookedUp, 100_000),
-    flashcardsRemembered: safeNumber(activity.flashcardsRemembered, 100_000),
-    flashcardsForgot: safeNumber(activity.flashcardsForgot, 100_000),
-    dailyMinutes,
-  };
-}
-
-export function readActivity(username: string): Activity {
-  try {
-    const raw = localStorage.getItem(ACTIVITY_KEY_PREFIX + username);
-    if (!raw) return emptyActivity();
-    const parsed = JSON.parse(raw) as Partial<Activity>;
-    return sanitizeActivity({ ...emptyActivity(), ...parsed });
+    return { words: data.words ?? [], remaining: data.remaining ?? data.words?.length ?? 0 };
   } catch {
-    return emptyActivity();
+    return { words: [], remaining: 0 };
   }
-}
-
-function writeActivity(username: string, a: Activity): void {
-  try {
-    localStorage.setItem(ACTIVITY_KEY_PREFIX + username, JSON.stringify(a));
-  } catch {
-    return;
-  }
-}
-
-function todayKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-export function logSession(
-  username: string,
-  session: Omit<SessionLogEntry, "dwellMs">
-): void {
-  const a = readActivity(username);
-  if (!a.sessions.some((s) => s.sessionId === session.sessionId)) {
-    a.sessions.push({ ...session, dwellMs: 0 });
-    writeActivity(username, a);
-  }
-}
-
-export function logDwellTime(
-  username: string,
-  sessionId: string,
-  ms: number
-): void {
-  const safeMs = safeNumber(ms, MAX_READING_DWELL_MS);
-  if (safeMs <= 0) return;
-  const a = readActivity(username);
-  const idx = a.sessions.findIndex((s) => s.sessionId === sessionId);
-  if (idx >= 0) {
-    a.sessions[idx].dwellMs = safeNumber(
-      a.sessions[idx].dwellMs + safeMs,
-      MAX_READING_DWELL_MS
-    );
-  }
-  const key = todayKey();
-  a.dailyMinutes[key] = safeNumber(
-    (a.dailyMinutes[key] ?? 0) + safeMs / 60_000,
-    MAX_DAILY_MINUTES
-  );
-  writeActivity(username, a);
-}
-
-export function logWordLookup(username: string): void {
-  const a = readActivity(username);
-  a.wordsLookedUp += 1;
-  writeActivity(username, a);
-}
-
-export function logFlashcardReview(
-  username: string,
-  remembered: boolean
-): void {
-  const a = readActivity(username);
-  if (remembered) a.flashcardsRemembered += 1;
-  else a.flashcardsForgot += 1;
-  writeActivity(username, a);
 }
 
 export async function submitFlashcardReview(
   userId: string,
   wordId: string,
   remembered: boolean,
-): Promise<ApiResponse<null>> {
-  if (USE_MOCK) {
-    await delay(100);
-    return ok(null);
-  }
-  try {
-    await apiClient.post("/flashcards/review", null, {
-      params: {
-        user_id: userId,
-        word_id: toNumericId(wordId, "word"),
-        remembered,
-      },
-    });
-    return ok(null);
-  } catch (err) {
-    return fail(apiErrorMessage(err, "Could not save flashcard review."));
-  }
-}
-
-export function resetLocalData(username: string): void {
-  try {
-    localStorage.removeItem(ACTIVITY_KEY_PREFIX + username);
-    const pw = readMap<string>(PASSWORDS_KEY);
-    delete pw[username];
-    writeMap(PASSWORDS_KEY, pw);
-    const pf = readMap<StoredProfile>(PROFILES_KEY);
-    delete pf[username];
-    writeMap(PROFILES_KEY, pf);
-  } catch {
-    return;
-  }
-}
-
-export type Condition = "ADAPTIVE" | "BASELINE";
-
-export function getCondition(): Condition {
-  const v = (() => {
-    try { return localStorage.getItem(CONDITION_KEY); }
-    catch { return null; }
-  })();
-  return v === "BASELINE" ? "BASELINE" : "ADAPTIVE";
-}
-
-export function setCondition(c: Condition): void {
-  try { localStorage.setItem(CONDITION_KEY, c); } catch { return; }
-}
-
-const MOCK_DICT: Record<string, string> = {
-  de: "the", het: "the / it", een: "a / an", van: "of / from", en: "and",
-  is: "is", zijn: "are / to be", niet: "not", nog: "still / yet", maar: "but",
-  ook: "also", op: "on", in: "in", tot: "until / to", naar: "to",
-  fijn: "nice / pleasant", horen: "to hear", instrumenten: "instruments",
-  klinken: "sound", zit: "sits / is sitting", heeft: "has",
-  kleine: "small", tablet: "tablet",
-  dag: "day", elke: "every", nieuwe: "new", grote: "big", grootste: "biggest",
-  meer: "more", beter: "better", hoe: "how", dat: "that", die: "that / those",
-  deze: "this / these", er: "there", toch: "yet / still", juist: "precisely",
-  worden: "are / become", wordt: "is (becomes)", gaat: "goes", snel: "fast",
-  leert: "learns", ziet: "sees", uitvoeren: "perform", analyseren: "analyze",
-  schrijven: "write", doen: "do", lijken: "seem", wijzen: "point",
-  zeggen: "say", creëert: "creates", biedt: "offers", oplossen: "solve",
-  kunnen: "can", modellen: "models", taken: "tasks", teksten: "texts",
-  mogelijkheden: "possibilities", wetenschappers: "scientists",
-  grenzen: "limits", technologie: "technology", uitdagingen: "challenges",
-  informatie: "information", afbeeldingen: "images", geluid: "sound",
-  systeem: "system", zorgen: "worries", critici: "critics",
-  impact: "impact", arbeidsmarkt: "labor market", voorstanders: "advocates",
-  banen: "jobs", problemen: "problems", mensen: "people", alleen: "only",
-  toekomst: "future", discussie: "discussion", over: "about",
-  ongestructureerde: "unstructured", gepubliceerd: "published",
-  complexe: "complex", hoeveelheden: "quantities", eindeloos: "endless",
-  intensief: "intensive", hiervoor: "for this", miljoenen: "millions",
-  voorbeelden: "examples", gebruikt: "used", mogelijke: "possible",
-  lang: "long", voorbij: "past / over", zoals: "such as",
-};
-
-function normalizeLookupKey(word: string): string {
-  return word
-    .trim()
-    .toLowerCase()
-    .replace(/^[^\p{L}'-]+|[^\p{L}'-]+$/gu, "");
-}
-
-export async function defineWord(word: string): Promise<string | null> {
-  const key = normalizeLookupKey(word);
-  if (!key) return null;
-  if (USE_MOCK) {
-    await delay(150);
-    return MOCK_DICT[key] ?? null;
-  }
-  try {
-    const { data } = await apiClient.get<{ translation?: string }>(
-      `/lexicon/define/${encodeURIComponent(word)}`
-    );
-    return data.translation ?? null;
-  } catch {
-    return null;
-  }
-}
-
-export async function addToLearn(
-  word: string,
-  english: string | null
+  intervalDays?: number,
 ): Promise<void> {
-  if (USE_MOCK) {
-    await delay(150);
-    return;
-  }
-  try {
-    await apiClient.patch("/vocab/add-plain-word", {
-      user_id: getPersistedUserId(),
-      word,
-      english,
-    });
-  } catch (err) {
-    throw new Error(apiErrorMessage(err, "Could not add this word."));
-  }
-}
-
-export async function logInteraction(
-  interaction: WordInteraction
-): Promise<ApiResponse<null>> {
-  if (USE_MOCK) {
-    await delay(100);
-    if (interaction.action === "add_to_learn" && interaction.sessionId) {
-      addLearnedWordId(interaction.sessionId, interaction.wordId);
-    }
-    return ok(null);
-  }
-  const wordId = toNumericId(interaction.wordId, "word");
-  const sessionId = toNumericId(interaction.sessionId, "session");
-  const userId = getPersistedUserId();
-
-  if (interaction.action === "add_to_learn" && userId) {
-    await apiClient.patch("/vocab/add-to-learn", {
-      user_id: userId,
-      word_id: wordId,
-    });
-  }
-
-  await apiClient.post("/telemetry/log", {
-    session_id: sessionId,
-    word_id: wordId,
-    intent_tag: toBackendIntent(interaction.action),
-    engagement_weight: interaction.weight,
+  await apiClient.post("/flashcards/review", {
+    user_id:       userId,
+    word_id:       parseInt(wordId, 10),
+    remembered,
+    interval_days: intervalDays ?? null,
   });
-  return ok(null);
 }
 
-export async function submitSurvey(
-  response: SurveyResponse
-): Promise<ApiResponse<null>> {
-  if (USE_MOCK) {
-    await delay();
-    return ok(null);
-  }
-  const { data } = await apiClient.post<ApiResponse<null>>(
-    "/surveys",
-    response
-  );
-  return data;
-}
-
-type LoginPayload = {
-  access_token?: string;
-  user_id: string;
-  username: string;
-  display_name: string;
-  estimated_cefr: string | null;
-  interests?: string[];
-  assessed_at?: string | null;
-  created_at?: string | null;
-};
-
-const VALID_USERNAMES = Array.from({ length: 13 }, (_, i) =>
-  `user${String(i + 1).padStart(2, "0")}`
-);
-
-const PASSWORDS_KEY = "leeswijs-passwords";
-const PROFILES_KEY  = "leeswijs-profiles";
-
-type StoredProfile = {
-  interests: string[];
-  cefrLevel: CefrLevel | null;
-  assessedAt?: string | null;
-};
-
-function readMap<T>(key: string): Record<string, T> {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as Record<string, T>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeMap<T>(key: string, map: Record<string, T>): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(map));
-  } catch {
-    return;
-  }
-}
-
-function getStoredPassword(username: string): string {
-  return readMap<string>(PASSWORDS_KEY)[username] ?? username;
-}
-
-function setStoredPassword(username: string, newPassword: string): void {
-  const map = readMap<string>(PASSWORDS_KEY);
-  map[username] = newPassword;
-  writeMap(PASSWORDS_KEY, map);
-}
-
-function getStoredProfile(username: string): StoredProfile | null {
-  return readMap<StoredProfile>(PROFILES_KEY)[username] ?? null;
-}
-
-function setStoredProfile(username: string, profile: StoredProfile): void {
-  const map = readMap<StoredProfile>(PROFILES_KEY);
-  map[username] = profile;
-  writeMap(PROFILES_KEY, map);
-}
-
-export async function login(username: string, password: string): Promise<User> {
-  if (USE_MOCK) {
-    await delay(400);
-    if (!username.trim() || !password) {
-      throw new Error("Username and password are required.");
-    }
-    if (!VALID_USERNAMES.includes(username)) {
-      throw new Error("Unknown username. Use user01 – user13.");
-    }
-    if (password !== getStoredPassword(username)) {
-      throw new Error("Incorrect password.");
-    }
-    const saved = getStoredProfile(username);
-    return {
-      id: username,
-      name: username,
-      email: username,
-      interests: saved?.interests ?? [],
-      cefrLevel: saved?.cefrLevel ?? null,
-      assessedAt: saved?.assessedAt ?? null,
-      createdAt: new Date().toISOString(),
-    };
-  }
-  try {
-    const { data } = await apiClient.post<LoginPayload>("/auth/login", {
-      username,
-      password,
-    });
-    if (data.access_token) {
-      try {
-        localStorage.setItem("leeswijs-token", data.access_token);
-      } catch {
-        // X-User-Id still supports the prototype flow if storage fails.
-      }
-    }
-
-    return {
-      id: data.user_id,
-      name: data.display_name,
-      email: data.username,
-      interests: data.interests ?? [],
-      cefrLevel: (data.estimated_cefr as CefrLevel) ?? null,
-      assessedAt: data.assessed_at ?? null,
-      createdAt: data.created_at ?? new Date().toISOString(),
-    };
-  } catch (err) {
-    const detail =
-      (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    throw new Error(detail ?? "Login failed.");
-  }
-}
-
-export async function registerUser(
-  name: string,
-  email: string,
-  password: string
+export async function markKnownFlashcard(
+  userId: string,
+  wordId: string,
 ): Promise<void> {
-  if (USE_MOCK) {
-    await delay(400);
-    return;
-  }
-  const userIdBase = email
-    .split("@")[0]
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, "_")
-    .slice(0, 30);
-  const userId = `${userIdBase || "user"}_${Date.now()}`;
-  await apiClient.post("/auth/signup", {
+  await apiClient.post("/flashcards/mark-known", {
     user_id: userId,
-    email,
-    password,
-    display_name: name.trim(),
+    word_id: parseInt(wordId, 10),
   });
 }
 
-export async function saveProfile(user: User): Promise<void> {
-  const profile = {
-    interests: user.interests,
-    cefrLevel: user.cefrLevel,
-    assessedAt: user.assessedAt,
-  };
-  setStoredProfile(user.id, profile);
+/** Add a discovered word to the user's LEARNING list with an initial SRS interval. */
+export async function addDiscoveredToLearn(
+  userId: string,
+  wordId: string,
+  intervalDays = 1,
+): Promise<void> {
+  await apiClient.post("/flashcards/add-to-learn", {
+    user_id:       userId,
+    word_id:       parseInt(wordId, 10),
+    interval_days: intervalDays,
+  });
+}
 
-  if (USE_MOCK) {
-    return;
-  }
+export async function discoverNewWords(
+  userId: string,
+): Promise<LexiconEntry[]> {
   try {
-    await apiClient.put("/users/me/profile", {
-      interests: user.interests,
-      estimated_cefr: user.cefrLevel,
-      assessed_at: user.assessedAt,
-    });
+    const { data } = await apiClient.post<{ words: LexiconEntry[] }>(
+      "/flashcards/discover",
+      { user_id: userId },
+    );
+    return data.words ?? [];
   } catch (err) {
-    if (axios.isAxiosError(err) && err.response?.status === 404) {
-      return;
-    }
-    throw new Error(apiErrorMessage(err, "Could not save profile."));
+    throw new Error(extractError(err));
   }
 }
 
-export async function changePassword(
-  username: string,
-  oldPassword: string,
-  newPassword: string
-): Promise<void> {
-  if (USE_MOCK) {
-    await delay(300);
-    if (oldPassword !== getStoredPassword(username)) {
-      throw new Error("Current password is incorrect.");
-    }
-    if (newPassword.length < 4) {
-      throw new Error("New password must be at least 4 characters.");
-    }
-    if (newPassword === oldPassword) {
-      throw new Error("New password must differ from the current one.");
-    }
-    setStoredPassword(username, newPassword);
-    return;
-  }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Vocabulary Test
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Start the vocab test from the user's 7 onboarding words. */
+export async function startVocabTest(
+  userId: string,
+  sessionGroupId: number,
+): Promise<ApiResponse<{ questions: VocabTestQuestion[]; sessionGroupId: number }>> {
   try {
-    await apiClient.post("/auth/change-password", {
-      old_password: oldPassword,
-      new_password: newPassword,
+    const { data } = await apiClient.get<{
+      success: boolean;
+      data: { sessionGroupId: number; questions: VocabTestQuestion[] };
+    }>("/vocab-test/start", {
+      params: { user_id: userId, session_group_id: sessionGroupId },
     });
+    return { success: true, data: data.data };
   } catch (err) {
-    throw new Error(apiErrorMessage(err, "Could not change password."));
+    return { success: false, error: extractError(err) };
   }
+}
+
+/** Submit vocab test results. */
+export async function submitVocabTest(
+  userId: string,
+  sessionGroupId: number,
+  answers: VocabTestAnswer[],
+  score: number,
+): Promise<void> {
+  await apiClient.post("/vocab-test/submit", {
+    user_id:          userId,
+    session_group_id: sessionGroupId,
+    answers,
+    score,
+    submitted_at:     new Date().toISOString(),
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Telemetry (lightweight — fire and forget)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Telemetry (disabled non-existent endpoints)
+export function logWordLookup(userId: string): void {
+  void userId;
+}
+
+export function logDwellTime(userId: string, sessionId: string, elapsedMs: number): void {
+  void userId;
+  void sessionId;
+  void elapsedMs;
+}
+
+import type { WordInteraction } from "../types";
+
+export function logInteraction(interaction: WordInteraction): Promise<void> {
+  return apiClient.post("/telemetry/log", {
+    session_id: interaction.sessionId,
+    word_id: parseInt(interaction.wordId, 10),
+    intent_tag: interaction.action,
+    engagement_weight: interaction.weight,
+  }).then(() => {});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Activity (localStorage — client-side session tracking)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface Activity {
+  sessions: Array<{
+    sessionId: string;
+    title: string;
+    topic: string;
+    cefrLevel: string;
+    isAdaptive: boolean;
+    createdAt: string;
+  }>;
+}
+
+const ACTIVITY_KEY = "leeswijs-activity";
+
+export function readActivity(userId: string): Activity {
+  try {
+    const raw = localStorage.getItem(`${ACTIVITY_KEY}-${userId}`);
+    return raw ? (JSON.parse(raw) as Activity) : { sessions: [] };
+  } catch {
+    return { sessions: [] };
+  }
+}
+
+export function logSession(
+  userId: string,
+  entry: Activity["sessions"][number],
+): void {
+  const activity = readActivity(userId);
+  const already = activity.sessions.some((s) => s.sessionId === entry.sessionId);
+  if (!already) {
+    activity.sessions.unshift(entry);
+    localStorage.setItem(`${ACTIVITY_KEY}-${userId}`, JSON.stringify(activity));
+  }
+}
+
+export function isBackendNotReadyMessage(msg: string): boolean {
+  return msg.includes("backend") || msg.includes("503") || msg.includes("502");
 }

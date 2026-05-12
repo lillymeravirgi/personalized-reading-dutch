@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 import { useStore } from "../../store";
-import { logFlashcardReview, submitFlashcardReview } from "../../services/api";
+import { submitFlashcardReview } from "../../services/api";
 import FlashcardItem from "./FlashcardItem";
 
 type Props = {
@@ -32,7 +32,6 @@ export default function FlashcardDeck({ onComplete }: Props) {
         return next;
       });
     }
-    if (user) logFlashcardReview(user.id, didRemember);
     if (user) {
       void submitFlashcardReview(user.id, card.wordId, didRemember);
     }

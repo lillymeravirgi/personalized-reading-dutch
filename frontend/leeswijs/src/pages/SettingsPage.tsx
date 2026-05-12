@@ -6,17 +6,13 @@ import {
   User as UserIcon,
   Award,
   Tags,
-  Lock,
-  Eye,
-  EyeOff,
   Check,
   AlertCircle,
-  X,
   Save,
   RefreshCw,
 } from "lucide-react";
 
-import { changePassword, saveProfile } from "../services/api";
+import { saveProfile } from "../services/api";
 import { useStore } from "../store";
 import {
   INTERESTS,
@@ -31,7 +27,6 @@ export default function SettingsPage() {
   const setUser  = useStore((s) => s.setUser);
 
   const [interests,    setInterestsSet] = useState<Set<InterestId>>(new Set());
-  const [pwOpen,       setPwOpen]       = useState(false);
   const [saving,       setSaving]       = useState(false);
   const [toast,        setToast]        = useState<string | null>(null);
   const [error,        setError]        = useState<string | null>(null);
@@ -246,34 +241,6 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      <Section title="Security" icon={<Lock size={14} />}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-heading font-semibold text-text">
-              Password
-            </p>
-            <p className="text-xs font-body text-text/50 mt-0.5">
-              Change the password you use to log in.
-            </p>
-          </div>
-          <motion.button
-            type="button"
-            onClick={() => setPwOpen(true)}
-            whileTap={{ scale: 0.97 }}
-            className="inline-flex items-center gap-2 rounded-xl border border-black/12 bg-white px-4 py-2 text-sm font-heading font-semibold text-text/80 hover:bg-black/[0.03] hover:border-black/20"
-          >
-            <Lock size={13} />
-            Change password
-          </motion.button>
-        </div>
-      </Section>
-
-      <ChangePasswordModal
-        open={pwOpen}
-        onClose={() => setPwOpen(false)}
-        username={user.id}
-        onSuccess={() => flashToast("Password updated")}
-      />
     </motion.div>
   );
 }
@@ -351,220 +318,4 @@ function relDays(iso: string): string {
   const weeks = Math.floor(diffDays / 7);
   if (weeks < 8)  return `${weeks} weeks ago`;
   return new Date(iso).toLocaleDateString();
-}
-
-function ChangePasswordModal({
-  open,
-  onClose,
-  username,
-  onSuccess,
-}: {
-  open: boolean;
-  onClose: () => void;
-  username: string;
-  onSuccess: () => void;
-}) {
-  const [oldPw,      setOldPw]      = useState("");
-  const [newPw,      setNewPw]      = useState("");
-  const [confirmPw,  setConfirmPw]  = useState("");
-  const [showOld,    setShowOld]    = useState(false);
-  const [showNew,    setShowNew]    = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setOldPw(""); setNewPw(""); setConfirmPw("");
-    setShowOld(false); setShowNew(false);
-    setError(null);
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  function validate(): string | null {
-    if (!oldPw) return "Current password is required.";
-    if (newPw.length < 4) return "New password must be at least 4 characters.";
-    if (newPw === oldPw) return "New password must differ from the current one.";
-    if (newPw !== confirmPw) return "Password confirmation does not match.";
-    return null;
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const v = validate();
-    if (v) { setError(v); return; }
-    setSubmitting(true);
-    setError(null);
-    try {
-      await changePassword(username, oldPw, newPw);
-      onSuccess();
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not change password.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
-          onClick={onClose}
-        >
-          <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.97 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full max-w-md rounded-2xl bg-white shadow-2xl shadow-black/20 overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-3 border-b border-black/5">
-              <div>
-                <h2 className="font-heading text-lg font-bold text-text">
-                  Change password
-                </h2>
-                <p className="text-xs font-body text-text/50 mt-0.5">
-                  Pick a new password of at least 4 characters.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1.5 rounded-lg hover:bg-black/5 text-text/50"
-                aria-label="Close"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} noValidate className="px-6 py-5 space-y-4">
-              <AnimatePresence>
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="flex items-start gap-2 rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5"
-                  >
-                    <AlertCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
-                    <p className="text-sm text-red-700 font-body">{error}</p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <PwField
-                label="Current password"
-                id="cp-old"
-                value={oldPw}
-                onChange={setOldPw}
-                show={showOld}
-                onToggleShow={() => setShowOld((v) => !v)}
-                autoComplete="current-password"
-              />
-              <PwField
-                label="New password"
-                id="cp-new"
-                value={newPw}
-                onChange={setNewPw}
-                show={showNew}
-                onToggleShow={() => setShowNew((v) => !v)}
-                autoComplete="new-password"
-              />
-              <PwField
-                label="Confirm new password"
-                id="cp-conf"
-                value={confirmPw}
-                onChange={setConfirmPw}
-                show={showNew}
-                onToggleShow={() => setShowNew((v) => !v)}
-                autoComplete="new-password"
-              />
-
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-xl px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/5"
-                >
-                  Cancel
-                </button>
-                <motion.button
-                  type="submit"
-                  disabled={submitting}
-                  whileTap={{ scale: submitting ? 1 : 0.97 }}
-                  className={[
-                    "inline-flex items-center gap-2 rounded-xl px-5 py-2.5",
-                    "text-sm font-heading font-semibold text-white bg-primary",
-                    submitting ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
-                  ].join(" ")}
-                >
-                  {submitting ? <Spinner /> : "Update password"}
-                </motion.button>
-              </div>
-            </form>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-}
-
-function PwField({
-  label,
-  id,
-  value,
-  onChange,
-  show,
-  onToggleShow,
-  autoComplete,
-}: {
-  label: string;
-  id: string;
-  value: string;
-  onChange: (v: string) => void;
-  show: boolean;
-  onToggleShow: () => void;
-  autoComplete: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label
-        htmlFor={id}
-        className="block text-xs font-body font-semibold text-text/60 uppercase tracking-wide"
-      >
-        {label}
-      </label>
-      <div className="flex items-center gap-3 rounded-xl border border-black/12 bg-black/[0.02] px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 hover:border-black/20">
-        <Lock size={15} className="text-text/30" />
-        <input
-          id={id}
-          type={show ? "text" : "password"}
-          autoComplete={autoComplete}
-          placeholder="••••••••"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
-        />
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={onToggleShow}
-          className="text-text/30 hover:text-text/60 transition-colors"
-          aria-label={show ? "Hide password" : "Show password"}
-        >
-          {show ? <EyeOff size={15} /> : <Eye size={15} />}
-        </button>
-      </div>
-    </div>
-  );
 }
