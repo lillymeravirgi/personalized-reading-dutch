@@ -12,6 +12,7 @@ import {
 } from "../services/api";
 import { INTERESTS, type InterestId } from "../constants/interests";
 import { READING_STYLES, PURPOSES, type CefrLevel, type ReadingStyle, type Purpose } from "../types";
+import ConsentDetailsModal from "../components/ConsentDetailsModal";
 
 const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 const GENDERS = ["Male", "Female", "Non-binary", "Prefer not to say"];
@@ -26,6 +27,9 @@ export default function OnboardingPage() {
   const setUser = useStore((s) => s.setUser);
 
   const [step, setStep] = useState<Step>("personal");
+  const [consentAccepted, setConsentAccepted] = useState(() =>
+    user ? localStorage.getItem(`leeswijs-consent:${user.id}`) === "true" : false,
+  );
 
   // ── Step 1 state ───────────────────────────
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
@@ -63,7 +67,9 @@ export default function OnboardingPage() {
     );
 
   async function handlePersonalNext() {
-    if (!user) return;
+    if (!user || !consentAccepted) return;
+    localStorage.setItem(`leeswijs-consent:${user.id}`, "true");
+    localStorage.setItem(`leeswijs-consent-at:${user.id}`, new Date().toISOString());
     await savePersonalInfo(user.id, {
       display_name:        displayName,
       age:                 age !== "" ? Number(age) : undefined,
@@ -245,6 +251,8 @@ export default function OnboardingPage() {
             purpose={purpose} setPurpose={setPurpose}
             selfCefr={selfCefr} setSelfCefr={setSelfCefr}
             readingStyles={readingStyles} toggleStyle={toggleStyle}
+            consentAccepted={consentAccepted}
+            setConsentAccepted={setConsentAccepted}
             onNext={handlePersonalNext}
           />
         )}
@@ -320,9 +328,12 @@ function PersonalStep(props: {
   purpose: Purpose | ""; setPurpose: (v: Purpose | "") => void;
   selfCefr: CefrLevel; setSelfCefr: (v: CefrLevel) => void;
   readingStyles: ReadingStyle[]; toggleStyle: (s: ReadingStyle) => void;
+  consentAccepted: boolean; setConsentAccepted: (v: boolean) => void;
   onNext: () => void;
 }) {
+  const [showConsentDetails, setShowConsentDetails] = useState(false);
   const canContinue = 
+    props.consentAccepted &&
     props.displayName.trim().length > 0 && 
     props.age !== "" && 
     props.city.trim().length > 0 && 
@@ -336,6 +347,37 @@ function PersonalStep(props: {
     <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
       <h1 className="font-heading text-2xl font-bold text-text mb-1">Tell us about yourself</h1>
       <p className="text-sm text-text/50 font-body mb-6">This helps us personalise your reading texts.</p>
+
+      {!props.consentAccepted && (
+        <div className="mb-5 rounded-xl border border-black/10 bg-black/[0.02] p-4 transition-colors hover:border-black/20">
+          <div className="flex items-start justify-between gap-3">
+            <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={props.consentAccepted}
+                onChange={(e) => props.setConsentAccepted(e.target.checked)}
+                className="mt-1 h-4 w-4 accent-primary"
+              />
+              <span className="font-heading text-sm font-semibold text-text">
+                I agree to the study consent
+              </span>
+            </label>
+
+            <button
+              type="button"
+              onClick={() => setShowConsentDetails(true)}
+              className="shrink-0 text-xs font-heading font-semibold text-primary hover:underline"
+            >
+              Read more
+            </button>
+          </div>
+
+          <ConsentDetailsModal
+            open={showConsentDetails}
+            onClose={() => setShowConsentDetails(false)}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Full name *"><input value={props.displayName} onChange={(e) => props.setDisplayName(e.target.value)} placeholder="Your name" className={inputCls} /></Field>

@@ -4,7 +4,7 @@
  *
  * Word-click flow:
  *   1st click → WordTooltip (small popup, translation + quick actions)
- *   "Learn it" / "Review it" → WordModal (big detail view with SRS picker)
+ *   "Learn it" / "Review it" → WordModal (big detail view)
  *   "I know it" → instant mark-known API call, word turns white immediately
  */
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -39,6 +39,10 @@ function formatElapsed(ms: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function wordKey(word: string) {
+  return word.trim().toLowerCase();
+}
+
 export default function ReadingSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -71,60 +75,99 @@ export default function ReadingSessionPage() {
 
   // ── Click handlers ────────────────────────────────────────────────────────
 
+  function findLocalTranslation(word: string, wordId?: string | null) {
+    if (!currentSession) return null;
+
+    const key = wordKey(word);
+    const cached = definedEntries[key];
+    if (cached?.translation) {
+      return {
+        english: cached.translation,
+        wordId: String(cached.word_id),
+      };
+    }
+
+    const highlight = currentSession.highlights.find((h) =>
+      (wordId && h.wordId === wordId) || wordKey(h.dutch) === key
+    );
+    const english = currentSession.wordTranslations[key] || highlight?.english || "";
+    if (!english) return null;
+
+    return {
+      english,
+      wordId: wordId ?? highlight?.wordId,
+    };
+  }
+
+  async function fetchMissingTranslation(word: string) {
+    try {
+      const entry = await defineWord(word);
+      setDefinedEntries((prev) => ({
+        ...prev,
+        [wordKey(word)]: entry,
+        [wordKey(entry.word)]: entry,
+      }));
+      setTooltip((prev) =>
+        prev && wordKey(prev.word) === wordKey(word)
+          ? {
+              ...prev,
+              english: entry.translation,
+              loading: false,
+              wordId: String(entry.word_id),
+              message: undefined,
+            }
+          : prev
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      setTooltip((prev) =>
+        prev && wordKey(prev.word) === wordKey(word)
+          ? {
+              ...prev,
+              english: null,
+              loading: false,
+              message: isBackendNotReadyMessage(msg)
+                ? "Translation needs backend support."
+                : "Translation not available.",
+            }
+          : prev
+      );
+    }
+  }
+
   /** ALL highlighted words now go through the tooltip first */
   function handleHighlightClick(wordId: string, el: HTMLElement) {
     const token = currentSession?.tokens.find((t) => t.wordId === wordId);
     if (!token) return;
     const rect = el.getBoundingClientRect();
+    const local = findLocalTranslation(token.text, token.wordId);
     setTooltip({
       word:          token.text,
-      english:       currentSession?.wordTranslations[token.text.toLowerCase()] || null,
-      loading:       false,
+      english:       local?.english ?? null,
+      loading:       !local?.english,
       anchor:        { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-      wordId:        token.wordId ?? undefined,
+      wordId:        local?.wordId ?? token.wordId ?? undefined,
       status:        knownOverride.has(wordId) ? "known" : token.status,
     });
+    if (!local?.english) void fetchMissingTranslation(token.text);
   }
 
   /** Plain (white) words — look up translation, then show tooltip */
   async function handlePlainWordClick(word: string, el: HTMLElement) {
     const rect = el.getBoundingClientRect();
-    
-    // Try to find if this word has a status/id in tokens
     const token = currentSession?.tokens.find(t => t.text.toLowerCase() === word.toLowerCase() && t.type === "word");
+    const local = findLocalTranslation(word, token?.wordId);
 
     setTooltip({ 
       word, 
-      english: currentSession?.wordTranslations[word.toLowerCase()] || null, 
-      loading: !currentSession?.wordTranslations[word.toLowerCase()], 
+      english: local?.english ?? null, 
+      loading: !local?.english, 
       anchor: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-      wordId: token?.wordId ?? undefined,
+      wordId: local?.wordId ?? token?.wordId ?? undefined,
       status: (token?.wordId && knownOverride.has(token.wordId)) ? "known" : token?.status
     });
 
-    if (!currentSession?.wordTranslations[word.toLowerCase()]) {
-      try {
-        const entry = await defineWord(word);
-        if (entry) {
-          setDefinedEntries(prev => ({ ...prev, [word.toLowerCase()]: entry }));
-          setTooltip((prev) => prev ? { 
-            ...prev, 
-            english: entry.translation, 
-            loading: false, 
-            wordId: String(entry.word_id),
-            message: undefined 
-          } : null);
-        } else {
-          setTooltip((prev) => prev ? { ...prev, english: null, loading: false, message: "Translation not available." } : null);
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "";
-        setTooltip((prev) => prev ? {
-          ...prev, english: null, loading: false,
-          message: isBackendNotReadyMessage(msg) ? "Translation needs backend support." : "Translation not available.",
-        } : null);
-      }
-    }
+    if (!local?.english) await fetchMissingTranslation(word);
   }
 
   /** "I know it" from the tooltip → instant API + local visual update */
@@ -187,13 +230,16 @@ export default function ReadingSessionPage() {
   // ── Derived state ─────────────────────────────────────────────────────────
   const activeWord: HighlightedWord | null = useMemo(() => {
     if (!currentSession || !modalWordId) return null;
-    
-    // 1. Try finding in current session highlights
-    const hw = currentSession.highlights.find((h) => h.wordId === modalWordId);
-    if (hw) return hw;
-
-    // 2. Try finding in on-the-fly defined entries
     const de = Object.values(definedEntries).find(e => String(e.word_id) === modalWordId);
+    const hw = currentSession.highlights.find((h) => h.wordId === modalWordId);
+    if (hw) {
+      return {
+        ...hw,
+        english: hw.english || de?.translation || "",
+        exampleSentences: hw.exampleSentences.length > 0 ? hw.exampleSentences : de?.examples || [],
+      };
+    }
+
     if (de) {
       return {
         wordId: String(de.word_id),
@@ -201,7 +247,7 @@ export default function ReadingSessionPage() {
         english: de.translation,
         startIndex: 0,
         endIndex: 0,
-        highlightType: "unknown", // Default for white words being promoted
+        highlightType: "unknown",
         exampleSentences: de.examples || [],
         usageFrequency: "common",
       };

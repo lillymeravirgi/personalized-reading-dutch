@@ -128,28 +128,24 @@ export default function SurveyPage() {
         )}
       </AnimatePresence>
 
-      <div className="space-y-8 rounded-2xl bg-white px-7 py-8 shadow-xl shadow-black/8">
-        <SectionLabel label="Reading value" />
-        <LikertQuestion tag="RQ1" question={Q_WORTH_MY_TIME} value={worthMyTime} onChange={setWorthMyTime} />
+      <div className="space-y-7 rounded-2xl bg-white px-7 py-8 shadow-xl shadow-black/8">
+        <LikertQuestion question={Q_WORTH_MY_TIME} value={worthMyTime} onChange={setWorthMyTime} />
 
         <Divider />
 
-        <SectionLabel label="Engagement" />
-        <LikertQuestion tag="Focused attention" question={Q_FOCUSED_ATTENTION} value={focusedAttention} onChange={setFocusedAttention} />
+        <LikertQuestion question={Q_FOCUSED_ATTENTION} value={focusedAttention} onChange={setFocusedAttention} />
         <Divider />
-        <LikertQuestion tag="Reward" question={Q_REWARD} value={reward} onChange={setReward} />
+        <LikertQuestion question={Q_REWARD} value={reward} onChange={setReward} />
         <Divider />
-        <LikertQuestion tag="Perceived relevance" question={Q_PERCEIVED_RELEVANCE} value={perceivedRelevance} onChange={setPerceivedRelevance} />
+        <LikertQuestion question={Q_PERCEIVED_RELEVANCE} value={perceivedRelevance} onChange={setPerceivedRelevance} />
 
         <Divider />
 
-        <SectionLabel label="Mental effort" />
-        <TLXQuestion tag="Cognitive load" question={Q_MENTAL_EFFORT} value={mentalEffort} onChange={setMentalEffort} />
+        <TLXQuestion question={Q_MENTAL_EFFORT} value={mentalEffort} onChange={setMentalEffort} />
 
         <Divider />
 
-        <SectionLabel label="Text fit" />
-        <LikertQuestion tag="Manipulation check" question={Q_MANIPULATION_CHECK} value={perceivedPersonalization} onChange={setPerceivedPersonalization} />
+        <LikertQuestion question={Q_MANIPULATION_CHECK} value={perceivedPersonalization} onChange={setPerceivedPersonalization} />
       </div>
 
       <div className="mt-7 flex justify-end">
@@ -208,10 +204,6 @@ function ThankYouView({ onReadNext, onReviewWords }: { onReadNext: () => void; o
       </div>
     </motion.div>
   );
-}
-
-function SectionLabel({ label }: { label: string }) {
-  return <p className="text-[11px] font-body font-semibold uppercase tracking-widest text-text/35">{label}</p>;
 }
 
 function Divider() { return <div className="h-px bg-black/6" />; }

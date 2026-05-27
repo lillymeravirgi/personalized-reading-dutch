@@ -52,21 +52,21 @@ export default function ReadingPage() {
 
   if (!user) return null;
 
-  // ── Derive reading slots 1-3 ────────────────────────────────────────────────
   const slots: Array<SessionSummary | null> = [
     sessions.find((s) => s.reading_number === 1) ?? null,
     sessions.find((s) => s.reading_number === 2) ?? null,
     sessions.find((s) => s.reading_number === 3) ?? null,
   ];
-  const completedCount   = sessions.filter((s) => s.survey_completed && s.reading_number <= MAX_GATED).length;
+  const completedCount   = slots.filter((s) => s?.survey_completed).length;
   const allGatedComplete = completedCount >= MAX_GATED;
-  const nextReadingNumber = sessions.filter((s) => s.reading_number <= MAX_GATED).length + 1;
-  const activeGated = sessions.find((s) => s.reading_number <= MAX_GATED && !s.survey_completed) ?? null;
+  const nextSlotIndex    = slots.findIndex((s) => s === null);
+  const nextReadingNumber = nextSlotIndex >= 0 ? nextSlotIndex + 1 : MAX_GATED + 1;
+  const activeGated = slots.find((s) => s !== null && !s.survey_completed) ?? null;
 
   async function handleGenerate() {
     if (!user) return;
     if (activeGated) {
-      setAlertMsg(`Please finish Reading ${activeGated.reading_number} and complete its survey first 😊`);
+      setAlertMsg(`Please finish Reading ${activeGated.reading_number} and complete its survey first.`);
       setTimeout(() => setAlertMsg(null), 4000);
       return;
     }
@@ -87,7 +87,7 @@ export default function ReadingPage() {
 
   const canGenerate =
     !loading &&
-    (sessions.filter((s) => s.reading_number <= MAX_GATED).length < MAX_GATED
+    (slots.some((s) => s === null)
       ? !activeGated
       : allGatedComplete);
 
@@ -113,7 +113,7 @@ export default function ReadingPage() {
           <h1 className="font-heading text-2xl font-bold text-text">Reading</h1>
           <p className="text-sm font-body text-text/50">
             {allGatedComplete
-              ? "Free reading mode unlocked — generate as many as you like!"
+              ? "Reading tasks completed. You can keep practicing with extra texts."
               : `Complete ${MAX_GATED} readings and their surveys to unlock the vocabulary test.`}
           </p>
         </div>
@@ -148,10 +148,10 @@ export default function ReadingPage() {
             <BookOpen size={20} strokeWidth={2} />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-heading text-base font-bold text-text">Generate new reading</h2>
+            <h2 className="font-heading text-base font-bold text-text">Create reading task</h2>
             <p className="text-xs text-text/50 font-body">
               {allGatedComplete
-                ? "Free mode — generate as many readings as you like."
+                ? "Extra practice is available after the required tasks."
                 : `Reading ${Math.min(nextReadingNumber, MAX_GATED)} of ${MAX_GATED}`}
             </p>
           </div>
@@ -180,7 +180,7 @@ export default function ReadingPage() {
             {loading ? (
               <><Loader2 size={16} className="animate-spin" /> Generating…</>
             ) : (
-              <><BookOpen size={15} /> Generate<ArrowRight size={15} /></>
+              <><BookOpen size={15} /> Create reading<ArrowRight size={15} /></>
             )}
           </motion.button>
         </div>
@@ -236,7 +236,7 @@ export default function ReadingPage() {
                   </p>
                   <p className="text-xs font-body text-text/45 mt-0.5">
                     {isCompleted
-                      ? "Completed ✓"
+                      ? "Completed"
                       : isActive
                       ? "In progress — tap to continue"
                       : isLocked
@@ -259,7 +259,7 @@ export default function ReadingPage() {
           className="rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-4"
         >
           <h3 className="font-heading text-sm font-bold text-emerald-800 mb-1">
-            🎉 Vocabulary test unlocked!
+            Vocabulary test unlocked
           </h3>
           <p className="text-xs font-body text-emerald-700 mb-3">
             Test your memory of the 7 words you studied before the readings.

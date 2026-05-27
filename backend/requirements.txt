@@ -9,6 +9,7 @@ pydantic-settings>=2.7,<3.0
 # Database
 SQLAlchemy>=2.0,<3.0
 PyMySQL>=1.1,<2.0
+psycopg[binary]>=3.2,<4.0
 
 # Authentication
 werkzeug>=3.0,<4.0

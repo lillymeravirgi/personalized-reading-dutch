@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, KeyRound } from "lucide-react";
 import { registerUser } from "../services/api";
 import { useStore } from "../store";
+import ConsentDetailsModal from "../components/ConsentDetailsModal";
 
 function validateEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -21,34 +22,45 @@ function validateConfirm(password: string, confirm: string) {
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const setUser  = useStore((s) => s.setUser);
 
+  const initialStudyCode = (searchParams.get("code") || "").trim().toUpperCase();
   const [email,    setEmail]   = useState("");
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
+  const [studyCode, setStudyCode] = useState(initialStudyCode);
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ email: false, password: false, confirm: false });
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [showConsentDetails, setShowConsentDetails] = useState(false);
+  const [touched, setTouched] = useState({ email: false, password: false, confirm: false, consent: false });
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const emailError    = touched.email    ? validateEmail(email)                  : null;
   const passwordError = touched.password ? validatePassword(password)            : null;
   const confirmError  = touched.confirm  ? validateConfirm(password, confirm)    : null;
+  const consentError  = touched.consent && !consentAccepted
+    ? "Please accept the study data consent to create an account."
+    : null;
   const isFormValid   =
     !validateEmail(email) &&
     !validatePassword(password) &&
-    !validateConfirm(password, confirm);
+    !validateConfirm(password, confirm) &&
+    consentAccepted;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ email: true, password: true, confirm: true });
+    setTouched({ email: true, password: true, confirm: true, consent: true });
     if (!isFormValid) return;
 
     setSubmitting(true);
     setServerError(null);
 
     try {
-      const user = await registerUser(email, password);
+      const user = await registerUser(email, password, studyCode || undefined);
+      localStorage.setItem(`leeswijs-consent:${user.id}`, "true");
+      localStorage.setItem(`leeswijs-consent-at:${user.id}`, new Date().toISOString());
       setUser(user);
       // Always go to onboarding after registration
       navigate("/onboarding", { replace: true });
@@ -142,6 +154,69 @@ export default function RegisterPage() {
           </InputWrapper>
         </Field>
 
+        <Field label="Study Code" error={null} htmlFor="register-study-code">
+          <InputWrapper icon={<KeyRound size={16} />} hasError={false}>
+            <input
+              id="register-study-code"
+              type="text"
+              autoComplete="off"
+              placeholder="LW-A07"
+              value={studyCode}
+              onChange={(e) => setStudyCode(e.target.value.trim().toUpperCase())}
+              className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
+            />
+          </InputWrapper>
+          <p className="text-xs text-text/35 font-body">
+            Use the code from your study link if you received one.
+          </p>
+        </Field>
+
+        <div
+          className={[
+            "block rounded-xl border p-4 transition-colors",
+            consentError
+              ? "border-red-300 bg-red-50/40"
+              : consentAccepted
+                ? "border-primary/35 bg-primary/[0.04]"
+                : "border-black/10 bg-black/[0.02] hover:border-black/20",
+          ].join(" ")}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={consentAccepted}
+                onChange={(e) => {
+                  setConsentAccepted(e.target.checked);
+                  setTouched((t) => ({ ...t, consent: true }));
+                }}
+                className="mt-1 h-4 w-4 accent-primary"
+              />
+              <span className="font-heading text-sm font-semibold text-text">
+                I agree to the study consent
+              </span>
+            </label>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                setShowConsentDetails(true);
+              }}
+              className="shrink-0 text-xs font-heading font-semibold text-primary hover:underline"
+            >
+              Read more
+            </button>
+          </div>
+
+          {consentError && (
+            <span className="mt-3 flex items-center gap-1 text-xs font-body text-red-500">
+              <AlertCircle size={11} />
+              {consentError}
+            </span>
+          )}
+        </div>
+
         {/* Submit */}
         <motion.button
           type="submit"
@@ -187,6 +262,11 @@ export default function RegisterPage() {
       <p className="mt-6 text-center text-xs text-text/30 font-body">
         🇳🇱 Learning Dutch, one article at a time.
       </p>
+
+      <ConsentDetailsModal
+        open={showConsentDetails}
+        onClose={() => setShowConsentDetails(false)}
+      />
     </motion.div>
   );
 }

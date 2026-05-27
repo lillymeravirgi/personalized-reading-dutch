@@ -11,7 +11,6 @@ Seeds:
 """
 from __future__ import annotations
 
-import hashlib
 import os
 import sys
 
@@ -19,10 +18,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from app.database import Base, SessionLocal, engine
 from app.models import Lexicon, User
-
-
-def hash_password(raw: str) -> str:
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+from app.routers.auth import hash_password
 
 
 # ─────────────────────────────────────────────────────────────────────────────

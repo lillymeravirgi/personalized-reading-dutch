@@ -3,8 +3,6 @@ import type { TLXScale } from "../../types";
 
 type Props = {
   question: string;
-  /** Optional short label (e.g. "NASA-TLX · Mental Effort"). */
-  tag?: string;
   value: TLXScale | null;
   onChange: (v: TLXScale) => void;
   anchors?: { left: string; right: string };
@@ -14,18 +12,12 @@ const SCALE: TLXScale[] = [1, 2, 3, 4, 5, 6, 7];
 
 export default function TLXQuestion({
   question,
-  tag,
   value,
   onChange,
   anchors = { left: "Very low", right: "Very high" },
 }: Props) {
   return (
     <div className="space-y-3">
-      {tag && (
-        <span className="text-[10px] font-heading font-semibold uppercase tracking-wide text-secondary">
-          {tag}
-        </span>
-      )}
       <p className="text-sm font-body text-text leading-relaxed">{question}</p>
 
       <div className="flex items-center gap-1.5">

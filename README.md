@@ -116,7 +116,7 @@ Create `backend/.env` from `backend/.env.example`.
 ```env
 DATABASE_URL=sqlite:///./dev.db
 GOOGLE_API_KEY=your-key-here
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3-flash-preview
 ```
 
 Optional frontend variables:
@@ -124,6 +124,68 @@ Optional frontend variables:
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
+
+## Cloud Deployment
+
+Recommended setup for the public study version:
+
+```text
+Frontend: Vercel
+Backend: Render
+Database: Neon / Supabase / Render PostgreSQL
+```
+
+### Backend environment variables
+
+Set these in the backend hosting provider, not in GitHub:
+
+```env
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DB
+GOOGLE_API_KEY=your-gemini-key
+GEMINI_MODEL=gemini-3-flash-preview
+FRONTEND_ORIGINS=https://your-frontend.vercel.app
+
+REQUIRE_STUDY_CODE=true
+STUDY_INVITE_CODES=LW-A01,LW-A02,LW-A03,LW-A04,LW-A05,LW-A06,LW-A07
+```
+
+Backend start command:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port $PORT
+```
+
+Run the seed script once after the cloud database is connected:
+
+```bash
+python seed.py
+```
+
+### Frontend environment variables
+
+Set this in Vercel:
+
+```env
+VITE_API_BASE_URL=https://your-backend.onrender.com/api
+```
+
+Use `frontend/leeswijs` as the Vercel root directory. The app includes `vercel.json` so direct links such as `/register?code=LW-A07` work with React Router.
+
+Participants should receive a study-code link:
+
+```text
+https://your-frontend.vercel.app/register?code=LW-A07
+```
+
+If `REQUIRE_STUDY_CODE=true`, users cannot register without a valid unused code.
+
+### Public study safety checklist
+
+- Keep `GOOGLE_API_KEY` and `DATABASE_URL` only in hosting environment variables.
+- Do not use `allow_origins=["*"]` in production.
+- Use anonymous study codes instead of real names where possible.
+- Keep the study database separate from local development data.
+- Turn off or pause the deployment after the study if it is no longer needed.
 
 ## Local Run Checklist
 

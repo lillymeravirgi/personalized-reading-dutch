@@ -3,8 +3,8 @@ import { Loader2 } from "lucide-react";
 
 const STEPS = [
   "Preparing a Dutch reading...",
+  "The server may need a moment to wake up...",
   "Writing and checking the text...",
-  "Almost there. This can take 15-30 seconds.",
   "Still working. Please keep this page open.",
 ] as const;
 
@@ -19,8 +19,8 @@ export default function ReadingGenerationStatus({ className = "" }: Props) {
     setStep(0);
     const timers = [
       window.setTimeout(() => setStep(1), 6_000),
-      window.setTimeout(() => setStep(2), 14_000),
-      window.setTimeout(() => setStep(3), 28_000),
+      window.setTimeout(() => setStep(2), 22_000),
+      window.setTimeout(() => setStep(3), 45_000),
     ];
     return () => timers.forEach(window.clearTimeout);
   }, []);

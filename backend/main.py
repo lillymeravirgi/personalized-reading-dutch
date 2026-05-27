@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import FRONTEND_ORIGINS
 from app.database import Base, engine
 from app.routers import (
     assessment,
@@ -82,6 +83,9 @@ def _ensure_sqlite_columns() -> None:
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_users_username ON users (username)"
         )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_study_code ON users (study_code)"
+        )
 
 
 app = FastAPI(
@@ -93,14 +97,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

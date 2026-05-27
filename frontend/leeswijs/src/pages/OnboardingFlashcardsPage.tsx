@@ -4,16 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Check, BookOpen } from "lucide-react";
 import { getOnboardingWords, addToLearnList, completeOnboarding, markKnown, selectOnboardingWords } from "../services/api";
 import { useStore } from "../store";
-import type { LexiconEntry, ReviewInterval } from "../types";
-
-const REVIEW_OPTIONS: { label: string; value: ReviewInterval; days?: number }[] = [
-  { label: "Today",   value: "today",  days: 0 },
-  { label: "1 day",   value: "1d",     days: 1 },
-  { label: "2 days",  value: "2d",     days: 2 },
-  { label: "4 days",  value: "4d",     days: 4 },
-  { label: "1 week",  value: "1w",     days: 7 },
-  { label: "1 month", value: "1m",     days: 30 },
-];
+import type { LexiconEntry } from "../types";
+import SpeakButton from "../components/SpeakButton";
 
 export default function OnboardingFlashcardsPage() {
   const navigate = useNavigate();
@@ -25,7 +17,6 @@ export default function OnboardingFlashcardsPage() {
   const [flipped,    setFlipped]    = useState(false);
   const [done,       setDone]       = useState(false);
   const [loading,    setLoading]    = useState(true);
-  const [interval,   setInterval]   = useState<ReviewInterval>(null);
   const [saving,     setSaving]     = useState(false);
   const [advancing,  setAdvancing]  = useState(false);
   const [completedCount, setCompletedCount] = useState(0);
@@ -35,12 +26,17 @@ export default function OnboardingFlashcardsPage() {
 
   useEffect(() => {
     if (!user) return;
+    setLoading(true);
+    setError(null);
+
     getOnboardingWords(user.id)
+      .catch(() => selectOnboardingWords(user.id))
       .then((ws) => {
-        if (ws.length > 0) return ws;
-        return selectOnboardingWords(user.id);
+        if (ws.length === 0) {
+          throw new Error("No onboarding words were prepared.");
+        }
+        setWords(ws);
       })
-      .then((ws) => setWords(ws))
       .catch(() => setError("Could not load onboarding words."))
       .finally(() => setLoading(false));
   }, [user]);
@@ -73,18 +69,14 @@ export default function OnboardingFlashcardsPage() {
 
   function handleAddToLearn() {
     if (!user || !word || saving || advancing) return;
-    const days = interval
-      ? REVIEW_OPTIONS.find((r) => r.value === interval)?.days
-      : undefined;
     setSaving(true);
-    void addToLearnList(user.id, word.word_id, days).finally(() => setSaving(false));
+    void addToLearnList(user.id, word.word_id).finally(() => setSaving(false));
     advanceCard();
   }
 
   function advanceCard() {
     setAdvancing(true);
     setFlipped(false);
-    setInterval(null);
     
     const newCount = completedCount + 1;
     setCompletedCount(newCount);
@@ -206,7 +198,14 @@ export default function OnboardingFlashcardsPage() {
               <BookOpen size={22} />
             </div>
             <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Dutch word</p>
-            <h2 className="font-heading text-3xl font-bold text-text">{word?.word}</h2>
+            <div className="flex items-center justify-center gap-2">
+              <h2 className="font-heading text-3xl font-bold text-text break-words">{word?.word}</h2>
+              <SpeakButton
+                text={word?.word ?? ""}
+                label={`Play Dutch pronunciation for ${word?.word ?? "this word"}`}
+                className="h-9 w-9 shrink-0"
+              />
+            </div>
           </div>
 
           {/* Back: translation + examples (shown after flip) */}
@@ -234,23 +233,6 @@ export default function OnboardingFlashcardsPage() {
                   </div>
                 )}
 
-                <div className="mb-5">
-                  <p className="text-xs font-body font-semibold text-text/50 mb-2">Review again in:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {REVIEW_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setInterval(opt.value)}
-                        className={["px-3 py-1 rounded-full text-xs font-body font-semibold border transition-all",
-                          interval === opt.value ? "bg-primary text-white border-primary" : "border-black/12 text-text/60 hover:border-black/25"].join(" ")}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 <button
                   type="button"
                   onClick={() => void handleAddToLearn()}
@@ -272,7 +254,7 @@ export default function OnboardingFlashcardsPage() {
                 disabled={advancing}
                 className="flex-1 rounded-xl border border-black/12 px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/[0.03] transition-colors disabled:opacity-50"
               >
-                I know it ✓
+                I know it
               </button>
               <button
                 type="button"

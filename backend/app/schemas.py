@@ -12,6 +12,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     display_name: Optional[str] = None
+    study_code: Optional[str] = None
 
 class LoginRequest(BaseModel):
     email: str

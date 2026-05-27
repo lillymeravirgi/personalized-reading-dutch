@@ -22,10 +22,13 @@ const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
   "http://localhost:8000/api";
 
+const DEFAULT_TIMEOUT_MS = 30_000;
+const GENERATION_TIMEOUT_MS = 120_000;
+
 export const apiClient = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
-  timeout: 30_000,
+  timeout: DEFAULT_TIMEOUT_MS,
 });
 
 apiClient.interceptors.request.use((config) => {
@@ -44,6 +47,9 @@ apiClient.interceptors.request.use((config) => {
 
 function extractError(err: unknown): string {
   if (err instanceof AxiosError) {
+    if (err.code === "ECONNABORTED" || err.message.toLowerCase().includes("timeout")) {
+      return "The server took too long to respond. Please try again in a moment.";
+    }
     const detail = err.response?.data?.detail;
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail)) return detail.map((d) => d.msg ?? d).join("; ");
@@ -104,11 +110,13 @@ function mapAuthResponseToUser(data: BackendAuthResponse): User {
 export async function registerUser(
   email: string,
   password: string,
+  studyCode?: string,
 ): Promise<User> {
   try {
     const { data } = await apiClient.post<BackendAuthResponse>("/auth/register", {
       email,
       password,
+      study_code: studyCode,
     });
     return mapAuthResponseToUser(data);
   } catch (err) {
@@ -285,6 +293,7 @@ export async function getAssessmentBatch(
         known_words:       knownWords ?? [],
         all_words:         allWords ?? [],
       },
+      { timeout: GENERATION_TIMEOUT_MS },
     );
     return {
       success: true,
@@ -407,7 +416,7 @@ export async function generateSession(
     user_id:        userId,
     condition,
     narrative_style: narrativeStyle ?? "Narrative (Story)",
-  });
+  }, { timeout: GENERATION_TIMEOUT_MS });
   return {
     sessionId:     String(data.session_id),
     readingNumber: Number(data.reading_number ?? 1),
@@ -452,7 +461,7 @@ export async function continueSession(
     user_id:             userId,
     previous_session_id: previousSessionId,
     narrative_style:     narrativeStyle,
-  });
+  }, { timeout: GENERATION_TIMEOUT_MS });
   return mapSessionResponse(data);
 }
 
@@ -461,14 +470,14 @@ export async function continueSession(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Define an unknown word (looks up lexicon or calls Gemini). */
-export async function defineWord(word: string): Promise<LexiconEntry | null> {
+export async function defineWord(word: string): Promise<LexiconEntry> {
   try {
     const { data } = await apiClient.get<LexiconEntry>(
       `/lexicon/define/${encodeURIComponent(word)}`,
     );
     return data;
-  } catch {
-    return null;
+  } catch (err) {
+    throw new Error(extractError(err));
   }
 }
 

@@ -52,6 +52,7 @@ class User(Base):
     username:      Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     display_name:  Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    study_code:    Mapped[Optional[str]] = mapped_column(String(50), unique=True, index=True, nullable=True)
     created_at:    Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=func.now())
 
     # ── Onboarding flag ───────────────────────

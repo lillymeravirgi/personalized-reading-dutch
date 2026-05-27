@@ -3,11 +3,8 @@ import type { LikertScale } from "../../types";
 
 type Props = {
   question: string;
-  /** Optional short label shown above the question (e.g. "UES-SF · Focused Attention"). */
-  tag?: string;
   value: LikertScale | null;
   onChange: (v: LikertScale) => void;
-  /** Left / right anchor labels for the scale. */
   anchors?: { left: string; right: string };
 };
 
@@ -15,18 +12,12 @@ const SCALE: LikertScale[] = [1, 2, 3, 4, 5];
 
 export default function LikertQuestion({
   question,
-  tag,
   value,
   onChange,
   anchors = { left: "Strongly disagree", right: "Strongly agree" },
 }: Props) {
   return (
     <div className="space-y-3">
-      {tag && (
-        <span className="text-[10px] font-heading font-semibold uppercase tracking-wide text-primary/80">
-          {tag}
-        </span>
-      )}
       <p className="text-sm font-body text-text leading-relaxed">{question}</p>
 
       <div className="flex items-center gap-2">
