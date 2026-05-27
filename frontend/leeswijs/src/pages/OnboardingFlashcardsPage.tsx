@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Check, BookOpen } from "lucide-react";
 import { getOnboardingWords, addToLearnList, completeOnboarding, markKnown, selectOnboardingWords } from "../services/api";
@@ -17,8 +17,13 @@ const REVIEW_OPTIONS: { label: string; value: ReviewInterval; days?: number }[] 
 
 export default function OnboardingFlashcardsPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const user     = useStore((s) => s.user);
   const setUser  = useStore((s) => s.setUser);
+
+  // phase=2 means the user is doing Phase 2 onboarding after the condition switch
+  const studyPhase = parseInt(searchParams.get("phase") ?? "1", 10);
+  const isPhase2   = studyPhase === 2;
 
   const [words,      setWords]      = useState<LexiconEntry[]>([]);
   const [index,      setIndex]      = useState(0);
@@ -49,8 +54,8 @@ export default function OnboardingFlashcardsPage() {
       const next = prev + 1;
       if (next % 10 === 0 && !refilling) {
         setRefilling(true);
-        // Call with isRefill = true
-        selectOnboardingWords(user.id, true).then((newWords) => {
+        // Call with isRefill = true and correct study phase
+        selectOnboardingWords(user.id, true, studyPhase).then((newWords) => {
           setWords((prevWords) => {
             const existingIds = new Set(prevWords.map(w => w.word_id));
             const uniqueNew = newWords.filter(w => !existingIds.has(w.word_id));
@@ -93,7 +98,7 @@ export default function OnboardingFlashcardsPage() {
     // Background refill based on buffer size
     if (words.length - nextIndex < 5 && !refilling && user) {
       setRefilling(true);
-      selectOnboardingWords(user.id, false).then((newWords) => {
+      selectOnboardingWords(user.id, false, studyPhase).then((newWords) => {
         setWords((prev) => {
           const existingIds = new Set(prev.map(w => w.word_id));
           const uniqueNew = newWords.filter(w => !existingIds.has(w.word_id));
@@ -106,9 +111,15 @@ export default function OnboardingFlashcardsPage() {
 
   async function handleFinish() {
     if (!user) return;
-    await completeOnboarding(user.id).catch(() => {});
-    setUser({ ...user, onboarding_completed: true });
-    navigate("/home", { replace: true });
+    if (isPhase2) {
+      // Phase 2: user is already onboarded — go directly to the reading page
+      navigate("/reading", { replace: true });
+    } else {
+      // Phase 1 (initial onboarding): mark onboarding complete and go to home
+      await completeOnboarding(user.id).catch(() => {});
+      setUser({ ...user, onboarding_completed: true });
+      navigate("/home", { replace: true });
+    }
   }
 
   if (loading) {
@@ -130,14 +141,16 @@ export default function OnboardingFlashcardsPage() {
         </div>
         <h2 className="font-heading text-xl font-bold text-text mb-2">Words reviewed!</h2>
         <p className="text-sm font-body text-text/50 mb-8">
-          Great start. Let's head to your reading dashboard.
+          {isPhase2
+            ? "Your Phase 2 words are ready. Let's start reading!"
+            : "Great start. Let's head to your reading dashboard."}
         </p>
         <button
           type="button"
           onClick={() => void handleFinish()}
           className="inline-flex items-center gap-2 bg-primary text-white rounded-xl px-6 py-3 text-sm font-heading font-semibold hover:opacity-90"
         >
-          Go to dashboard <ArrowRight size={16} />
+          {isPhase2 ? "Start Phase 2 readings" : "Go to dashboard"} <ArrowRight size={16} />
         </button>
       </motion.div>
     );
@@ -152,7 +165,7 @@ export default function OnboardingFlashcardsPage() {
     >
       {/* Progress */}
       <div className="mb-4 flex items-center justify-between text-xs font-body text-text/50">
-        <span>Mastering your first 7 words...</span>
+        <span>{isPhase2 ? "Mastering your Phase 2 words..." : "Mastering your first 7 words..."}</span>
         <span>[{learningCount}/7 completed]</span>
       </div>
       <div className="h-1.5 rounded-full bg-black/8 overflow-hidden mb-6">

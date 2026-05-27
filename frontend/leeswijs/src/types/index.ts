@@ -1,16 +1,6 @@
 // ── CEFR ──────────────────────────────────────────────────────────────────────
 export type CefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
-export const READING_STYLES = [
-  "Narrative (Story)",
-  "Discussion",
-  "Diary/Journal Entry",
-  "Descriptive",
-  "Dialogue",
-  "News",
-] as const;
-export type ReadingStyle = (typeof READING_STYLES)[number];
-
 export const PURPOSES = ["work", "study", "integration", "travel", "other"] as const;
 export type Purpose = (typeof PURPOSES)[number];
 
@@ -26,6 +16,7 @@ export interface User {
   assessedAt: string | null;
   createdAt: string | null;
   onboarding_completed: boolean;
+  preferred_styles?: string[];
 
   // Personal profile fields
   age?: number | null;
@@ -36,7 +27,10 @@ export interface User {
   mother_language?: string | null;
   other_languages?: string | null;
   purpose?: Purpose | null;
-  preferred_styles?: ReadingStyle[];
+
+  // Crossover study fields
+  current_condition?: string;        // "ADAPTIVE" | "BASELINE"
+  has_switched_conditions?: boolean;
 }
 
 // ── Vocabulary ────────────────────────────────────────────────────────────────
@@ -110,6 +104,7 @@ export interface SessionSummary {
   topic_used: string | null;
   condition: string;
   reading_number: number;
+  study_phase: number;
   survey_completed: boolean;
   created_at?: string | null;
 }

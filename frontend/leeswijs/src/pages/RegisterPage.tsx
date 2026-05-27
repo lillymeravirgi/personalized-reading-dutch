@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
 import { registerUser } from "../services/api";
@@ -21,7 +21,11 @@ function validateConfirm(password: string, confirm: string) {
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const setUser  = useStore((s) => s.setUser);
+
+  // Researcher sets ?start=ADAPTIVE or ?start=BASELINE in the URL
+  const startCondition = searchParams.get("start") ?? undefined;
 
   const [email,    setEmail]   = useState("");
   const [password, setPassword] = useState("");
@@ -48,7 +52,7 @@ export default function RegisterPage() {
     setServerError(null);
 
     try {
-      const user = await registerUser(email, password);
+      const user = await registerUser(email, password, startCondition);
       setUser(user);
       // Always go to onboarding after registration
       navigate("/onboarding", { replace: true });

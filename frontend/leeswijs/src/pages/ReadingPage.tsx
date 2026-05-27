@@ -16,9 +16,9 @@ import {
   Search,
 } from "lucide-react";
 
-import { generateSession, listSessions, getCondition } from "../services/api";
+import { generateSession, listSessions } from "../services/api";
+import type { ConditionType } from "../services/api";
 import type { SessionSummary } from "../types";
-import { READING_STYLES, type ReadingStyle } from "../types";
 import ReadingGenerationStatus from "../components/ReadingGenerationStatus";
 import { useStore } from "../store";
 
@@ -28,18 +28,20 @@ export default function ReadingPage() {
   const navigate = useNavigate();
   const user = useStore((s) => s.user);
 
+  // Derive which study phase the user is currently in
+  const currentPhase = user?.has_switched_conditions ? 2 : 1;
+
   const [sessions,     setSessions]     = useState<SessionSummary[]>([]);
-  const [style,        setStyle]        = useState<ReadingStyle>("Narrative (Story)");
   const [loading,      setLoading]      = useState(false);
   const [loadingList,  setLoadingList]  = useState(true);
   const [error,        setError]        = useState<string | null>(null);
   const [alertMsg,     setAlertMsg]     = useState<string | null>(null);
-  // History will now use the sessions array directly from the API
   const [query,        setQuery]        = useState("");
 
   const refreshSessions = async () => {
     if (!user) return;
-    const data = await listSessions(user.id);
+    // Only fetch sessions belonging to the current study phase → clean slate in Phase 2
+    const data = await listSessions(user.id, currentPhase);
     setSessions(data);
     setLoadingList(false);
   };
@@ -53,6 +55,7 @@ export default function ReadingPage() {
   if (!user) return null;
 
   // ── Derive reading slots 1-3 ────────────────────────────────────────────────
+  // Sessions are already pre-filtered to the current phase by listSessions
   const slots: Array<SessionSummary | null> = [
     sessions.find((s) => s.reading_number === 1) ?? null,
     sessions.find((s) => s.reading_number === 2) ?? null,
@@ -75,7 +78,9 @@ export default function ReadingPage() {
     setLoading(true);
     setError(null);
     try {
-      const { sessionId } = await generateSession(user.id, getCondition(nextReadingNumber), style);
+      // Use the user's actual current_condition from the store (set by backend on registration/switch)
+      const condition = (user.current_condition ?? "ADAPTIVE") as ConditionType;
+      const { sessionId } = await generateSession(user.id, condition);
       await refreshSessions();
       navigate(`/read/${sessionId}`);
     } catch (err) {
@@ -157,15 +162,6 @@ export default function ReadingPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={style}
-            onChange={(e) => setStyle(e.target.value as ReadingStyle)}
-            className="rounded-lg border border-black/12 bg-black/[0.02] px-3 py-2 text-sm font-body text-text outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-colors"
-          >
-            {READING_STYLES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
           <motion.button
             type="button"
             onClick={() => void handleGenerate()}
@@ -266,7 +262,12 @@ export default function ReadingPage() {
           </p>
           <button
             type="button"
-            onClick={() => navigate(`/vocab-test/${sessions.find((s) => s.reading_number === 1)?.session_id ?? ""}`)}
+            onClick={() => {
+              const firstSession = sessions.find((s) => s.reading_number === 1);
+              const sgId = firstSession?.session_id ?? "";
+              // phase param tells VocabTestPage whether this is the final submit
+              navigate(`/vocab-test/${sgId}?phase=${currentPhase}`);
+            }}
             className="inline-flex items-center gap-2 bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-heading font-semibold hover:opacity-90"
           >
             Start vocabulary test <ArrowRight size={14} />

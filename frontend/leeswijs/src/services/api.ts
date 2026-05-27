@@ -61,33 +61,41 @@ interface BackendAuthResponse {
   display_name?: string;
   estimated_cefr?: string;
   onboarding_completed: boolean;
+  current_condition?: string;
+  has_switched_conditions?: boolean;
 }
 
 function mapAuthResponseToUser(data: BackendAuthResponse): User {
   return {
-    id:                   data.user_id,
-    user_id:              data.user_id,
-    email:                data.email,
-    name:                 data.display_name || data.email.split("@")[0],
-    display_name:         data.display_name || "",
-    interests:            [],
-    cefrLevel:            (data.estimated_cefr as User["cefrLevel"]) ?? null,
-    assessedAt:           null,
-    createdAt:            new Date().toISOString(),
-    onboarding_completed: data.onboarding_completed,
-    preferred_styles:     [],
+    id:                       data.user_id,
+    user_id:                  data.user_id,
+    email:                    data.email,
+    name:                     data.display_name || data.email.split("@")[0],
+    display_name:             data.display_name || "",
+    interests:                [],
+    cefrLevel:                (data.estimated_cefr as User["cefrLevel"]) ?? null,
+    assessedAt:               null,
+    createdAt:                new Date().toISOString(),
+    onboarding_completed:     data.onboarding_completed,
+    preferred_styles:         [],
+    current_condition:        data.current_condition ?? "ADAPTIVE",
+    has_switched_conditions:  data.has_switched_conditions ?? false,
   };
 }
 
-/** Create a new account (email + password). */
+/** Create a new account (email + password).
+ *  startCondition is set by the researcher via ?start=ADAPTIVE|BASELINE in the URL.
+ */
 export async function registerUser(
   email: string,
   password: string,
+  startCondition?: string,
 ): Promise<User> {
   try {
     const { data } = await apiClient.post<BackendAuthResponse>("/auth/register", {
       email,
       password,
+      ...(startCondition ? { start_condition: startCondition } : {}),
     });
     return mapAuthResponseToUser(data);
   } catch (err) {
@@ -214,10 +222,14 @@ export async function savePersonalInfo(
 }
 
 /** Trigger KRS → select 7 onboarding flashcard words. Returns LexiconEntry[]. */
-export async function selectOnboardingWords(userId: string, isRefill: boolean = false): Promise<LexiconEntry[]> {
+export async function selectOnboardingWords(
+  userId: string,
+  isRefill: boolean = false,
+  studyPhase: number = 1,
+): Promise<LexiconEntry[]> {
   try {
     const { data } = await apiClient.post<{ words: LexiconEntry[] }>(
-      `/onboarding/words/${userId}?is_refill=${isRefill}`,
+      `/onboarding/words/${userId}?is_refill=${isRefill}&study_phase=${studyPhase}`,
     );
     return data.words ?? [];
   } catch (err) {
@@ -380,12 +392,10 @@ function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
 export async function generateSession(
   userId: string,
   condition: ConditionType,
-  narrativeStyle?: string,
 ): Promise<{ sessionId: string; readingNumber: number }> {
   const { data } = await apiClient.post<Record<string, unknown>>("/session/generate", {
-    user_id:        userId,
+    user_id:   userId,
     condition,
-    narrative_style: narrativeStyle ?? "Narrative (Story)",
   });
   return {
     sessionId:     String(data.session_id),
@@ -409,12 +419,15 @@ export async function getReadingSession(
   }
 }
 
-/** List all sessions for a user. */
-export async function listSessions(userId: string): Promise<SessionSummary[]> {
+/** List reading sessions for a user, optionally filtered by study_phase. */
+export async function listSessions(
+  userId: string,
+  studyPhase?: number,
+): Promise<SessionSummary[]> {
   try {
-    const { data } = await apiClient.get<SessionSummary[]>("/session/list", {
-      params: { user_id: userId },
-    });
+    const params: Record<string, string | number> = { user_id: userId };
+    if (studyPhase !== undefined) params.study_phase = studyPhase;
+    const { data } = await apiClient.get<SessionSummary[]>("/session/list", { params });
     return data;
   } catch {
     return [];
@@ -425,12 +438,10 @@ export async function listSessions(userId: string): Promise<SessionSummary[]> {
 export async function continueSession(
   userId: string,
   previousSessionId: string,
-  narrativeStyle?: string,
 ): Promise<ReadingSession> {
   const { data } = await apiClient.post<Record<string, unknown>>("/session/continue", {
     user_id:             userId,
     previous_session_id: previousSessionId,
-    narrative_style:     narrativeStyle,
   });
   return mapSessionResponse(data);
 }
@@ -625,17 +636,18 @@ export async function discoverNewWords(
 //  Vocabulary Test
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Start the vocab test from the user's 7 onboarding words. */
+/** Start the vocab test from the user's onboarding words for the given study phase. */
 export async function startVocabTest(
   userId: string,
   sessionGroupId: number,
+  studyPhase: number = 1,
 ): Promise<ApiResponse<{ questions: VocabTestQuestion[]; sessionGroupId: number }>> {
   try {
     const { data } = await apiClient.get<{
       success: boolean;
       data: { sessionGroupId: number; questions: VocabTestQuestion[] };
     }>("/vocab-test/start", {
-      params: { user_id: userId, session_group_id: sessionGroupId },
+      params: { user_id: userId, session_group_id: sessionGroupId, study_phase: studyPhase },
     });
     return { success: true, data: data.data };
   } catch (err) {
@@ -643,20 +655,34 @@ export async function startVocabTest(
   }
 }
 
-/** Submit vocab test results. */
+export interface VocabTestSubmitResult {
+  success: boolean;
+  score: number;
+  total: number;
+  /** "transition" after Phase 1 (condition has been flipped); "finish" after Phase 2. */
+  next_action: "transition" | "finish";
+  new_condition?: string;
+}
+
+/** Submit vocab test results. Returns routing instruction from backend. */
 export async function submitVocabTest(
   userId: string,
   sessionGroupId: number,
   answers: VocabTestAnswer[],
   score: number,
-): Promise<void> {
-  await apiClient.post("/vocab-test/submit", {
+  studyPhase: number = 1,
+  isFinal: boolean = false,
+): Promise<VocabTestSubmitResult> {
+  const { data } = await apiClient.post<VocabTestSubmitResult>("/vocab-test/submit", {
     user_id:          userId,
     session_group_id: sessionGroupId,
     answers,
     score,
     submitted_at:     new Date().toISOString(),
+    study_phase:      studyPhase,
+    is_final:         isFinal,
   });
+  return data;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

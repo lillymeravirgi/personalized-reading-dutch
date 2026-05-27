@@ -15,6 +15,8 @@ import ProfilePage              from "./pages/ProfilePage";
 import SettingsPage             from "./pages/SettingsPage";
 import SurveyPage               from "./pages/SurveyPage";
 import VocabTestPage            from "./pages/VocabTestPage";
+import SystemTransitionPage     from "./pages/SystemTransitionPage";
+import ThankYouPage             from "./pages/ThankYouPage";
 
 export default function App() {
   return (
@@ -27,6 +29,10 @@ export default function App() {
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/onboarding/flashcards" element={<OnboardingFlashcardsPage />} />
         </Route>
+
+        {/* ── Crossover study full-screen pages (no sidebar) ── */}
+        <Route path="/system-transition" element={<SystemTransitionPage />} />
+        <Route path="/thank-you"         element={<ThankYouPage />} />
 
         {/* ── Main app (with sidebar/nav) ── */}
         <Route element={<MainLayout />}>

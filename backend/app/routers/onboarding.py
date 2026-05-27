@@ -1,5 +1,8 @@
 """
 onboarding.py — Endpoints for onboarding completion and 7-word flashcard selection.
+Supports the within-subjects crossover design:
+  study_phase=1 → ADAPTIVE KRS (always, regardless of condition start)
+  study_phase=2 → ADAPTIVE KRS if current_condition==ADAPTIVE, else BASELINE KRS
 """
 import logging
 import random
@@ -8,14 +11,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.krs_service import run_krs
-from app.models import Lexicon, OnboardingWords, RecommendedVocabulary, User
+from app.krs_service import run_baseline_krs, run_krs
+from app.models import ConditionType, Lexicon, OnboardingWords, RecommendedVocabulary, User
 from app.schemas import LexiconEntry, OnboardingPersonalInfoRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
 ONBOARDING_WORD_COUNT = 20
+VOCAB_TEST_WORD_COUNT = 7
 
 
 @router.post("/personal-info")
@@ -43,17 +47,63 @@ def save_personal_info(payload: OnboardingPersonalInfoRequest, db: Session = Dep
 
 
 @router.post("/words/{user_id}")
-def select_onboarding_words(user_id: str, is_refill: bool = False, db: Session = Depends(get_db)):
+def select_onboarding_words(
+    user_id: str,
+    is_refill: bool = False,
+    study_phase: int = 1,
+    db: Session = Depends(get_db),
+):
     """
-    After assessment completes, run the KRS and pick words as onboarding flashcards.
-    Saves them to OnboardingWords table.
-    Returns the LexiconEntry objects.
+    After assessment completes (or after the condition switch), pick target words.
+
+    study_phase=1 → always uses the ADAPTIVE (personalised) KRS.
+    study_phase=2 → uses the condition the user is NOW in:
+                    ADAPTIVE  → personalised KRS (same as phase 1)
+                    BASELINE  → generic CEFR-frequency KRS (no Gemini)
     """
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Run KRS to populate RecommendedVocabulary
+    # ── Decide which recommender to use ────────────────────────────────────────
+    use_baseline = (
+        study_phase == 2
+        and user.current_condition == ConditionType.BASELINE
+    )
+
+    if use_baseline:
+        # BASELINE path: no Gemini, pure CEFR frequency band
+        word_ids = run_baseline_krs(user_id=user_id, db=db, target_count=VOCAB_TEST_WORD_COUNT)
+
+        # Persist directly to OnboardingWords with study_phase=2
+        saved_count = 0
+        for wid in word_ids:
+            already = (
+                db.query(OnboardingWords)
+                .filter(
+                    OnboardingWords.user_id == user_id,
+                    OnboardingWords.word_id == wid,
+                    OnboardingWords.study_phase == study_phase,
+                )
+                .first()
+            )
+            if not already:
+                db.add(OnboardingWords(user_id=user_id, word_id=wid, study_phase=study_phase))
+                saved_count += 1
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Return full LexiconEntry objects for the frontend flashcards
+        lex_rows = (
+            db.query(Lexicon)
+            .filter(Lexicon.word_id.in_(word_ids))
+            .all()
+        )
+        return {"words": [LexiconEntry.model_validate(l).model_dump() for l in lex_rows]}
+
+    # ── ADAPTIVE path (Phase 1 and ADAPTIVE Phase 2) ──────────────────────────
     try:
         run_krs(user_id=user_id, db=db, is_refill=is_refill)
     except Exception as e:
@@ -77,9 +127,19 @@ def select_onboarding_words(user_id: str, is_refill: bool = False, db: Session =
             .all()
         )
         rec_word_ids = {r.word_id for r in recs}
+
+        # In phase 2, also exclude phase-1 words
+        if study_phase == 2:
+            phase1_ids = {
+                ow.word_id for ow in
+                db.query(OnboardingWords)
+                .filter(OnboardingWords.user_id == user_id, OnboardingWords.study_phase == 1)
+                .all()
+            }
+            rec_word_ids |= phase1_ids
+
         for lex in extra:
             if lex.word_id not in rec_word_ids and len(recs) < ONBOARDING_WORD_COUNT:
-                # wrap in a mock-like object for uniform handling
                 class _FakRec:
                     lexicon_entry = lex
                 recs.append(_FakRec())
@@ -88,8 +148,6 @@ def select_onboarding_words(user_id: str, is_refill: bool = False, db: Session =
     random.shuffle(selected)
 
     # Persist up to 7 words into OnboardingWords for the vocab test
-    # (upsert-safe: skip duplicates)
-    VOCAB_TEST_WORD_COUNT = 7
     saved_count = 0
     for rec in selected:
         if saved_count >= VOCAB_TEST_WORD_COUNT:
@@ -97,11 +155,15 @@ def select_onboarding_words(user_id: str, is_refill: bool = False, db: Session =
         word_id = rec.lexicon_entry.word_id
         already = (
             db.query(OnboardingWords)
-            .filter(OnboardingWords.user_id == user_id, OnboardingWords.word_id == word_id)
+            .filter(
+                OnboardingWords.user_id == user_id,
+                OnboardingWords.word_id == word_id,
+                OnboardingWords.study_phase == study_phase,
+            )
             .first()
         )
         if not already:
-            db.add(OnboardingWords(user_id=user_id, word_id=word_id))
+            db.add(OnboardingWords(user_id=user_id, word_id=word_id, study_phase=study_phase))
             saved_count += 1
     try:
         db.commit()
@@ -135,3 +197,4 @@ def get_onboarding_words(user_id: str, db: Session = Depends(get_db)):
             for row in rows
         ]
     }
+

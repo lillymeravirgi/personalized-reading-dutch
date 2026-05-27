@@ -95,13 +95,22 @@ def _tokenize_content(content: str, blue_words: list, yellow_words: list) -> lis
 @router.post("/generate", response_model=GenerateSessionResponse)
 def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
     """
-    Generate a new reading. Blocks if the user has an incomplete survey on
-    their most-recent session and that session is within the first 3 readings.
+    Generate a new reading.
+    Blocks if the user has an incomplete survey on their most-recent session
+    within the current study phase, and that phase session count is within the
+    first 3 readings (same gate applies to both Phase 1 and Phase 2).
     """
-    # Gate: check if previous session needs a survey before generating a new one
+    from app.models import User
+    req_user = db.query(User).filter(User.user_id == req.user_id).first()
+    current_phase = 2 if (req_user and req_user.has_switched_conditions) else 1
+
+    # Gate: check the most-recent session *in the current phase*
     latest = (
         db.query(ReadingSession)
-        .filter(ReadingSession.user_id == req.user_id)
+        .filter(
+            ReadingSession.user_id  == req.user_id,
+            ReadingSession.study_phase == current_phase,
+        )
         .order_by(ReadingSession.session_id.desc())
         .first()
     )
@@ -122,7 +131,6 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
         result = generate_session(
             user_id=req.user_id,
             K=req.K,
-            narrative_style=req.narrative_style,
             word_count_range=req.word_count_range,
             condition=req.condition,
             db=db,
@@ -136,9 +144,9 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    blue_words = [WordInfo(**w) for w in result["blue_words"]]
+    blue_words   = [WordInfo(**w) for w in result["blue_words"]]
     yellow_words = [WordInfo(**w) for w in result["yellow_words"]]
-    
+
     return GenerateSessionResponse(
         session_id=result["session_id"],
         title=result["title"],
@@ -202,10 +210,16 @@ def continue_reading(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/list")
-def list_sessions(user_id: Optional[str] = None, db: Session = Depends(get_db)):
+def list_sessions(
+    user_id: Optional[str] = None,
+    study_phase: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
     q = db.query(ReadingSession)
     if user_id:
         q = q.filter(ReadingSession.user_id == user_id)
+    if study_phase is not None:
+        q = q.filter(ReadingSession.study_phase == study_phase)
     # Sort by newest first
     sessions = q.order_by(ReadingSession.created_at.desc()).all()
     return [
@@ -216,6 +230,7 @@ def list_sessions(user_id: Optional[str] = None, db: Session = Depends(get_db)):
             "topic_used":       s.topic_used,
             "condition":        s.condition.value,
             "reading_number":   s.reading_number,
+            "study_phase":      s.study_phase,
             "survey_completed": s.survey_completed,
             "created_at":       s.created_at.isoformat() if s.created_at else None,
         }

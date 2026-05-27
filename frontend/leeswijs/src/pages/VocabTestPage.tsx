@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, ArrowRight, ClipboardCheck, Home, Loader2 } from "lucide-react";
 
@@ -19,10 +19,15 @@ interface LocalAnswer {
 
 export default function VocabTestPage() {
   const { sessionGroupId = "1" } = useParams<{ sessionGroupId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const user = useStore((s) => s.user);
+  const user    = useStore((s) => s.user);
+  const setUser = useStore((s) => s.setUser);
 
   const sgId = parseInt(sessionGroupId, 10);
+  // studyPhase comes from ?phase=1|2 query param (defaults to 1)
+  const studyPhase = parseInt(searchParams.get("phase") ?? "1", 10);
+  const isFinal    = studyPhase === 2;
 
   const [questions,  setQuestions]  = useState<VocabTestQuestion[]>([]);
   const [index,      setIndex]      = useState(0);
@@ -37,7 +42,7 @@ export default function VocabTestPage() {
     if (!user) return;
     setLoading(true);
     setError(null);
-    startVocabTest(user.id, sgId)
+    startVocabTest(user.id, sgId, studyPhase)
       .then((res) => {
         if (res.success) {
           setQuestions(res.data.questions);
@@ -50,7 +55,7 @@ export default function VocabTestPage() {
       )
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, sessionGroupId]);
+  }, [user, sessionGroupId, studyPhase]);
 
   const currentQuestion = questions[index] ?? null;
   const selectedIndex   = currentQuestion ? answers[currentQuestion.questionId]?.selectedIndex ?? null : null;
@@ -85,7 +90,6 @@ export default function VocabTestPage() {
     }
 
     // Submit
-
     const allAnswers: VocabTestAnswer[] = Object.values(answers).map((a) => ({
       word_id:       a.wordId,
       chosen_answer: a.chosenAnswer,
@@ -95,9 +99,23 @@ export default function VocabTestPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await submitVocabTest(user.id, sgId, allAnswers, correct);
+      const result = await submitVocabTest(user.id, sgId, allAnswers, correct, studyPhase, isFinal);
       setScore(correct);
       setDone(true);
+
+      // Update user object in store with flipped condition (if applicable)
+      if (result.new_condition && user) {
+        setUser({ ...user, current_condition: result.new_condition, has_switched_conditions: true });
+      }
+
+      // Route based on backend instruction
+      if (result.next_action === "transition") {
+        // Short delay so the user sees their score before transition
+        setTimeout(() => navigate("/system-transition"), 2200);
+      } else if (result.next_action === "finish") {
+        // Stay on done screen — /thank-you will be shown after 2s
+        setTimeout(() => navigate("/thank-you"), 2200);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit test.");
     } finally {

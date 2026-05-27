@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import ConditionType, User
 from app.schemas import AuthResponse, LoginRequest, RegisterRequest
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -27,6 +27,8 @@ def _user_to_auth_response(user: User) -> AuthResponse:
         display_name=user.display_name,
         estimated_cefr=user.estimated_cefr,
         onboarding_completed=user.onboarding_completed,
+        current_condition=user.current_condition.value,
+        has_switched_conditions=user.has_switched_conditions,
     )
 
 
@@ -40,6 +42,11 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="An account with this email already exists.")
 
+    # Researcher can hardcode the starting condition via URL param ?start=ADAPTIVE|BASELINE
+    start_cond = ConditionType.ADAPTIVE
+    if req.start_condition and req.start_condition.upper() in ConditionType.__members__:
+        start_cond = ConditionType[req.start_condition.upper()]
+
     user_id = f"u_{uuid.uuid4().hex[:12]}"
     user = User(
         user_id=user_id,
@@ -48,6 +55,8 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
         password_hash=hash_password(req.password),
         display_name=req.display_name or email.split("@")[0],
         onboarding_completed=False,
+        current_condition=start_cond,
+        has_switched_conditions=False,
     )
     db.add(user)
     try:

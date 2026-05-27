@@ -11,7 +11,7 @@ import {
   submitAssessment,
 } from "../services/api";
 import { INTERESTS, type InterestId } from "../constants/interests";
-import { READING_STYLES, PURPOSES, type ReadingStyle, type Purpose } from "../types";
+import { PURPOSES, type Purpose } from "../types";
 
 const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 const GENDERS = ["Male", "Female", "Non-binary", "Prefer not to say"];
@@ -38,7 +38,6 @@ export default function OnboardingPage() {
   const [otherLangs,  setOtherLangs]  = useState(user?.other_languages ?? "");
   const [purpose,     setPurpose]     = useState<Purpose | "">(user?.purpose ?? "");
   const [selfCefr,    setSelfCefr]    = useState<string>(user?.cefrLevel ?? "B1");
-  const [readingStyles, setReadingStyles] = useState<ReadingStyle[]>(user?.preferred_styles ?? []);
 
   // ── Step 2 state ───────────────────────────
   const [selectedInterests, setSelectedInterests] = useState<Set<InterestId>>(
@@ -57,10 +56,6 @@ export default function OnboardingPage() {
   const [finalResult,  setFinalResult]  = useState<{ level: string; acquisition: number } | null>(null);
 
   // ── Step 1 handlers ────────────────────────
-  const toggleStyle = (s: ReadingStyle) =>
-    setReadingStyles((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
-    );
 
   async function handlePersonalNext() {
     if (!user) return;
@@ -74,7 +69,6 @@ export default function OnboardingPage() {
       mother_language:     motherLang,
       other_languages:     otherLangs,
       purpose:             purpose || undefined,
-      preferred_styles:    readingStyles,
       self_reported_cefr:  selfCefr,
     });
     setUser({
@@ -87,7 +81,6 @@ export default function OnboardingPage() {
       mother_language: motherLang,
       other_languages: otherLangs,
       purpose: (purpose as Purpose) || null,
-      preferred_styles: readingStyles,
       cefrLevel: selfCefr as typeof user.cefrLevel,
     });
     setStep("interests");
@@ -243,7 +236,6 @@ export default function OnboardingPage() {
             otherLangs={otherLangs} setOtherLangs={setOtherLangs}
             purpose={purpose} setPurpose={setPurpose}
             selfCefr={selfCefr} setSelfCefr={setSelfCefr}
-            readingStyles={readingStyles} toggleStyle={toggleStyle}
             onNext={handlePersonalNext}
           />
         )}
@@ -318,7 +310,6 @@ function PersonalStep(props: {
   otherLangs: string; setOtherLangs: (v: string) => void;
   purpose: Purpose | ""; setPurpose: (v: Purpose | "") => void;
   selfCefr: string; setSelfCefr: (v: string) => void;
-  readingStyles: ReadingStyle[]; toggleStyle: (s: ReadingStyle) => void;
   onNext: () => void;
 }) {
   const canContinue = 
@@ -330,8 +321,7 @@ function PersonalStep(props: {
     props.academic.trim().length > 0 && 
     props.motherLang.trim().length > 0 && 
     props.purpose !== "" && 
-    props.selfCefr !== "" && 
-    props.readingStyles.length > 0;
+    props.selfCefr !== "";
   return (
     <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
       <h1 className="font-heading text-2xl font-bold text-text mb-1">Tell us about yourself</h1>
@@ -363,23 +353,6 @@ function PersonalStep(props: {
             {CEFR_LEVELS.map((l) => <option key={l}>{l}</option>)}
           </select>
         </Field>
-      </div>
-
-      <div className="mt-5">
-        <p className="text-xs font-body font-semibold text-text/60 uppercase tracking-wide mb-2">
-          Preferred reading styles <span className="normal-case font-normal text-text/40">(select up to 6)</span>
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {READING_STYLES.map((s) => {
-            const on = props.readingStyles.includes(s);
-            return (
-              <button key={s} type="button" onClick={() => props.toggleStyle(s)}
-                className={["px-3 py-1.5 rounded-full text-xs font-body font-semibold border transition-all", on ? "bg-primary text-white border-primary" : "border-black/12 text-text/60 hover:border-black/25"].join(" ")}>
-                {s}
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       <button type="button" onClick={props.onNext} disabled={!canContinue}

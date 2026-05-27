@@ -12,6 +12,8 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     display_name: Optional[str] = None
+    # Optional: researcher sets ?start=ADAPTIVE or ?start=BASELINE in URL
+    start_condition: Optional[str] = None
 
 class LoginRequest(BaseModel):
     email: str
@@ -23,6 +25,8 @@ class AuthResponse(BaseModel):
     display_name: Optional[str] = None
     estimated_cefr: Optional[str] = None
     onboarding_completed: bool = False
+    current_condition: str = "ADAPTIVE"
+    has_switched_conditions: bool = False
 
 # ── Survey ────────────────────────────────────
 
@@ -55,7 +59,9 @@ class SurveyResponse(BaseModel):
 class GenerateSessionRequest(BaseModel):
     user_id: str
     K: float = 0.7
-    narrative_style: str = "Narrative (Story)"
+    # narrative_style is accepted for backward-compatibility but ignored — the backend
+    # always uses the fixed "Informative Educational Semi-Narrative Article" style.
+    narrative_style: str = "Informative Educational Semi-Narrative Article"
     word_count_range: str = "150-200"
     condition: ConditionType = ConditionType.ADAPTIVE
 
@@ -203,3 +209,5 @@ class VocabTestSubmitRequest(BaseModel):
     answers: list[dict]   # [{word_id, chosen_answer, is_correct}]
     score: int
     submitted_at: str
+    study_phase: int = 1     # 1 = first half, 2 = second half
+    is_final: bool = False   # True only for the Phase 2 test
