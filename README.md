@@ -1,4 +1,4 @@
-# Learn Dutch 
+# Learn Dutch
 
 Learn Dutch is an HCI course group project for studying personalized Dutch reading support for second-language learners. The frontend app is in `frontend/leeswijs`.
 
@@ -32,19 +32,39 @@ The protocol is grounded in Flow Theory and the Zone of Proximal Development. Th
 
 ## Quick Start
 
-You need Python 3.11+, Node.js 20+, and a Gemini API key.
+You need:
 
+- Python 3.11 or newer. Python 3.9 will not work with the current backend code.
+- Node.js 20 or newer.
+- A Gemini API key for generated readings.
 
 ### Backend
 
+macOS / Linux:
+
 ```bash
 cd backend
-python3.11 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
 # Add GOOGLE_API_KEY in backend/.env
+
+python seed.py
+uvicorn main:app --port 8000 --reload
+```
+
+Windows PowerShell:
+
+```powershell
+cd backend
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+copy .env.example .env
+# Add GOOGLE_API_KEY in backend\.env
 
 python seed.py
 uvicorn main:app --port 8000 --reload
@@ -60,10 +80,21 @@ http://localhost:8000/docs
 
 Open a second terminal:
 
+macOS / Linux:
+
 ```bash
 cd frontend/leeswijs
 npm install
 VITE_API_BASE_URL=http://localhost:8000/api npm run dev -- --host 127.0.0.1 --port 5174
+```
+
+Windows PowerShell:
+
+```powershell
+cd frontend/leeswijs
+npm install
+$env:VITE_API_BASE_URL="http://localhost:8000/api"
+npm run dev -- --host 127.0.0.1 --port 5174
 ```
 
 App:
@@ -98,10 +129,13 @@ VITE_API_BASE_URL=http://localhost:8000/api
 
 If the app does not load after pulling:
 
+- Check your Python version with `python --version` or `py --version`. Use Python 3.11+.
+- If dependency installation fails, delete the old virtual environment and recreate it.
 - Make sure the backend is running on `http://localhost:8000`.
 - Make sure `backend/.env` exists and contains `GOOGLE_API_KEY`.
 - Run `python seed.py` if `backend/dev.db` does not exist.
 - Set `VITE_API_BASE_URL=http://localhost:8000/api` when starting the frontend.
+- If port 8000 or 5174 is already in use, stop the old server or choose another port.
 
 ## Project Structure
 

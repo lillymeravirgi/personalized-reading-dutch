@@ -1,33 +1,32 @@
-# ── Web framework ─────────────────────────────────────────────────────────────
-fastapi==0.135.2
-uvicorn==0.42.0
-starlette==1.0.0
+# Web framework
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
 
-# ── Data validation ───────────────────────────────────────────────────────────
-pydantic==2.12.4
-pydantic-settings==2.11.0
+# Data validation
+pydantic>=2.10,<3.0
+pydantic-settings>=2.7,<3.0
 
-# ── Database ──────────────────────────────────────────────────────────────────
-SQLAlchemy==2.0.41       # install separately: pip install sqlalchemy
-PyMySQL==1.1.1           # install separately: pip install pymysql
+# Database
+SQLAlchemy>=2.0,<3.0
+PyMySQL>=1.1,<2.0
 
-# ── Authentication ────────────────────────────────────────────────────────────
-werkzeug
-python-jose[cryptography]
-email-validator
+# Authentication
+werkzeug>=3.0,<4.0
+python-jose[cryptography]>=3.3,<4.0
+email-validator>=2.2,<3.0
 
-# ── Google AI ─────────────────────────────────────────────────────────────────
-google-genai==1.68.0
-google-generativeai==0.8.6
-google-api-core==2.30.0
-google-api-python-client==2.193.0
-google-auth==2.49.1
-google-ai-generativelanguage==0.6.15
-googleapis-common-protos==1.73.1
+# Google AI
+google-genai>=1.47,<3.0
+google-generativeai>=0.8,<1.0
+google-api-core>=2.20,<3.0
+google-api-python-client>=2.150,<3.0
+google-auth>=2.35,<3.0
+google-ai-generativelanguage>=0.6,<1.0
+googleapis-common-protos>=1.65,<2.0
 
-# ── HTTP / async ──────────────────────────────────────────────────────────────
-anyio==4.13.0
-httpx==0.28.1
+# HTTP / async
+anyio>=4.6,<5.0
+httpx>=0.28,<1.0
 
-# ── Environment ───────────────────────────────────────────────────────────────
-python-dotenv==1.2.1
+# Environment
+python-dotenv>=1.0,<2.0
