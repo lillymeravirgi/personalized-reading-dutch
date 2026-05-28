@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import AuthLayout from "./layouts/AuthLayout";
 import MainLayout from "./layouts/MainLayout";
+import DelayedVocabReminder from "./components/DelayedVocabReminder";
 
 import LoginPage                from "./pages/LoginPage";
 import RegisterPage             from "./pages/RegisterPage";
@@ -15,10 +16,13 @@ import ProfilePage              from "./pages/ProfilePage";
 import SettingsPage             from "./pages/SettingsPage";
 import SurveyPage               from "./pages/SurveyPage";
 import VocabTestPage            from "./pages/VocabTestPage";
+import SystemTransitionPage     from "./pages/SystemTransitionPage";
+import ThankYouPage             from "./pages/ThankYouPage";
 
 export default function App() {
   return (
     <BrowserRouter>
+      <DelayedVocabReminder />
       <Routes>
         {/* ── Auth / Onboarding (no sidebar) ── */}
         <Route element={<AuthLayout />}>
@@ -27,6 +31,9 @@ export default function App() {
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/onboarding/flashcards" element={<OnboardingFlashcardsPage />} />
         </Route>
+
+        <Route path="/thank-you" element={<ThankYouPage />} />
+        <Route path="/system-transition" element={<SystemTransitionPage />} />
 
         {/* ── Main app (with sidebar/nav) ── */}
         <Route element={<MainLayout />}>

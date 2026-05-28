@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 const STEPS = [
-  "Preparing a Dutch reading...",
-  "The server may need a moment to wake up...",
-  "Writing and checking the text...",
+  "Preparing your reading task...",
+  "Selecting the text details...",
+  "Checking the reading text...",
   "Still working. Please keep this page open.",
 ] as const;
 

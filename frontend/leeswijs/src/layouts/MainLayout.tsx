@@ -97,6 +97,7 @@ export default function MainLayout() {
           <Outlet />
         </main>
       </div>
+
     </div>
   );
 }

@@ -9,12 +9,9 @@ import {
 } from "lucide-react";
 
 import {
-  generateSession,
-  getCondition,
   readActivity,
   type Activity,
 } from "../services/api";
-import ReadingGenerationStatus from "../components/ReadingGenerationStatus";
 import { useStore } from "../store";
 
 export default function ReadingHistoryPage() {
@@ -23,8 +20,6 @@ export default function ReadingHistoryPage() {
 
   const [sessions, setSessions] = useState<Activity["sessions"]>([]);
   const [query,    setQuery]    = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -34,18 +29,8 @@ export default function ReadingHistoryPage() {
 
   if (!user) return null;
 
-  async function handleStart() {
-    if (!user) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const { sessionId } = await generateSession(user.id, getCondition());
-      navigate(`/read/${sessionId}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
+  function handleStart() {
+    navigate("/reading");
   }
 
   const filtered = query.trim()
@@ -79,25 +64,15 @@ export default function ReadingHistoryPage() {
         <motion.button
           type="button"
           onClick={handleStart}
-          disabled={loading}
-          whileTap={{ scale: loading ? 1 : 0.97 }}
+          whileTap={{ scale: 0.97 }}
           className={[
             "inline-flex items-center gap-2 rounded-xl px-4 py-2.5",
             "text-sm font-heading font-semibold text-white bg-primary",
-            loading ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
+            "hover:opacity-90",
           ].join(" ")}
         >
-          {loading ? (
-            <>
-              <Spinner />
-              Generating…
-            </>
-          ) : (
-            <>
-              <BookOpen size={15} strokeWidth={2.5} />
-              New reading
-            </>
-          )}
+          <BookOpen size={15} strokeWidth={2.5} />
+          New reading
         </motion.button>
 
         <div className="relative flex-1 min-w-[180px]">
@@ -115,20 +90,8 @@ export default function ReadingHistoryPage() {
         </div>
       </div>
 
-      {loading && <ReadingGenerationStatus className="mb-4" />}
-
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 font-body"
-        >
-          {error}
-        </motion.div>
-      )}
-
       {sessions.length === 0 ? (
-        <EmptyState onStart={handleStart} loading={loading} />
+        <EmptyState onStart={handleStart} />
       ) : filtered.length === 0 ? (
         <p className="text-sm font-body text-text/45 py-10 text-center">
           No readings match "{query}".
@@ -165,7 +128,7 @@ export default function ReadingHistoryPage() {
   );
 }
 
-function EmptyState({ onStart, loading }: { onStart: () => void; loading: boolean }) {
+function EmptyState({ onStart }: { onStart: () => void }) {
   return (
     <div className="flex flex-col items-center rounded-lg border border-black/8 bg-white px-6 py-14 text-center shadow-sm shadow-black/5">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10">
@@ -180,33 +143,23 @@ function EmptyState({ onStart, loading }: { onStart: () => void; loading: boolea
       <motion.button
         type="button"
         onClick={onStart}
-        disabled={loading}
-        whileTap={{ scale: loading ? 1 : 0.97 }}
+        whileTap={{ scale: 0.97 }}
         className={[
           "inline-flex items-center gap-2 rounded-xl px-5 py-3",
           "text-sm font-heading font-semibold text-white bg-primary",
-          loading ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
+          "hover:opacity-90",
         ].join(" ")}
       >
-        {loading ? <Spinner /> : <BookOpen size={15} strokeWidth={2.5} />}
+        <BookOpen size={15} strokeWidth={2.5} />
         Start first reading
-        {!loading && <ArrowRight size={15} strokeWidth={2.5} />}
+        <ArrowRight size={15} strokeWidth={2.5} />
       </motion.button>
     </div>
   );
 }
 
-function Spinner() {
-  return (
-    <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-    </svg>
-  );
-}
-
 function relTime(iso: string): string {
-  const then = new Date(iso).getTime();
+  const then = parseBackendTime(iso);
   if (Number.isNaN(then)) return iso;
   const diff = Date.now() - then;
   const m = Math.floor(diff / 60_000);
@@ -216,5 +169,11 @@ function relTime(iso: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return new Date(then).toLocaleDateString();
+}
+
+function parseBackendTime(iso: string): number {
+  const value = iso.trim().replace(" ", "T");
+  const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(value);
+  return new Date(hasTimezone ? value : `${value}Z`).getTime();
 }

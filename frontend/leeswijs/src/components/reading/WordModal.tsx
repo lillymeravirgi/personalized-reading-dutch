@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookOpenText, X, Check, Loader2 } from "lucide-react";
+import { BookOpenText, X, Clock } from "lucide-react";
 import type { HighlightedWord } from "../../types";
 import SpeakButton from "../SpeakButton";
 import { addDiscoveredToLearn, submitFlashcardReview } from "../../services/api";
 import { useStore } from "../../store";
+
+type ReviewInterval = 0 | 1 | 2 | 4 | 7 | 30;
+const INTERVALS: { label: string; days: ReviewInterval }[] = [
+  { label: "Today",   days: 0  },
+  { label: "1 day",  days: 1  },
+  { label: "2 days", days: 2  },
+  { label: "4 days", days: 4  },
+  { label: "1 week", days: 7  },
+  { label: "1 month",days: 30 },
+];
 
 type Props = {
   word: HighlightedWord | null;
@@ -15,7 +25,6 @@ type Props = {
 export default function WordModal({ word, onClose, onWordStatusChange }: Props) {
   const user = useStore((s) => s.user);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   // ESC to close
   useEffect(() => {
@@ -28,21 +37,21 @@ export default function WordModal({ word, onClose, onWordStatusChange }: Props) 
   if (!word) return null;
 
   const isNew    = word.highlightType === "unknown";
+  const examples = word.exampleSentences.filter((s) => s.nl?.trim());
 
-  async function handleSaveWord() {
+  async function handleSelectInterval(days: ReviewInterval) {
     if (!user || saving) return;
     setSaving(true);
-    setSaveError(null);
     try {
       if (!isNew) {
-        await submitFlashcardReview(user.id, word!.wordId, true, 1);
+        // Already learning -> submit review
+        await submitFlashcardReview(user.id, word!.wordId, true, days);
       } else {
-        await addDiscoveredToLearn(user.id, word!.wordId);
+        // New word -> add to learn
+        await addDiscoveredToLearn(user.id, word!.wordId, days);
       }
       onWordStatusChange?.(word!.wordId, "learning");
       onClose();
-    } catch {
-      setSaveError("Could not save this word. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -93,7 +102,9 @@ export default function WordModal({ word, onClose, onWordStatusChange }: Props) 
                   className="h-9 w-9 shrink-0"
                 />
               </div>
-              <p className="mt-1 text-base text-text/55 font-body">{word.english}</p>
+              {word.english && (
+                <p className="mt-1 text-base text-text/55 font-body">{word.english}</p>
+              )}
             </div>
             <button
               type="button"
@@ -105,41 +116,44 @@ export default function WordModal({ word, onClose, onWordStatusChange }: Props) 
             </button>
           </div>
 
-          {/* ── Body: Examples ──────────────────────────────────── */}
-          <div className="flex-1 overflow-y-auto min-h-0 bg-black/[0.015] border-y border-black/6">
-            <div className="px-5 py-4">
-              <h3 className="mb-3 flex items-center gap-2 font-heading text-xs font-semibold uppercase tracking-wide text-text/50">
-                <BookOpenText size={14} /> In context
-              </h3>
-              {word.exampleSentences.length > 0 ? (
+          {examples.length > 0 && (
+            <div className="flex-1 overflow-y-auto min-h-0 bg-black/[0.015] border-y border-black/6">
+              <div className="px-5 py-4">
+                <h3 className="mb-3 flex items-center gap-2 font-heading text-xs font-semibold uppercase tracking-wide text-text/50">
+                  <BookOpenText size={14} /> In context
+                </h3>
                 <ul className="space-y-4">
-                  {word.exampleSentences.slice(0, 3).map((s, i) => (
+                  {examples.slice(0, 3).map((s, i) => (
                     <li key={i} className="border-l-2 border-primary/25 pl-3">
                       <p className="text-[15px] font-body italic text-text/85">&ldquo;{s.nl}&rdquo;</p>
-                      <p className="mt-1 text-[13px] font-body text-text/50">{s.en}</p>
+                      {s.en && (
+                        <p className="mt-1 text-[13px] font-body text-text/50">{s.en}</p>
+                      )}
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p className="text-sm font-body text-text/40 italic">No examples available.</p>
-              )}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* ── Footer ───────────────────────────────────────────── */}
+          {/* ── Footer: One-Click Auto Save ─────────────────────── */}
           <div className="px-5 py-4 shrink-0 bg-white">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleSaveWord()}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-heading font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-              {saving ? "Saving..." : isNew ? "Add to learning list" : "Mark as reviewed"}
-            </button>
-            {saveError && (
-              <p className="mt-2 text-center text-xs font-body text-red-600">{saveError}</p>
-            )}
+            <h3 className="mb-3 flex items-center gap-2 font-heading text-xs font-semibold uppercase tracking-wide text-text/50">
+              <Clock size={14} /> When to review?
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              {INTERVALS.map((opt) => (
+                <button
+                  key={opt.days}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => handleSelectInterval(opt.days)}
+                  className="rounded-lg border border-black/8 bg-white py-2.5 text-sm font-heading font-semibold text-text hover:border-primary/40 hover:bg-primary/[0.04] transition-colors disabled:opacity-50"
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </motion.div>
       </motion.div>

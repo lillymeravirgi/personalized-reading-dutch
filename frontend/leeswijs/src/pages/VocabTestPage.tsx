@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, ArrowRight, ClipboardCheck, Home, Loader2 } from "lucide-react";
 
@@ -17,12 +17,21 @@ interface LocalAnswer {
   chosenAnswer: string;
 }
 
+const FINAL_STUDY_PHASE = 2;
+const VOCAB_TEST_WORD_COUNT = 10;
+
 export default function VocabTestPage() {
   const { sessionGroupId = "1" } = useParams<{ sessionGroupId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const user = useStore((s) => s.user);
+  const user    = useStore((s) => s.user);
+  const setUser = useStore((s) => s.setUser);
 
   const sgId = parseInt(sessionGroupId, 10);
+  const studyPhase = parseInt(searchParams.get("phase") ?? "1", 10);
+  const testType = searchParams.get("test") === "delayed" ? "delayed" : "immediate";
+  const isDelayed = testType === "delayed";
+  const isFinal    = !isDelayed && studyPhase === FINAL_STUDY_PHASE;
 
   const [questions,  setQuestions]  = useState<VocabTestQuestion[]>([]);
   const [index,      setIndex]      = useState(0);
@@ -37,20 +46,20 @@ export default function VocabTestPage() {
     if (!user) return;
     setLoading(true);
     setError(null);
-    startVocabTest(user.id, sgId)
+    startVocabTest(user.id, sgId, studyPhase)
       .then((res) => {
         if (res.success) {
-          setQuestions(res.data.questions);
+          setQuestions(res.data.questions.slice(0, VOCAB_TEST_WORD_COUNT));
         } else {
-          setError(res.error ?? "Could not load vocabulary test.");
+          setError(res.error ?? "Could not load vocabulary check.");
         }
       })
       .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Could not load vocabulary test."),
+        setError(err instanceof Error ? err.message : "Could not load vocabulary check."),
       )
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, sessionGroupId]);
+  }, [user, sessionGroupId, studyPhase]);
 
   const currentQuestion = questions[index] ?? null;
   const selectedIndex   = currentQuestion ? answers[currentQuestion.questionId]?.selectedIndex ?? null : null;
@@ -85,7 +94,6 @@ export default function VocabTestPage() {
     }
 
     // Submit
-
     const allAnswers: VocabTestAnswer[] = Object.values(answers).map((a) => ({
       word_id:       a.wordId,
       chosen_answer: a.chosenAnswer,
@@ -95,11 +103,23 @@ export default function VocabTestPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await submitVocabTest(user.id, sgId, allAnswers, correct);
+      const result = await submitVocabTest(user.id, sgId, allAnswers, correct, studyPhase, isFinal, testType);
       setScore(correct);
       setDone(true);
+
+      if (result.new_condition && user) {
+        setUser({ ...user, current_condition: result.new_condition, has_switched_conditions: true });
+      }
+
+      if (isDelayed) {
+        setTimeout(() => navigate(studyPhase === FINAL_STUDY_PHASE ? "/thank-you" : "/home"), 2200);
+      } else if (result.next_action === "transition") {
+        setTimeout(() => navigate(`/system-transition?phase=${studyPhase + 1}`), 2200);
+      } else if (result.next_action === "finish") {
+        setTimeout(() => navigate("/home"), 2200);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit test.");
+      setError(err instanceof Error ? err.message : "Could not submit vocabulary check.");
     } finally {
       setSubmitting(false);
     }
@@ -110,7 +130,7 @@ export default function VocabTestPage() {
       <div className="mx-auto max-w-2xl py-16 text-center">
         <div className="inline-flex items-center gap-2 text-sm font-body text-text/60">
           <Loader2 size={16} className="animate-spin" />
-          Loading vocabulary test…
+          Loading vocabulary check...
         </div>
       </div>
     );
@@ -122,7 +142,7 @@ export default function VocabTestPage() {
         <div className="flex gap-3">
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
           <div>
-            <h1 className="font-heading text-sm font-semibold text-red-700">Could not load vocabulary test</h1>
+            <h1 className="font-heading text-sm font-semibold text-red-700">Could not load vocabulary check</h1>
             <p className="mt-1 text-sm font-body text-red-700/80">{error}</p>
             <button type="button" onClick={() => navigate("/home")}
               className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-heading font-semibold text-red-700 hover:bg-red-100">
@@ -135,20 +155,34 @@ export default function VocabTestPage() {
   }
 
   if (done) {
+    const doneDestination = isDelayed && studyPhase === FINAL_STUDY_PHASE ? "/thank-you" : "/home";
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         className="mx-auto max-w-lg bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-10 text-center"
       >
-        <div className="text-5xl mb-4">{score >= questions.length * 0.6 ? "🎉" : "📚"}</div>
-        <h2 className="font-heading text-2xl font-bold text-text mb-1">Test complete!</h2>
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 mx-auto text-primary">
+          <ClipboardCheck size={28} strokeWidth={1.8} />
+        </div>
+        <h2 className="font-heading text-2xl font-bold text-text mb-1">
+          {isDelayed ? "Delayed check complete!" : "Check complete!"}
+        </h2>
         <p className="text-sm font-body text-text/55 mb-2">
           You got <span className="font-semibold text-primary">{score}</span> out of <span className="font-semibold">{questions.length}</span> correct.
         </p>
-        <p className="text-xs font-body text-text/40 mb-8">Your results have been saved. Thank you for participating!</p>
-        <button type="button" onClick={() => navigate("/home")}
+        <p className="text-xs font-body text-text/40 mb-8">
+          {isDelayed
+            ? "Your retention result has been saved."
+            : studyPhase === FINAL_STUDY_PHASE
+            ? "Your results have been saved. The follow-up check will appear when it is ready."
+            : "Your results have been saved."}
+        </p>
+        <button type="button" onClick={() => navigate(doneDestination)}
           className="inline-flex items-center gap-2 bg-primary text-white rounded-xl px-6 py-3 text-sm font-heading font-semibold hover:opacity-90">
-          <Home size={15} /> Back to dashboard <ArrowRight size={14} />
+          {doneDestination === "/thank-you" ? <ArrowRight size={15} /> : <Home size={15} />}
+          {doneDestination === "/thank-you" ? "Continue" : "Back to study home"}
+          {doneDestination !== "/thank-you" && <ArrowRight size={14} />}
         </button>
       </motion.div>
     );
@@ -168,9 +202,13 @@ export default function VocabTestPage() {
             <ClipboardCheck size={18} strokeWidth={2} />
           </div>
           <div>
-            <h1 className="font-heading text-xl font-bold text-text">Vocabulary test</h1>
+            <h1 className="font-heading text-xl font-bold text-text">
+              {isDelayed ? "Delayed vocabulary check" : "Vocabulary check"}
+            </h1>
             <p className="text-sm font-body text-text/50">
-              How well do you remember the 7 words from before the readings?
+              {isDelayed
+                ? "Check what you still remember from the words you studied earlier."
+                : "How well do you remember the words from this set?"}
             </p>
           </div>
         </div>
@@ -219,7 +257,7 @@ export default function VocabTestPage() {
                     : "bg-black/8 text-text/40 cursor-not-allowed",
                 ].join(" ")}
               >
-                {submitting ? "Submitting…" : isLast ? "Finish test" : "Next word"}
+                {submitting ? "Submitting..." : isLast ? "Finish check" : "Next word"}
                 {!submitting && <ArrowRight size={16} strokeWidth={2.5} />}
               </button>
             </div>

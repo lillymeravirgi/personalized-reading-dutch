@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowRight, AlertCircle, CheckCircle2, ClipboardList, Layers, BookPlus,
+  ArrowRight, AlertCircle, CheckCircle2, ClipboardList, BookPlus,
 } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -78,7 +78,6 @@ export default function SurveyPage() {
     return (
       <ThankYouView
         onReadNext={() => navigate("/reading", { replace: true })}
-        onReviewWords={() => navigate(`/flashcards?sessionId=${encodeURIComponent(sessionId)}`, { replace: true })}
       />
     );
   }
@@ -175,7 +174,7 @@ export default function SurveyPage() {
   );
 }
 
-function ThankYouView({ onReadNext, onReviewWords }: { onReadNext: () => void; onReviewWords: () => void }) {
+function ThankYouView({ onReadNext }: { onReadNext: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
@@ -190,16 +189,12 @@ function ThankYouView({ onReadNext, onReviewWords }: { onReadNext: () => void; o
       </motion.div>
       <h2 className="font-heading text-xl font-bold text-text mb-1">Reading task complete</h2>
       <p className="text-sm font-body text-text/50 max-w-sm">
-        Your response has been recorded. Next, review the words you selected while reading.
+        Your response has been recorded. Return to the reading page to continue.
       </p>
-      <div className="mt-7 grid w-full gap-3">
-        <motion.button type="button" onClick={onReviewWords} whileTap={{ scale: 0.97 }}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90">
-          <Layers size={15} /> Review words
-        </motion.button>
+      <div className="mt-7 w-full">
         <motion.button type="button" onClick={onReadNext} whileTap={{ scale: 0.97 }}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/12 bg-white px-4 py-3 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]">
-          <BookPlus size={15} /> Back to Read
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90">
+          <BookPlus size={15} /> Back to Reading
         </motion.button>
       </div>
     </motion.div>

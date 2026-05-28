@@ -1,19 +1,24 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, KeyRound } from "lucide-react";
+import { KeyRound, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
 import { registerUser } from "../services/api";
 import { useStore } from "../store";
 import ConsentDetailsModal from "../components/ConsentDetailsModal";
 
-function validateEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+function validateStudyId(value: string) {
+  return value.trim().length >= 2
     ? null
-    : "Enter a valid email address.";
+    : "Enter your Study ID.";
 }
 
 function validatePassword(value: string) {
-  return value.length >= 6 ? null : "Password must be at least 6 characters.";
+  if (value.length < 8) return "Password must be at least 8 characters.";
+  if (!/[a-z]/.test(value)) return "Use at least one lowercase letter.";
+  if (!/[A-Z]/.test(value)) return "Use at least one uppercase letter.";
+  if (!/\d/.test(value)) return "Use at least one number.";
+  if (!/[^A-Za-z0-9]/.test(value)) return "Use at least one special character.";
+  return null;
 }
 
 function validateConfirm(password: string, confirm: string) {
@@ -25,40 +30,42 @@ export default function RegisterPage() {
   const [searchParams] = useSearchParams();
   const setUser  = useStore((s) => s.setUser);
 
+  // Researcher sets ?start=ADAPTIVE or ?start=BASELINE in the URL
+  const startCondition = searchParams.get("start") ?? undefined;
+
   const initialStudyCode = (searchParams.get("code") || "").trim().toUpperCase();
-  const [email,    setEmail]   = useState("");
+  const [studyId, setStudyId] = useState(initialStudyCode);
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
-  const [studyCode, setStudyCode] = useState(initialStudyCode);
   const [showPassword, setShowPassword] = useState(false);
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [showConsentDetails, setShowConsentDetails] = useState(false);
-  const [touched, setTouched] = useState({ email: false, password: false, confirm: false, consent: false });
+  const [touched, setTouched] = useState({ studyId: false, password: false, confirm: false, consent: false });
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const emailError    = touched.email    ? validateEmail(email)                  : null;
+  const studyIdError  = touched.studyId  ? validateStudyId(studyId)              : null;
   const passwordError = touched.password ? validatePassword(password)            : null;
   const confirmError  = touched.confirm  ? validateConfirm(password, confirm)    : null;
   const consentError  = touched.consent && !consentAccepted
-    ? "Please accept the study data consent to create an account."
+    ? "Please accept the study consent to create an account."
     : null;
   const isFormValid   =
-    !validateEmail(email) &&
+    !validateStudyId(studyId) &&
     !validatePassword(password) &&
     !validateConfirm(password, confirm) &&
     consentAccepted;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ email: true, password: true, confirm: true, consent: true });
+    setTouched({ studyId: true, password: true, confirm: true, consent: true });
     if (!isFormValid) return;
 
     setSubmitting(true);
     setServerError(null);
 
     try {
-      const user = await registerUser(email, password, studyCode || undefined);
+      const user = await registerUser(studyId, password, startCondition);
       localStorage.setItem(`leeswijs-consent:${user.id}`, "true");
       localStorage.setItem(`leeswijs-consent-at:${user.id}`, new Date().toISOString());
       setUser(user);
@@ -79,9 +86,9 @@ export default function RegisterPage() {
       className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9"
     >
       <div className="mb-7">
-        <h1 className="font-heading text-2xl font-bold text-text">Create your account</h1>
+        <h1 className="font-heading text-2xl font-bold text-text">Join the reading study</h1>
         <p className="mt-1 text-sm text-text/50 font-body">
-          Start your Dutch reading journey today.
+          Use the Study ID from your invitation.
         </p>
       </div>
 
@@ -97,20 +104,22 @@ export default function RegisterPage() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        {/* Email */}
-        <Field label="Email Address" error={emailError} htmlFor="register-email">
-          <InputWrapper icon={<Mail size={16} />} hasError={!!emailError}>
+        <Field label="Study ID" error={studyIdError} htmlFor="register-study-id">
+          <InputWrapper icon={<KeyRound size={16} />} hasError={!!studyIdError}>
             <input
-              id="register-email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+              id="register-study-id"
+              type="text"
+              autoComplete="username"
+              placeholder="LW-A07"
+              value={studyId}
+              onChange={(e) => setStudyId(e.target.value.trim().toUpperCase())}
+              onBlur={() => setTouched((t) => ({ ...t, studyId: true }))}
               className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
             />
           </InputWrapper>
+          <p className="text-xs text-text/35 font-body">
+            This keeps study data separate from real email addresses.
+          </p>
         </Field>
 
         {/* Password */}
@@ -154,23 +163,6 @@ export default function RegisterPage() {
           </InputWrapper>
         </Field>
 
-        <Field label="Study Code" error={null} htmlFor="register-study-code">
-          <InputWrapper icon={<KeyRound size={16} />} hasError={false}>
-            <input
-              id="register-study-code"
-              type="text"
-              autoComplete="off"
-              placeholder="LW-A07"
-              value={studyCode}
-              onChange={(e) => setStudyCode(e.target.value.trim().toUpperCase())}
-              className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
-            />
-          </InputWrapper>
-          <p className="text-xs text-text/35 font-body">
-            Use the code from your study link if you received one.
-          </p>
-        </Field>
-
         <div
           className={[
             "block rounded-xl border p-4 transition-colors",
@@ -193,7 +185,7 @@ export default function RegisterPage() {
                 className="mt-1 h-4 w-4 accent-primary"
               />
               <span className="font-heading text-sm font-semibold text-text">
-                I agree to the study consent
+                I have read and agree to the study consent
               </span>
             </label>
 
@@ -205,7 +197,7 @@ export default function RegisterPage() {
               }}
               className="shrink-0 text-xs font-heading font-semibold text-primary hover:underline"
             >
-              Read more
+              View details
             </button>
           </div>
 
@@ -233,7 +225,7 @@ export default function RegisterPage() {
             <Spinner />
           ) : (
             <>
-              Get started
+              Continue
               <ArrowRight size={16} strokeWidth={2.5} />
             </>
           )}
@@ -256,11 +248,11 @@ export default function RegisterPage() {
         onClick={() => navigate("/login")}
         className="w-full flex items-center justify-center gap-2 rounded-xl border border-black/12 px-5 py-2.5 text-sm font-body font-semibold text-text/70 hover:bg-black/[0.03] hover:text-text transition-colors"
       >
-        Log In
+        Log in
       </button>
 
       <p className="mt-6 text-center text-xs text-text/30 font-body">
-        🇳🇱 Learning Dutch, one article at a time.
+        Dutch reading study
       </p>
 
       <ConsentDetailsModal

@@ -1,6 +1,4 @@
-"""
-onboarding.py — Endpoints for onboarding completion and 7-word flashcard selection.
-"""
+"""Onboarding endpoints for profile setup and vocabulary set selection."""
 import logging
 import random
 
@@ -9,13 +7,29 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.krs_service import run_krs
-from app.models import Lexicon, OnboardingWords, RecommendedVocabulary, User
+from app.models import Lexicon, OnboardingWords, RecommendedVocabulary, User, UserVocabularyVector, VocabStatus
 from app.schemas import LexiconEntry, OnboardingPersonalInfoRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
 ONBOARDING_WORD_COUNT = 20
+VOCAB_TEST_WORD_COUNT = 10
+
+
+def _phase_words(db: Session, user_id: str, study_phase: int):
+    rows = (
+        db.query(OnboardingWords)
+        .filter(
+            OnboardingWords.user_id == user_id,
+            OnboardingWords.study_phase == study_phase,
+        )
+        .join(OnboardingWords.lexicon_entry)
+        .order_by(OnboardingWords.id.asc())
+        .limit(VOCAB_TEST_WORD_COUNT)
+        .all()
+    )
+    return [LexiconEntry.model_validate(row.lexicon_entry).model_dump() for row in rows]
 
 
 @router.post("/personal-info")
@@ -43,23 +57,22 @@ def save_personal_info(payload: OnboardingPersonalInfoRequest, db: Session = Dep
 
 
 @router.post("/words/{user_id}")
-def select_onboarding_words(user_id: str, is_refill: bool = False, db: Session = Depends(get_db)):
-    """
-    After assessment completes, run the KRS and pick words as onboarding flashcards.
-    Saves them to OnboardingWords table.
-    Returns the LexiconEntry objects.
-    """
+def select_onboarding_words(
+    user_id: str,
+    is_refill: bool = False,
+    study_phase: int = 1,
+    db: Session = Depends(get_db),
+):
+    """Pick the target words for one reading block."""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Run KRS to populate RecommendedVocabulary
     try:
         run_krs(user_id=user_id, db=db, is_refill=is_refill)
     except Exception as e:
         logger.warning(f"[Onboarding] KRS failed for {user_id}: {e}")
 
-    # Fetch recommended words
     recs = (
         db.query(RecommendedVocabulary)
         .filter(RecommendedVocabulary.user_id == user_id)
@@ -67,7 +80,6 @@ def select_onboarding_words(user_id: str, is_refill: bool = False, db: Session =
         .all()
     )
 
-    # Fall back to lexicon words at user's CEFR level if KRS produced too few
     if len(recs) < ONBOARDING_WORD_COUNT:
         level = user.estimated_cefr or "B1"
         extra = (
@@ -77,9 +89,17 @@ def select_onboarding_words(user_id: str, is_refill: bool = False, db: Session =
             .all()
         )
         rec_word_ids = {r.word_id for r in recs}
+
+        used_ids = {
+            ow.word_id for ow in
+            db.query(OnboardingWords)
+            .filter(OnboardingWords.user_id == user_id)
+            .all()
+        }
+        rec_word_ids |= used_ids
+
         for lex in extra:
             if lex.word_id not in rec_word_ids and len(recs) < ONBOARDING_WORD_COUNT:
-                # wrap in a mock-like object for uniform handling
                 class _FakRec:
                     lexicon_entry = lex
                 recs.append(_FakRec())
@@ -87,51 +107,87 @@ def select_onboarding_words(user_id: str, is_refill: bool = False, db: Session =
     selected = recs[:ONBOARDING_WORD_COUNT]
     random.shuffle(selected)
 
-    # Persist up to 7 words into OnboardingWords for the vocab test
-    # (upsert-safe: skip duplicates)
-    VOCAB_TEST_WORD_COUNT = 7
+    used_ids = {
+        ow.word_id for ow in
+        db.query(OnboardingWords)
+        .filter(OnboardingWords.user_id == user_id)
+        .all()
+    }
+
     saved_count = 0
     for rec in selected:
         if saved_count >= VOCAB_TEST_WORD_COUNT:
             break
         word_id = rec.lexicon_entry.word_id
+        if word_id in used_ids:
+            continue
         already = (
             db.query(OnboardingWords)
-            .filter(OnboardingWords.user_id == user_id, OnboardingWords.word_id == word_id)
+            .filter(
+                OnboardingWords.user_id == user_id,
+                OnboardingWords.word_id == word_id,
+                OnboardingWords.study_phase == study_phase,
+            )
             .first()
         )
         if not already:
-            db.add(OnboardingWords(user_id=user_id, word_id=word_id))
+            db.add(OnboardingWords(user_id=user_id, word_id=word_id, study_phase=study_phase))
             saved_count += 1
     try:
         db.commit()
     except Exception:
         db.rollback()
 
-    words_out = [
-        LexiconEntry.model_validate(rec.lexicon_entry)
-        for rec in selected
-    ]
+    words_out = [LexiconEntry.model_validate(rec.lexicon_entry) for rec in selected]
     return {"words": [w.model_dump() for w in words_out]}
 
 
 @router.get("/words/{user_id}")
-def get_onboarding_words(user_id: str, db: Session = Depends(get_db)):
-    """Retrieve the onboarding words for a user."""
-    rows = (
-        db.query(OnboardingWords)
-        .filter(OnboardingWords.user_id == user_id)
-        .join(OnboardingWords.lexicon_entry)
-        .order_by(OnboardingWords.id.asc())
-        .limit(ONBOARDING_WORD_COUNT)
+def get_onboarding_words(
+    user_id: str,
+    study_phase: int = 1,
+    db: Session = Depends(get_db),
+):
+    """Retrieve the saved words for a reading block."""
+    words = _phase_words(db, user_id, study_phase)
+    if not words:
+        raise HTTPException(status_code=404, detail="No words found for this vocabulary set.")
+
+    return {"words": words}
+
+
+@router.get("/words/{user_id}/status")
+def get_onboarding_word_status(
+    user_id: str,
+    study_phase: int = 1,
+    db: Session = Depends(get_db),
+):
+    """Return whether the phase word set has enough learning words."""
+    phase_word_ids = [
+        row.word_id
+        for row in db.query(OnboardingWords)
+        .filter(
+            OnboardingWords.user_id == user_id,
+            OnboardingWords.study_phase == study_phase,
+        )
         .all()
-    )
-    if not rows:
-        raise HTTPException(status_code=404, detail="No onboarding words found for this user.")
+    ]
+    learning_count = 0
+    if phase_word_ids:
+        learning_count = (
+            db.query(UserVocabularyVector)
+            .filter(
+                UserVocabularyVector.user_id == user_id,
+                UserVocabularyVector.word_id.in_(phase_word_ids),
+                UserVocabularyVector.status == VocabStatus.LEARNING,
+            )
+            .count()
+        )
 
     return {
-        "words": [
-            LexiconEntry.model_validate(row.lexicon_entry).model_dump()
-            for row in rows
-        ]
+        "study_phase": study_phase,
+        "target_count": VOCAB_TEST_WORD_COUNT,
+        "selected_count": len(phase_word_ids),
+        "learning_count": learning_count,
+        "ready": learning_count >= VOCAB_TEST_WORD_COUNT,
     }

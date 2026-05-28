@@ -1,18 +1,19 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { KeyRound, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
 import { login } from "../services/api";
 import { useStore } from "../store";
+import ConsentDetailsModal from "../components/ConsentDetailsModal";
 
-function validateEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+function validateStudyId(value: string) {
+  return value.trim().length >= 2
     ? null
-    : "Enter a valid email address.";
+    : "Enter your Study ID.";
 }
 
 function validatePassword(value: string) {
-  return value.length >= 4 ? null : "Password must be at least 4 characters.";
+  return value.length > 0 ? null : "Enter your password.";
 }
 
 export default function LoginPage() {
@@ -20,20 +21,28 @@ export default function LoginPage() {
   const setUser = useStore((s) => s.setUser);
   const setLoadingUser = useStore((s) => s.setLoadingUser);
 
-  const [email, setEmail] = useState("");
+  const [studyId, setStudyId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ email: false, password: false });
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [showConsentDetails, setShowConsentDetails] = useState(false);
+  const [touched, setTouched] = useState({ studyId: false, password: false, consent: false });
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const emailError    = touched.email    ? validateEmail(email)       : null;
+  const studyIdError  = touched.studyId  ? validateStudyId(studyId)  : null;
   const passwordError = touched.password ? validatePassword(password) : null;
-  const isFormValid   = !validateEmail(email) && !validatePassword(password);
+  const consentError  = touched.consent && !consentAccepted
+    ? "Please accept the study consent to continue."
+    : null;
+  const isFormValid   =
+    !validateStudyId(studyId) &&
+    !validatePassword(password) &&
+    consentAccepted;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ email: true, password: true });
+    setTouched({ studyId: true, password: true, consent: true });
     if (!isFormValid) return;
 
     setSubmitting(true);
@@ -41,7 +50,9 @@ export default function LoginPage() {
     setLoadingUser(true);
 
     try {
-      const user = await login(email, password);
+      const user = await login(studyId, password);
+      localStorage.setItem(`leeswijs-consent:${user.id}`, "true");
+      localStorage.setItem(`leeswijs-consent-at:${user.id}`, new Date().toISOString());
       setUser(user);
       navigate(user.onboarding_completed ? "/home" : "/onboarding", { replace: true });
     } catch (err) {
@@ -60,9 +71,9 @@ export default function LoginPage() {
       className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9"
     >
       <div className="mb-7">
-        <h1 className="font-heading text-2xl font-bold text-text">Welcome back</h1>
+        <h1 className="font-heading text-2xl font-bold text-text">Continue your study session</h1>
         <p className="mt-1 text-sm text-text/50 font-body">
-          Log in to continue your Dutch journey.
+          Use your Study ID to continue the reading study.
         </p>
       </div>
 
@@ -78,16 +89,16 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <Field label="Email Address" error={emailError} htmlFor="login-email">
-          <InputWrapper icon={<Mail size={16} />} hasError={!!emailError}>
+        <Field label="Study ID" error={studyIdError} htmlFor="login-study-id">
+          <InputWrapper icon={<KeyRound size={16} />} hasError={!!studyIdError}>
             <input
-              id="login-email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+              id="login-study-id"
+              type="text"
+              autoComplete="username"
+              placeholder="KIM"
+              value={studyId}
+              onChange={(e) => setStudyId(e.target.value.trim().toUpperCase())}
+              onBlur={() => setTouched((t) => ({ ...t, studyId: true }))}
               className="flex-1 bg-transparent text-sm font-body text-text placeholder:text-text/30 outline-none"
             />
           </InputWrapper>
@@ -117,6 +128,52 @@ export default function LoginPage() {
           </InputWrapper>
         </Field>
 
+        <div
+          className={[
+            "block rounded-xl border p-4 transition-colors",
+            consentError
+              ? "border-red-300 bg-red-50/40"
+              : consentAccepted
+                ? "border-primary/35 bg-primary/[0.04]"
+                : "border-black/10 bg-black/[0.02] hover:border-black/20",
+          ].join(" ")}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={consentAccepted}
+                onChange={(e) => {
+                  setConsentAccepted(e.target.checked);
+                  setTouched((t) => ({ ...t, consent: true }));
+                }}
+                className="mt-1 h-4 w-4 accent-primary"
+              />
+              <span className="font-heading text-sm font-semibold text-text">
+                I have read and agree to the study consent
+              </span>
+            </label>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                setShowConsentDetails(true);
+              }}
+              className="shrink-0 text-xs font-heading font-semibold text-primary hover:underline"
+            >
+              View details
+            </button>
+          </div>
+
+          {consentError && (
+            <span className="mt-3 flex items-center gap-1 text-xs font-body text-red-500">
+              <AlertCircle size={11} />
+              {consentError}
+            </span>
+          )}
+        </div>
+
         <motion.button
           type="submit"
           disabled={submitting}
@@ -128,7 +185,7 @@ export default function LoginPage() {
             submitting ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
           ].join(" ")}
         >
-          {submitting ? <Spinner /> : <>Log In<ArrowRight size={16} strokeWidth={2.5} /></>}
+          {submitting ? <Spinner /> : <>Continue<ArrowRight size={16} strokeWidth={2.5} /></>}
         </motion.button>
       </form>
 
@@ -146,12 +203,17 @@ export default function LoginPage() {
         onClick={() => navigate("/register")}
         className="w-full flex items-center justify-center gap-2 rounded-xl border border-black/12 px-5 py-2.5 text-sm font-body font-semibold text-text/70 hover:bg-black/[0.03] hover:text-text transition-colors"
       >
-        Create Account
+        Create account
       </button>
 
       <p className="mt-6 text-center text-xs text-text/30 font-body">
-        🇳🇱 Learning Dutch, one article at a time.
+        Dutch reading study
       </p>
+
+      <ConsentDetailsModal
+        open={showConsentDetails}
+        onClose={() => setShowConsentDetails(false)}
+      />
     </motion.div>
   );
 }

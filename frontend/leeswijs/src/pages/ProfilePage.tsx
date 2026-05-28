@@ -109,7 +109,7 @@ export default function ProfilePage() {
             icon={<RefreshCw size={15} />}
             label="Retake assessment"
             hint="Update the CEFR estimate"
-            onClick={() => navigate("/assessment")}
+            onClick={() => navigate("/onboarding?step=assessment")}
           />
         </div>
       </section>

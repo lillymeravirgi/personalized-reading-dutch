@@ -29,6 +29,7 @@ from app.config import GOOGLE_API_KEY, GEMINI_MODEL
 from app.models import (
     ConditionType,
     Lexicon,
+    OnboardingWords,
     ReadingSession,
     RecommendedVocabulary,
     TopicStatus,
@@ -88,6 +89,8 @@ READING_STYLES = [
     "Dialogue",
     "News",
 ]
+
+_FIXED_STYLE = "Informative Educational Semi-Narrative Article"
 
 
 # ─────────────────────────────────────────────
@@ -153,17 +156,18 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
 def generate_session(
     user_id: str,
     K: float,
-    narrative_style: str,
     word_count_range: str,
     condition: ConditionType,
     db: Session,
+    narrative_style: str = _FIXED_STYLE,   # kept for schema compat; always overridden
 ) -> dict:
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise ValueError(f"User '{user_id}' not found.")
 
-    # 1. Determine reading number (max 3 in experiment; unlimited after)
-    reading_number = _next_reading_number(user_id, db)
+    # 1. Determine the current phase and local reading number.
+    study_phase = 2 if user.has_switched_conditions else 1
+    reading_number = _next_reading_number(user_id, study_phase, db)
 
     # 2. Fetch previous session's survey signal (drives prompt adaptation)
     prev_session = (
@@ -177,7 +181,7 @@ def generate_session(
     )
     survey_block = _survey_signal_prompt_block(prev_session)
 
-    # 3. Topic Roll
+    # 3. Topic Roll — kept aligned with the feature branch.
     selected_topic = _topic_roll(user_id, K, db)
 
     # 4. Word Injection
@@ -211,6 +215,7 @@ def generate_session(
         topic_used=selected_topic,
         condition=condition,
         reading_number=reading_number,
+        study_phase=study_phase,
         survey_completed=False,
         word_translations=word_translations,
     )
@@ -228,6 +233,7 @@ def generate_session(
         "word_translations":word_translations,
         "metadata":         story_json.get("metadata", {}),
         "reading_number":   reading_number,
+        "study_phase":      study_phase,
         "condition":        condition.value,
     }
 
@@ -236,10 +242,14 @@ def generate_session(
 #  Helpers
 # ─────────────────────────────────────────────
 
-def _next_reading_number(user_id: str, db: Session) -> int:
+def _next_reading_number(user_id: str, study_phase: int, db: Session) -> int:
+    """Count sessions in the current study phase."""
     count = (
         db.query(ReadingSession)
-        .filter(ReadingSession.user_id == user_id)
+        .filter(
+            ReadingSession.user_id == user_id,
+            ReadingSession.study_phase == study_phase,
+        )
         .count()
     )
     return count + 1
@@ -335,7 +345,6 @@ def _generate_story_content(
         if survey_block else ""
     )
 
-    # Build rich profile section
     languages = user.other_languages or "none specified"
     styles    = ", ".join(user.preferred_styles or []) or "any"
     purpose   = user.purpose or user.learning_purpose or "general learning"
@@ -427,6 +436,77 @@ Return ONLY a valid JSON object with these exact keys:
 
 
 # ─────────────────────────────────────────────
+#  Narrative memory helpers
+# ─────────────────────────────────────────────
+
+def _generate_session_summary(content: str, topic: str) -> str:
+    """
+    Ask Gemini to produce a 3-5 sentence semantic summary of the generated text.
+    This summary replaces raw text truncation in continuation prompts.
+    Falls back to a simple tail-excerpt on failure.
+    """
+    summary_prompt = (
+        f"Read the following Dutch educational text about '{topic}' and write a concise "
+        f"3-5 sentence summary IN ENGLISH covering: the main topic, key entities or characters "
+        f"mentioned, key concepts or scenarios explained, and how the text ended. "
+        f"Return ONLY the plain summary text, no labels or JSON.\n\n"
+        f"TEXT:\n{content[:3000]}"
+    )
+    try:
+        response = _client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=summary_prompt,
+        )
+        return response.text.strip()
+    except Exception as exc:
+        logger.warning("[SessionGen] Summary generation failed, using tail excerpt: %s", exc)
+        # Graceful fallback: last 400 chars give the "ending context"
+        return content[-400:].strip()
+
+
+def _build_narrative_memory(
+    content: str,
+    topic: str,
+    blue_words: list[str],
+    yellow_words: list[str],
+    existing_memory: dict | None = None,
+) -> dict:
+    """
+    Build / update the structured narrative memory for a session.
+    Merges with any pre-existing memory so continuation chains accumulate state.
+    """
+    prev = existing_memory or {}
+
+    # Accumulate subtopics_used (topic is always the first entry)
+    subtopics_used: list[str] = list(prev.get("subtopics_used", []))
+    if topic and topic not in subtopics_used:
+        subtopics_used.append(topic)
+
+    # Accumulate vocabulary_used
+    vocabulary_used: list[str] = list(prev.get("vocabulary_used", []))
+    for w in blue_words + yellow_words:
+        if w not in vocabulary_used:
+            vocabulary_used.append(w)
+
+    # Generate fresh discourse summary
+    discourse_summary = _generate_session_summary(content, topic)
+
+    # Last-ending context: final ~300 chars of current content for narrative bridging
+    last_ending_context = content.strip()[-300:].strip()
+
+    return {
+        "topic": topic,
+        "subtopics_used": subtopics_used,
+        # entities / concepts_explained start empty; the LLM fills them over time
+        "entities": prev.get("entities", []),
+        "concepts_explained": prev.get("concepts_explained", []),
+        "vocabulary_used": vocabulary_used,
+        "discourse_summary": discourse_summary,
+        "last_ending_context": last_ending_context,
+    }
+
+
+# ─────────────────────────────────────────────
 #  Continuation generator (Continue button)
 # ─────────────────────────────────────────────
 
@@ -444,7 +524,7 @@ def generate_continuation(
     if not user:
         raise ValueError(f"User '{user_id}' not found.")
 
-    reading_number = _next_reading_number(user_id, db)
+    reading_number = previous_session.reading_number
 
     blue_entries   = _fetch_blue_words(user_id, db)
     yellow_entries = _fetch_yellow_words(user_id, db)
@@ -458,7 +538,6 @@ def generate_continuation(
     blue_str   = ", ".join(w["word"] for w in blue_words)   or "(none)"
     yellow_str = ", ".join(w["word"] for w in yellow_words) or "(none)"
 
-    # Trim previous content for the prompt (first 800 chars is enough context)
     prev_content  = (previous_session.content or "")[:800]
     prev_topic    = previous_session.topic_used or "Dutch everyday life"
     cefr_level    = user.estimated_cefr or "B1"
@@ -516,32 +595,28 @@ Return ONLY valid JSON:
             story_json = json.loads(text)
             logger.info("[SessionGen] continuation title=%r", story_json.get("title"))
 
-            # Append to existing session
             previous_session.content += "\n\n" + story_json.get("content", "")
-            
-            # Merge translations
             existing_translations = previous_session.word_translations or {}
             existing_translations.update(word_translations)
             previous_session.word_translations = existing_translations
-            
-            # Use SQLAlchemy flag_modified if word_translations is JSON
+
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(previous_session, "word_translations")
-            
+
             db.commit()
             db.refresh(previous_session)
 
             return {
-                "session_id":       previous_session.session_id,
-                "title":            previous_session.title,
-                "content":          previous_session.content,
-                "topic_used":       prev_topic,
-                "blue_words":       blue_words,
-                "yellow_words":     yellow_words,
-                "word_translations":existing_translations,
-                "metadata":         story_json.get("metadata", {}),
-                "reading_number":   reading_number,
-                "condition":        condition.value,
+                "session_id":        previous_session.session_id,
+                "title":             previous_session.title,
+                "content":           previous_session.content,
+                "topic_used":        prev_topic,
+                "blue_words":        blue_words,
+                "yellow_words":      yellow_words,
+                "word_translations": existing_translations,
+                "metadata":          story_json.get("metadata", {}),
+                "reading_number":    reading_number,
+                "condition":         condition.value,
             }
         except Exception as e:
             last_error = e

@@ -21,6 +21,10 @@ class ConditionType(str, enum.Enum):
     BASELINE = "BASELINE"
 
 
+# Alias used on the User model — same set of values as ConditionType
+StudyCondition = ConditionType
+
+
 class IntentTagType(str, enum.Enum):
     DEEP_PROCESSING    = "DEEP_PROCESSING"     # User clicked "See Examples"
     ACQUISITION_INTENT = "ACQUISITION_INTENT"  # User clicked "Add to Learn List"
@@ -68,6 +72,12 @@ class User(Base):
     other_languages:   Mapped[Optional[str]]  = mapped_column(String(255), nullable=True)
     purpose:           Mapped[Optional[str]]  = mapped_column(String(100), nullable=True)
     preferred_styles:  Mapped[Optional[Any]]  = mapped_column(JSON,        nullable=True)  # list[str]
+
+    # ── Crossover study tracking ──────────────
+    current_condition:       Mapped[ConditionType] = mapped_column(
+        SAEnum(ConditionType), nullable=False, default=ConditionType.ADAPTIVE
+    )
+    has_switched_conditions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # ── Legacy / kept for compat ──────────────
     location:          Mapped[Optional[str]]  = mapped_column(String(255), nullable=True)
@@ -192,7 +202,9 @@ class ReadingSession(Base):
     content:       Mapped[str]           = mapped_column(Text, nullable=False)
     topic_used:    Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     condition:     Mapped[ConditionType] = mapped_column(SAEnum(ConditionType), nullable=False, default=ConditionType.ADAPTIVE)
-    reading_number: Mapped[int]          = mapped_column(Integer, nullable=False, default=1)  # 1, 2 or 3
+    reading_number: Mapped[int]          = mapped_column(Integer, nullable=False, default=1)
+    # study_phase is used as the vocabulary phase number: 1 or 2.
+    study_phase:    Mapped[int]          = mapped_column(Integer, nullable=False, default=1)
     survey_completed: Mapped[bool]       = mapped_column(Boolean, nullable=False, default=False)
     duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at:       Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=func.now())
@@ -200,6 +212,10 @@ class ReadingSession(Base):
     word_translations: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     # Computed from post-reading survey; drives next-session LLM prompt adjustments
     survey_signal: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    # Structured narrative memory for coherent continuation generation
+    # Schema: {topic, subtopics_used, entities, concepts_explained,
+    #          vocabulary_used, discourse_summary, last_ending_context}
+    narrative_memory: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
 
     user:          Mapped["User"]                     = relationship("User", back_populates="sessions")
     telemetry_logs: Mapped[list["InteractionTelemetry"]] = relationship("InteractionTelemetry", back_populates="session", cascade="all, delete-orphan")
@@ -278,14 +294,16 @@ class AssessmentBatch(Base):
 # ─────────────────────────────────────────────
 
 class OnboardingWords(Base):
-    """The 7 KRS-selected words shown as flashcards after onboarding."""
+    """KRS-selected words shown as flashcards before each reading block."""
     __tablename__ = "onboarding_words"
     __table_args__ = (UniqueConstraint("user_id", "word_id", name="uq_onboarding_word"),)
 
-    id:      Mapped[int]             = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str]             = mapped_column(String(50), ForeignKey("users.user_id"), nullable=False)
-    word_id: Mapped[int]             = mapped_column(Integer,    ForeignKey("lexicon.word_id"), nullable=False)
-    added_at:Mapped[datetime.datetime]= mapped_column(DateTime, nullable=False, default=func.now())
+    id:          Mapped[int]              = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id:     Mapped[str]              = mapped_column(String(50), ForeignKey("users.user_id"), nullable=False)
+    word_id:     Mapped[int]              = mapped_column(Integer,    ForeignKey("lexicon.word_id"), nullable=False)
+    added_at:    Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    # study_phase is used as the vocabulary phase number: 1 or 2.
+    study_phase: Mapped[int]              = mapped_column(Integer, nullable=False, default=1)
 
     user:          Mapped["User"]   = relationship("User",   back_populates="onboarding_words")
     lexicon_entry: Mapped["Lexicon"]= relationship("Lexicon",back_populates="onboarding_words")
@@ -296,16 +314,18 @@ class OnboardingWords(Base):
 # ─────────────────────────────────────────────
 
 class VocabularyTestResult(Base):
-    """Stores per-word results of the post-3-readings vocab test."""
+    """Stores per-word vocab test answers."""
     __tablename__ = "vocabulary_test_results"
 
     id:               Mapped[int]  = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id:          Mapped[str]  = mapped_column(String(50), ForeignKey("users.user_id"), nullable=False)
-    session_group_id: Mapped[int]  = mapped_column(Integer, nullable=False)   # groups all 3 readings together
+    session_group_id: Mapped[int]  = mapped_column(Integer, nullable=False)
+    study_phase:      Mapped[int]  = mapped_column(Integer, nullable=False, default=1)
+    test_type:        Mapped[str]  = mapped_column(String(20), nullable=False, default="immediate")
     word_id:          Mapped[int]  = mapped_column(Integer, ForeignKey("lexicon.word_id"), nullable=False)
     chosen_answer:    Mapped[str]  = mapped_column(String(255), nullable=False)
     is_correct:       Mapped[bool] = mapped_column(Boolean, nullable=False)
-    score:            Mapped[Optional[int]] = mapped_column(Integer, nullable=True)   # total correct out of 7 (on last row)
+    score:            Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     timestamp:        Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=func.now())
 
     user:          Mapped["User"]   = relationship("User",   back_populates="vocab_test_results")

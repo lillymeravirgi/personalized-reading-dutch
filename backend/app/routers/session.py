@@ -3,7 +3,7 @@ session.py — Reading session endpoints.
 
 Reading flow:
   - /generate:  Create a new session. Enforces that the previous session's survey
-                must be completed before generating the next one (up to reading 3).
+                must be completed before generating the next study reading.
   - /continue:  Extend from a previous session (same topic/condition).
   - /list:      List all sessions for a user.
   - /{id}:      Fetch full session with word_translations.
@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Lexicon, ReadingSession, RecommendedVocabulary, UserVocabularyVector
+from app.models import Lexicon, ReadingSession, RecommendedVocabulary, User, UserVocabularyVector, VocabularyTestResult
 from app.schemas import GenerateSessionRequest, GenerateSessionResponse, SessionDetailResponse, WordInfo
 from app.session_generator import (
     GenerationFailedError,
@@ -25,7 +25,8 @@ from app.session_generator import (
 
 router = APIRouter(prefix="/session", tags=["Session"])
 
-MAX_GATED_READINGS = 3  # survey gate applies only for readings 1–3
+READINGS_PER_PHASE = 3
+FINAL_STUDY_PHASE = 2
 
 
 import re
@@ -95,28 +96,53 @@ def _tokenize_content(content: str, blue_words: list, yellow_words: list) -> lis
 @router.post("/generate", response_model=GenerateSessionResponse)
 def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
     """
-    Generate a new reading. Blocks if the user has an incomplete survey on
-    their most-recent session and that session is within the first 3 readings.
+    Generate a new reading.
+    Blocks if the latest reading in the current phase still needs its survey.
     """
-    # Gate: check if previous session needs a survey before generating a new one
+    req_user = db.query(User).filter(User.user_id == req.user_id).first()
+    current_phase = 2 if (req_user and req_user.has_switched_conditions) else 1
+
     latest = (
         db.query(ReadingSession)
-        .filter(ReadingSession.user_id == req.user_id)
+        .filter(
+            ReadingSession.user_id == req.user_id,
+            ReadingSession.study_phase == current_phase,
+        )
         .order_by(ReadingSession.session_id.desc())
         .first()
     )
     if (
         latest
         and not latest.survey_completed
-        and latest.reading_number <= MAX_GATED_READINGS
+        and latest.reading_number <= READINGS_PER_PHASE
     ):
         raise HTTPException(
             status_code=409,
             detail=(
                 f"Please finish reading #{latest.reading_number} and complete its survey "
-                "before generating the next reading. 😊"
+                "before generating the next reading."
             ),
         )
+    if latest and latest.survey_completed and latest.reading_number >= READINGS_PER_PHASE:
+        checked = (
+            db.query(VocabularyTestResult.id)
+            .filter(
+                VocabularyTestResult.user_id == req.user_id,
+                VocabularyTestResult.study_phase == current_phase,
+                VocabularyTestResult.test_type == "immediate",
+            )
+            .first()
+        )
+        if not checked:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Please complete the vocabulary check for phase {current_phase} before the next readings.",
+            )
+        if current_phase >= FINAL_STUDY_PHASE:
+            raise HTTPException(
+                status_code=409,
+                detail="All study readings are complete.",
+            )
 
     try:
         result = generate_session(
@@ -136,9 +162,9 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    blue_words = [WordInfo(**w) for w in result["blue_words"]]
+    blue_words   = [WordInfo(**w) for w in result["blue_words"]]
     yellow_words = [WordInfo(**w) for w in result["yellow_words"]]
-    
+
     return GenerateSessionResponse(
         session_id=result["session_id"],
         title=result["title"],
@@ -202,10 +228,16 @@ def continue_reading(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/list")
-def list_sessions(user_id: Optional[str] = None, db: Session = Depends(get_db)):
+def list_sessions(
+    user_id: Optional[str] = None,
+    study_phase: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
     q = db.query(ReadingSession)
     if user_id:
         q = q.filter(ReadingSession.user_id == user_id)
+    if study_phase is not None:
+        q = q.filter(ReadingSession.study_phase == study_phase)
     # Sort by newest first
     sessions = q.order_by(ReadingSession.created_at.desc()).all()
     return [
@@ -216,6 +248,7 @@ def list_sessions(user_id: Optional[str] = None, db: Session = Depends(get_db)):
             "topic_used":       s.topic_used,
             "condition":        s.condition.value,
             "reading_number":   s.reading_number,
+            "study_phase":      s.study_phase,
             "survey_completed": s.survey_completed,
             "created_at":       s.created_at.isoformat() if s.created_at else None,
         }

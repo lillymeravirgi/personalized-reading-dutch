@@ -10,7 +10,6 @@ import type {
   ReadingSession,
   SessionSummary,
   SurveyResponse,
-  TextToken,
   User,
   VocabTestAnswer,
   VocabTestQuestion,
@@ -22,14 +21,13 @@ const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
   "http://localhost:8000/api";
 
-const DEFAULT_TIMEOUT_MS = 30_000;
-const GENERATION_TIMEOUT_MS = 120_000;
-
 export const apiClient = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
-  timeout: DEFAULT_TIMEOUT_MS,
+  timeout: 30_000,
 });
+
+const READING_GENERATION_TIMEOUT_MS = 120_000;
 
 apiClient.interceptors.request.use((config) => {
   const raw = localStorage.getItem("leeswijs-store");
@@ -48,7 +46,7 @@ apiClient.interceptors.request.use((config) => {
 function extractError(err: unknown): string {
   if (err instanceof AxiosError) {
     if (err.code === "ECONNABORTED" || err.message.toLowerCase().includes("timeout")) {
-      return "The server took too long to respond. Please try again in a moment.";
+      return "This is taking longer than expected. Please wait a moment and try again.";
     }
     const detail = err.response?.data?.detail;
     if (typeof detail === "string") return detail;
@@ -57,26 +55,6 @@ function extractError(err: unknown): string {
   }
   return err instanceof Error ? err.message : "An unexpected error occurred.";
 }
-
-type BackendAssessmentWord = {
-  word_id: string | number;
-  dutch: string;
-  english?: string | null;
-  is_pseudo?: boolean;
-};
-
-type BackendAssessmentBatch = {
-  batch_number: number;
-  total_batches: number;
-  words?: BackendAssessmentWord[];
-};
-
-type BackendTextToken = {
-  text: string;
-  type: TextToken["type"];
-  status?: TextToken["status"];
-  word_id?: string | number | null;
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Auth
@@ -88,35 +66,62 @@ interface BackendAuthResponse {
   display_name?: string;
   estimated_cefr?: string;
   onboarding_completed: boolean;
+  current_condition?: string;
+  has_switched_conditions?: boolean;
+}
+
+interface BackendAssessmentWord {
+  word_id: string | number;
+  dutch: string;
+  english?: string;
+  is_pseudo?: boolean;
+}
+
+interface BackendAssessmentBatch {
+  batch_number?: number;
+  total_batches?: number;
+  words?: BackendAssessmentWord[];
+}
+
+interface BackendTextToken {
+  text: string;
+  type: "word" | "punctuation" | "space";
+  status?: "new" | "learning" | "known" | null;
+  word_id?: string | number | null;
 }
 
 function mapAuthResponseToUser(data: BackendAuthResponse): User {
   return {
-    id:                   data.user_id,
-    user_id:              data.user_id,
-    email:                data.email,
-    name:                 data.display_name || data.email.split("@")[0],
-    display_name:         data.display_name || "",
-    interests:            [],
-    cefrLevel:            (data.estimated_cefr as User["cefrLevel"]) ?? null,
-    assessedAt:           null,
-    createdAt:            new Date().toISOString(),
-    onboarding_completed: data.onboarding_completed,
-    preferred_styles:     [],
+    id:                       data.user_id,
+    user_id:                  data.user_id,
+    email:                    data.email,
+    name:                     data.display_name || data.email.split("@")[0],
+    display_name:             data.display_name || "",
+    interests:                [],
+    cefrLevel:                (data.estimated_cefr as User["cefrLevel"]) ?? null,
+    assessedAt:               null,
+    createdAt:                new Date().toISOString(),
+    onboarding_completed:     data.onboarding_completed,
+    preferred_styles:         [],
+    current_condition:        data.current_condition ?? "ADAPTIVE",
+    has_switched_conditions:  data.has_switched_conditions ?? false,
   };
 }
 
-/** Create a new account (email + password). */
+/** Create a new account (Study ID + password).
+ *  startCondition is set by the researcher via ?start=ADAPTIVE|BASELINE in the URL.
+ */
 export async function registerUser(
-  email: string,
+  studyId: string,
   password: string,
-  studyCode?: string,
+  startCondition?: string,
 ): Promise<User> {
   try {
     const { data } = await apiClient.post<BackendAuthResponse>("/auth/register", {
-      email,
+      email: studyId,
       password,
-      study_code: studyCode,
+      study_code: studyId,
+      ...(startCondition ? { start_condition: startCondition } : {}),
     });
     return mapAuthResponseToUser(data);
   } catch (err) {
@@ -124,11 +129,11 @@ export async function registerUser(
   }
 }
 
-/** Log in with email + password. */
-export async function login(email: string, password: string): Promise<User> {
+/** Log in with Study ID + password. */
+export async function login(studyId: string, password: string): Promise<User> {
   try {
     const { data } = await apiClient.post<BackendAuthResponse>("/auth/login", {
-      email,
+      email: studyId,
       password,
     });
     return mapAuthResponseToUser(data);
@@ -242,11 +247,15 @@ export async function savePersonalInfo(
   }
 }
 
-/** Trigger KRS → select 7 onboarding flashcard words. Returns LexiconEntry[]. */
-export async function selectOnboardingWords(userId: string, isRefill: boolean = false): Promise<LexiconEntry[]> {
+/** Select the flashcard words for a reading block. */
+export async function selectOnboardingWords(
+  userId: string,
+  isRefill: boolean = false,
+  studyPhase: number = 1,
+): Promise<LexiconEntry[]> {
   try {
     const { data } = await apiClient.post<{ words: LexiconEntry[] }>(
-      `/onboarding/words/${userId}?is_refill=${isRefill}`,
+      `/onboarding/words/${userId}?is_refill=${isRefill}&study_phase=${studyPhase}`,
     );
     return data.words ?? [];
   } catch (err) {
@@ -254,13 +263,40 @@ export async function selectOnboardingWords(userId: string, isRefill: boolean = 
   }
 }
 
-/** Get the stored 7 onboarding words for a user. */
-export async function getOnboardingWords(userId: string): Promise<LexiconEntry[]> {
+/** Get the stored flashcard words for a reading block. */
+export async function getOnboardingWords(
+  userId: string,
+  studyPhase: number = 1,
+): Promise<LexiconEntry[]> {
   try {
     const { data } = await apiClient.get<{ words: LexiconEntry[] }>(
       `/onboarding/words/${userId}`,
+      { params: { study_phase: studyPhase } },
     );
     return data.words ?? [];
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
+}
+
+export interface OnboardingWordSetStatus {
+  study_phase: number;
+  target_count: number;
+  selected_count: number;
+  learning_count: number;
+  ready: boolean;
+}
+
+export async function getOnboardingWordSetStatus(
+  userId: string,
+  studyPhase: number = 1,
+): Promise<OnboardingWordSetStatus> {
+  try {
+    const { data } = await apiClient.get<OnboardingWordSetStatus>(
+      `/onboarding/words/${userId}/status`,
+      { params: { study_phase: studyPhase } },
+    );
+    return data;
   } catch (err) {
     throw new Error(extractError(err));
   }
@@ -293,14 +329,13 @@ export async function getAssessmentBatch(
         known_words:       knownWords ?? [],
         all_words:         allWords ?? [],
       },
-      { timeout: GENERATION_TIMEOUT_MS },
     );
     return {
       success: true,
       data: {
-        batchNumber:  data.batch_number as number,
-        totalBatches: data.total_batches as number,
-        words:        (data.words ?? []).map((w) => ({
+        batchNumber:  Number(data.batch_number ?? batchNumber),
+        totalBatches: Number(data.total_batches ?? 1),
+        words:        (data.words || []).map((w) => ({
           wordId:   String(w.word_id),
           dutch:    String(w.dutch),
           english:  typeof w.english === "string" ? w.english : undefined,
@@ -387,7 +422,7 @@ function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
     sessionId:        String(data.session_id ?? ""),
     title:            String(data.title ?? ""),
     text:             content.replace(/\[\[([^\]]+)\]\]/g, "$1"),
-    tokens:           ((data.tokens ?? []) as BackendTextToken[]).map((t) => ({
+    tokens:           ((data.tokens ?? []) as BackendTextToken[]).map(t => ({
       text:   String(t.text),
       type:   t.type,
       status: t.status,
@@ -410,17 +445,23 @@ function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
 export async function generateSession(
   userId: string,
   condition: ConditionType,
-  narrativeStyle?: string,
 ): Promise<{ sessionId: string; readingNumber: number }> {
-  const { data } = await apiClient.post<Record<string, unknown>>("/session/generate", {
-    user_id:        userId,
-    condition,
-    narrative_style: narrativeStyle ?? "Narrative (Story)",
-  }, { timeout: GENERATION_TIMEOUT_MS });
-  return {
-    sessionId:     String(data.session_id),
-    readingNumber: Number(data.reading_number ?? 1),
-  };
+  try {
+    const { data } = await apiClient.post<Record<string, unknown>>(
+      "/session/generate",
+      {
+        user_id:   userId,
+        condition,
+      },
+      { timeout: READING_GENERATION_TIMEOUT_MS },
+    );
+    return {
+      sessionId:     String(data.session_id),
+      readingNumber: Number(data.reading_number ?? 1),
+    };
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
 }
 
 /** Fetch a full reading session by ID. */
@@ -439,12 +480,15 @@ export async function getReadingSession(
   }
 }
 
-/** List all sessions for a user. */
-export async function listSessions(userId: string): Promise<SessionSummary[]> {
+/** List reading sessions for a user, optionally filtered by study_phase. */
+export async function listSessions(
+  userId: string,
+  studyPhase?: number,
+): Promise<SessionSummary[]> {
   try {
-    const { data } = await apiClient.get<SessionSummary[]>("/session/list", {
-      params: { user_id: userId },
-    });
+    const params: Record<string, string | number> = { user_id: userId };
+    if (studyPhase !== undefined) params.study_phase = studyPhase;
+    const { data } = await apiClient.get<SessionSummary[]>("/session/list", { params });
     return data;
   } catch {
     return [];
@@ -455,13 +499,15 @@ export async function listSessions(userId: string): Promise<SessionSummary[]> {
 export async function continueSession(
   userId: string,
   previousSessionId: string,
-  narrativeStyle?: string,
 ): Promise<ReadingSession> {
-  const { data } = await apiClient.post<Record<string, unknown>>("/session/continue", {
-    user_id:             userId,
-    previous_session_id: previousSessionId,
-    narrative_style:     narrativeStyle,
-  }, { timeout: GENERATION_TIMEOUT_MS });
+  const { data } = await apiClient.post<Record<string, unknown>>(
+    "/session/continue",
+    {
+      user_id:             userId,
+      previous_session_id: previousSessionId,
+    },
+    { timeout: READING_GENERATION_TIMEOUT_MS },
+  );
   return mapSessionResponse(data);
 }
 
@@ -470,14 +516,14 @@ export async function continueSession(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Define an unknown word (looks up lexicon or calls Gemini). */
-export async function defineWord(word: string): Promise<LexiconEntry> {
+export async function defineWord(word: string): Promise<LexiconEntry | null> {
   try {
     const { data } = await apiClient.get<LexiconEntry>(
       `/lexicon/define/${encodeURIComponent(word)}`,
     );
     return data;
-  } catch (err) {
-    throw new Error(extractError(err));
+  } catch {
+    return null;
   }
 }
 
@@ -655,17 +701,18 @@ export async function discoverNewWords(
 //  Vocabulary Test
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Start the vocab test from the user's 7 onboarding words. */
+/** Start the vocab test from the user's onboarding words for the given study phase. */
 export async function startVocabTest(
   userId: string,
   sessionGroupId: number,
+  studyPhase: number = 1,
 ): Promise<ApiResponse<{ questions: VocabTestQuestion[]; sessionGroupId: number }>> {
   try {
     const { data } = await apiClient.get<{
       success: boolean;
       data: { sessionGroupId: number; questions: VocabTestQuestion[] };
     }>("/vocab-test/start", {
-      params: { user_id: userId, session_group_id: sessionGroupId },
+      params: { user_id: userId, session_group_id: sessionGroupId, study_phase: studyPhase },
     });
     return { success: true, data: data.data };
   } catch (err) {
@@ -673,20 +720,88 @@ export async function startVocabTest(
   }
 }
 
-/** Submit vocab test results. */
+export interface VocabTestSubmitResult {
+  success: boolean;
+  score: number;
+  total: number;
+  next_action: "transition" | "finish";
+  new_condition?: string;
+}
+
+export type VocabTestType = "immediate" | "delayed";
+
+export interface VocabTestProgress {
+  immediateCompleted: number[];
+  delayedCompleted: number[];
+}
+
+interface BackendVocabTestProgress {
+  immediate_completed: number[];
+  delayed_completed: number[];
+}
+
+export async function getVocabTestProgress(userId: string): Promise<VocabTestProgress> {
+  const { data } = await apiClient.get<BackendVocabTestProgress>("/vocab-test/progress", {
+    params: { user_id: userId },
+  });
+  return {
+    immediateCompleted: (data.immediate_completed ?? []).map(Number),
+    delayedCompleted:   (data.delayed_completed ?? []).map(Number),
+  };
+}
+
+export interface DelayedVocabTestStatus {
+  due: boolean;
+  sessionGroupId: number | null;
+  studyPhase: number | null;
+  dueAt: string | null;
+  minutesRemaining: number | null;
+  delayMinutes: number | null;
+}
+
+interface BackendDelayedVocabTestStatus {
+  due: boolean;
+  session_group_id: number | null;
+  study_phase: number | null;
+  due_at: string | null;
+  minutes_remaining: number | null;
+  delay_minutes?: number | null;
+}
+
+export async function getDelayedVocabTestStatus(userId: string): Promise<DelayedVocabTestStatus> {
+  const { data } = await apiClient.get<BackendDelayedVocabTestStatus>("/vocab-test/delayed-status", {
+    params: { user_id: userId },
+  });
+  return {
+    due:              data.due,
+    sessionGroupId:   data.session_group_id,
+    studyPhase:       data.study_phase,
+    dueAt:            data.due_at,
+    minutesRemaining: data.minutes_remaining,
+    delayMinutes:     data.delay_minutes ?? null,
+  };
+}
+
 export async function submitVocabTest(
   userId: string,
   sessionGroupId: number,
   answers: VocabTestAnswer[],
   score: number,
-): Promise<void> {
-  await apiClient.post("/vocab-test/submit", {
+  studyPhase: number = 1,
+  isFinal: boolean = false,
+  testType: VocabTestType = "immediate",
+): Promise<VocabTestSubmitResult> {
+  const { data } = await apiClient.post<VocabTestSubmitResult>("/vocab-test/submit", {
     user_id:          userId,
     session_group_id: sessionGroupId,
     answers,
     score,
     submitted_at:     new Date().toISOString(),
+    study_phase:      studyPhase,
+    test_type:        testType,
+    is_final:         isFinal,
   });
+  return data;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -694,15 +809,8 @@ export async function submitVocabTest(
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Telemetry (disabled non-existent endpoints)
-export function logWordLookup(userId: string): void {
-  void userId;
-}
-
-export function logDwellTime(userId: string, sessionId: string, elapsedMs: number): void {
-  void userId;
-  void sessionId;
-  void elapsedMs;
-}
+export function logWordLookup(): void {}
+export function logDwellTime(): void {}
 
 import type { WordInteraction } from "../types";
 

@@ -12,10 +12,20 @@ import {
   type DiscoverCard,
   type FlashcardsResponse,
 } from "../services/api";
-import type { FlashcardItem } from "../types";
+import type { FlashcardItem, ReviewInterval } from "../types";
 import SpeakButton from "../components/SpeakButton";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
 type Mode = "review" | "discover";
+
+const INTERVALS: { label: string; value: ReviewInterval; days: number }[] = [
+  { label: "Today",    value: "today", days: 0  },
+  { label: "1 day",   value: "1d",    days: 1  },
+  { label: "2 days",  value: "2d",    days: 2  },
+  { label: "4 days",  value: "4d",    days: 4  },
+  { label: "1 week",  value: "1w",    days: 7  },
+  { label: "1 month", value: "1m",    days: 30 },
+];
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function FlashcardsPage() {
@@ -40,7 +50,7 @@ export default function FlashcardsPage() {
     getFlashcards(null, user.id)
       .then((res) => {
         if (res.success) setReviewData(res.data);
-        else setReviewError(res.error ?? "Could not load flashcards.");
+        else setReviewError(res.error ?? "Could not load word review.");
       })
       .catch(() => setReviewError("Unexpected error."))
       .finally(() => setReviewLoading(false));
@@ -103,8 +113,8 @@ export default function FlashcardsPage() {
               <h1 className="font-heading text-xl font-bold text-text">Flashcards</h1>
               <p className="text-xs font-body text-text/50">
                 {mode === "review"
-                  ? dueTotal === 0 ? "Review complete" : `${dueRemaining} due · ${reviewedCount} reviewed`
-                  : `${discoverCards.length} words to explore`}
+                  ? dueTotal === 0 ? "No words due" : `${dueRemaining} due · ${reviewedCount} reviewed`
+                  : `${discoverCards.length} available words`}
               </p>
             </div>
           </div>
@@ -181,6 +191,7 @@ function ReviewMode({
   const [reviewed,   setReviewed]   = useState(0);
   const [flipped,    setFlipped]    = useState(false);
   const [remembered, setRemembered] = useState<boolean | null>(null);
+  const [interval,   setInterval]   = useState<ReviewInterval>(null);
   const [saving,     setSaving]     = useState(false);
   const [done,       setDone]       = useState(false);
 
@@ -233,14 +244,17 @@ function ReviewMode({
   }
 
   async function handleSchedule() {
-    if (!card) return;
+    if (!card || interval === null) return;
+    const opt = INTERVALS.find((o) => o.value === interval)!;
     setSaving(true);
-    await submitFlashcardReview(userId, card.wordId, true, 1).catch(() => {});
+    await submitFlashcardReview(userId, card.wordId, true, opt.days).catch(() => {});
     setSaving(false);
+    // Only increment reviewed AFTER successful "I remember" + schedule
     setReviewed((n) => n + 1);
-    setStack((prev) => prev.slice(1));
+    setStack((prev) => prev.slice(1));   // remove from front
     setFlipped(false);
     setRemembered(null);
+    setInterval(null);
     if (stack.length <= 1) setDone(true);
   }
 
@@ -282,7 +296,7 @@ function ReviewMode({
       <div className="mb-4">
         <div className="flex justify-between text-xs font-body text-text/50 mb-1.5">
           <span>{reviewed} reviewed today</span>
-          <span>{dueCount === 0 ? "All caught up!" : `${Math.max(0, dueCount - reviewed)} remaining`}</span>
+          <span>{dueCount === 0 ? "No words due" : `${Math.max(0, dueCount - reviewed)} remaining`}</span>
         </div>
         <div className="h-2.5 rounded-full bg-black/8 overflow-hidden">
           <motion.div
@@ -293,7 +307,7 @@ function ReviewMode({
           />
         </div>
         {(dueCount === 0 || barPct === 100) && (
-          <p className="text-xs text-emerald-600 font-body font-semibold mt-1 text-right">All due reviews done.</p>
+          <p className="text-xs text-emerald-600 font-body font-semibold mt-1 text-right">All due reviews are complete.</p>
         )}
       </div>
 
@@ -313,12 +327,14 @@ function ReviewMode({
             </div>
             <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Dutch word</p>
             <div className="flex items-center justify-center gap-2">
-              <h2 className="font-heading text-3xl font-bold text-text break-words">{card?.dutch}</h2>
-              <SpeakButton
-                text={card?.dutch ?? ""}
-                label={`Play Dutch pronunciation for ${card?.dutch ?? "this word"}`}
-                className="h-9 w-9 shrink-0"
-              />
+              <h2 className="font-heading text-3xl font-bold text-text">{card?.dutch}</h2>
+              {card?.dutch && (
+                <SpeakButton
+                  text={card.dutch}
+                  label={`Play pronunciation for ${card.dutch}`}
+                  className="h-9 w-9 shrink-0"
+                />
+              )}
             </div>
             <p className="text-xs font-body text-text/35 mt-2">
               {stack.length - 1 > 0 ? `${stack.length - 1} more in queue` : "Last card"}
@@ -333,14 +349,14 @@ function ReviewMode({
                 onClick={handleForgot}
                 className="flex-1 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-heading font-semibold text-red-600 hover:bg-red-100 transition-colors"
               >
-                Forgot
+                I forgot
               </button>
               <button
                 type="button"
                 onClick={handleRemember}
                 className="flex-1 rounded-xl bg-primary text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90 transition-opacity"
               >
-                Remembered
+                I remember
               </button>
             </div>
           )}
@@ -370,15 +386,36 @@ function ReviewMode({
                   </div>
                 )}
 
+                {/* Interval selector — only when remembered */}
                 {remembered === true && (
-                  <button
-                    type="button"
-                    onClick={() => void handleSchedule()}
-                    disabled={saving}
-                    className="w-full rounded-xl bg-primary text-white py-2.5 text-sm font-heading font-semibold hover:opacity-90 disabled:opacity-40"
-                  >
-                    Next card
-                  </button>
+                  <>
+                    <p className="text-xs font-body font-semibold text-text/50 mb-2">Review again in:</p>
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {INTERVALS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setInterval(opt.value)}
+                          className={[
+                            "px-3 py-1 rounded-full text-xs font-body font-semibold border transition-all",
+                            interval === opt.value
+                              ? "bg-primary text-white border-primary"
+                              : "border-black/12 text-text/60 hover:border-black/25",
+                          ].join(" ")}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleSchedule()}
+                      disabled={interval === null || saving}
+                      className="w-full rounded-xl bg-primary text-white py-2.5 text-sm font-heading font-semibold hover:opacity-90 disabled:opacity-40"
+                    >
+                      Schedule review
+                    </button>
+                  </>
                 )}
 
                 {/* Forgot — just show "Got it, next!" */}
@@ -416,6 +453,7 @@ function DiscoverMode({
   onRefreshReview: () => void;
 }) {
   const [flipped,   setFlipped]   = useState(false);
+  const [interval,  setInterval]  = useState<ReviewInterval>(null);
   const [saving,    setSaving]    = useState(false);
 
   const card = cards[0] ?? null;
@@ -425,6 +463,7 @@ function DiscoverMode({
   useEffect(() => {
     if (card?.wordId !== prevWordId.current) {
       setFlipped(false);
+      setInterval(null);
       prevWordId.current = card?.wordId ?? null;
     }
   }, [card]);
@@ -442,12 +481,16 @@ function DiscoverMode({
   }
 
   async function handleAddToLearn() {
-    if (!card) return;
+    if (!card || interval === null) return;
+    const opt = INTERVALS.find((o) => o.value === interval)!;
     setSaving(true);
-    await addDiscoveredToLearn(userId, card.wordId).catch(() => {});
+    await addDiscoveredToLearn(userId, card.wordId, opt.days).catch(() => {});
     setSaving(false);
     onCardConsumed(card.wordId);
-    onRefreshReview();
+
+    if (opt.days === 0) {
+      onRefreshReview();
+    }
   }
 
   if (!card) return (
@@ -456,17 +499,18 @@ function DiscoverMode({
         <Sparkles size={26} className="text-violet-400" strokeWidth={1.6} />
       </div>
       <h2 className="font-heading text-xl font-bold text-text mb-3">
-        No more recommendations right now
+        You've discovered all current recommendations!
       </h2>
       <p className="text-sm font-body text-text/55 leading-relaxed mb-8">
-        Start a reading task to see your learning words in context.
+        Now is a great time to do some <span className="font-semibold text-primary">Readings</span> to
+        see these words in context and practice what you've learned.
       </p>
       <button
         type="button"
         onClick={() => window.location.assign("/reading")}
         className="rounded-xl bg-primary text-white px-5 py-2.5 text-sm font-heading font-semibold hover:opacity-90"
       >
-        Go to Reading
+        Go to Reading 📖
       </button>
     </div>
   );
@@ -501,10 +545,10 @@ function DiscoverMode({
             )}
             <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">New word</p>
             <div className="flex items-center justify-center gap-2">
-              <h2 className="font-heading text-3xl font-bold text-text break-words">{card.dutch}</h2>
+              <h2 className="font-heading text-3xl font-bold text-text">{card.dutch}</h2>
               <SpeakButton
                 text={card.dutch}
-                label={`Play Dutch pronunciation for ${card.dutch}`}
+                label={`Play pronunciation for ${card.dutch}`}
                 className="h-9 w-9 shrink-0"
               />
             </div>
@@ -519,14 +563,14 @@ function DiscoverMode({
                 disabled={saving}
                 className="flex-1 rounded-xl border border-black/12 px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/[0.03] disabled:opacity-50"
               >
-                I know it
+                I know this word
               </button>
               <button
                 type="button"
                 onClick={() => void handleLearn()}
                 className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90"
               >
-                Learn this
+                Add to review
               </button>
             </div>
           )}
@@ -556,14 +600,33 @@ function DiscoverMode({
                   </div>
                 )}
 
+                <p className="text-xs font-body font-semibold text-text/50 mb-2">First review in:</p>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {INTERVALS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setInterval(opt.value)}
+                      className={[
+                        "px-3 py-1 rounded-full text-xs font-body font-semibold border transition-all",
+                        interval === opt.value
+                          ? "bg-violet-600 text-white border-violet-600"
+                          : "border-black/12 text-text/60 hover:border-black/25",
+                      ].join(" ")}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
                 <button
                   type="button"
                   onClick={() => void handleAddToLearn()}
-                  disabled={saving}
+                  disabled={interval === null || saving}
                   className="w-full rounded-xl bg-violet-600 text-white py-2.5 text-sm font-heading font-semibold hover:opacity-90 disabled:opacity-40"
                 >
                   <Check size={14} className="inline mr-1.5" />
-                  Add to my learning list
+                  Add to word review
                 </button>
               </motion.div>
             )}
@@ -582,9 +645,9 @@ function EmptyReview({ onHome }: { onHome: () => void }) {
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 mx-auto">
         <Check size={28} className="text-emerald-500" strokeWidth={1.8} />
       </div>
-      <h2 className="font-heading text-xl font-bold text-text mb-2">Nothing due today!</h2>
+      <h2 className="font-heading text-xl font-bold text-text mb-2">No words due today</h2>
       <p className="text-sm font-body text-text/50 mb-8">
-        You don't have any words to review yet. Add words from readings or switch to Discover mode.
+        You do not have any words to review yet. Add words from readings or switch to Discover mode.
       </p>
       <button type="button" onClick={onHome}
         className="rounded-xl border border-black/12 px-5 py-2.5 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]">

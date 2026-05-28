@@ -1,18 +1,18 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Check, Hourglass } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Hourglass } from "lucide-react";
 import { useStore } from "../store";
 import {
   savePersonalInfo,
+  completeOnboarding,
   saveProfile,
   selectOnboardingWords,
   getAssessmentBatch,
   submitAssessment,
 } from "../services/api";
 import { INTERESTS, type InterestId } from "../constants/interests";
-import { READING_STYLES, PURPOSES, type CefrLevel, type ReadingStyle, type Purpose } from "../types";
-import ConsentDetailsModal from "../components/ConsentDetailsModal";
+import { PURPOSES, type Purpose } from "../types";
 
 const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 const GENDERS = ["Male", "Female", "Non-binary", "Prefer not to say"];
@@ -23,13 +23,12 @@ type Step = "personal" | "interests" | "assessment";
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const user   = useStore((s) => s.user);
   const setUser = useStore((s) => s.setUser);
+  const retakeAssessment = searchParams.get("step") === "assessment";
 
-  const [step, setStep] = useState<Step>("personal");
-  const [consentAccepted, setConsentAccepted] = useState(() =>
-    user ? localStorage.getItem(`leeswijs-consent:${user.id}`) === "true" : false,
-  );
+  const [step, setStep] = useState<Step>(retakeAssessment ? "assessment" : "personal");
 
   // ── Step 1 state ───────────────────────────
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
@@ -41,8 +40,7 @@ export default function OnboardingPage() {
   const [motherLang,  setMotherLang]  = useState(user?.mother_language ?? "");
   const [otherLangs,  setOtherLangs]  = useState(user?.other_languages ?? "");
   const [purpose,     setPurpose]     = useState<Purpose | "">(user?.purpose ?? "");
-  const [selfCefr,    setSelfCefr]    = useState<CefrLevel>(user?.cefrLevel ?? "B1");
-  const [readingStyles, setReadingStyles] = useState<ReadingStyle[]>(user?.preferred_styles ?? []);
+  const [selfCefr,    setSelfCefr]    = useState<string>(user?.cefrLevel ?? "B1");
 
   // ── Step 2 state ───────────────────────────
   const [selectedInterests, setSelectedInterests] = useState<Set<InterestId>>(
@@ -57,19 +55,38 @@ export default function OnboardingPage() {
   const [allWordsSeen, setAllWordsSeen] = useState<Array<{ wordId: string; dutch: string }>>([]);
   const [loadingBatch, setLoadingBatch] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
+  const [assessmentError, setAssessmentError] = useState<string | null>(null);
   const [assessDone,   setAssessDone]   = useState(false);
   const [finalResult,  setFinalResult]  = useState<{ level: string; acquisition: number } | null>(null);
 
+  useEffect(() => {
+    if (!retakeAssessment || !user) return;
+
+    let cancelled = false;
+    setStep("assessment");
+    setLoadingBatch(true);
+    setAssessmentError(null);
+    getAssessmentBatch(1, user.id, selfCefr)
+      .then((res) => {
+        if (cancelled) return;
+        setBatch(res);
+        if (!hasAssessmentWords(res)) {
+          setAssessmentError(assessmentBatchError(res));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBatch(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [retakeAssessment, selfCefr, user?.id]);
+
   // ── Step 1 handlers ────────────────────────
-  const toggleStyle = (s: ReadingStyle) =>
-    setReadingStyles((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
-    );
 
   async function handlePersonalNext() {
-    if (!user || !consentAccepted) return;
-    localStorage.setItem(`leeswijs-consent:${user.id}`, "true");
-    localStorage.setItem(`leeswijs-consent-at:${user.id}`, new Date().toISOString());
+    if (!user) return;
     await savePersonalInfo(user.id, {
       display_name:        displayName,
       age:                 age !== "" ? Number(age) : undefined,
@@ -80,7 +97,6 @@ export default function OnboardingPage() {
       mother_language:     motherLang,
       other_languages:     otherLangs,
       purpose:             purpose || undefined,
-      preferred_styles:    readingStyles,
       self_reported_cefr:  selfCefr,
     });
     setUser({
@@ -93,7 +109,6 @@ export default function OnboardingPage() {
       mother_language: motherLang,
       other_languages: otherLangs,
       purpose: (purpose as Purpose) || null,
-      preferred_styles: readingStyles,
       cefrLevel: selfCefr as typeof user.cefrLevel,
     });
     setStep("interests");
@@ -116,8 +131,12 @@ export default function OnboardingPage() {
     // Kick off batch 1 generation
     setStep("assessment");
     setLoadingBatch(true);
+    setAssessmentError(null);
     const res = await getAssessmentBatch(1, user.id, selfCefr);
     setBatch(res);
+    if (!hasAssessmentWords(res)) {
+      setAssessmentError(assessmentBatchError(res));
+    }
     setLoadingBatch(false);
   }
 
@@ -125,8 +144,11 @@ export default function OnboardingPage() {
   function toggleWord(wordId: string) {
     setKnownIds((prev) => {
       const next = new Set(prev);
-      if (next.has(wordId)) next.delete(wordId);
-      else next.add(wordId);
+      if (next.has(wordId)) {
+        next.delete(wordId);
+      } else {
+        next.add(wordId);
+      }
       return next;
     });
   }
@@ -144,12 +166,16 @@ export default function OnboardingPage() {
       setKnownIds(new Set());
       setBatchNum((n) => n + 1);
       setLoadingBatch(true);
+      setAssessmentError(null);
       const res = await getAssessmentBatch(
         batchNum + 1, user.id, selfCefr,
         [...cumKnown].map((id) => cumSeen.find((w) => w.wordId === id)?.dutch ?? "").filter(Boolean),
         cumSeen.map((w) => w.dutch),
       );
       setBatch(res);
+      if (!hasAssessmentWords(res)) {
+        setAssessmentError(assessmentBatchError(res));
+      }
       setLoadingBatch(false);
       return;
     }
@@ -160,7 +186,8 @@ export default function OnboardingPage() {
     const secondPitchKnown = secondPitchWords.filter((w) => knownIds.has(w.wordId));
     const acquisitionScore = secondPitchWords.length > 0 ? secondPitchKnown.length / secondPitchWords.length : 0;
     
-    const cefrIndex = CEFR_LEVELS.indexOf(selfCefr);
+    const levelIndex = CEFR_LEVELS.findIndex((level) => level === selfCefr);
+    const cefrIndex = levelIndex !== -1 ? levelIndex : 2;
     let finalLevel = selfCefr;
     if (acquisitionScore > 0.8) {
       finalLevel = CEFR_LEVELS[Math.min(CEFR_LEVELS.length - 1, cefrIndex + 1)];
@@ -176,10 +203,16 @@ export default function OnboardingPage() {
       true,
     );
 
-    // Trigger KRS to select 7 onboarding words
-    await selectOnboardingWords(user.id).catch(() => {});
+    if (!retakeAssessment) {
+      await selectOnboardingWords(user.id).catch(() => {});
+      await completeOnboarding(user.id).catch(() => {});
+    }
 
-    setUser({ ...user, cefrLevel: finalLevel as typeof user.cefrLevel });
+    setUser({
+      ...user,
+      cefrLevel: finalLevel as typeof user.cefrLevel,
+      onboarding_completed: retakeAssessment ? user.onboarding_completed : true,
+    });
     setFinalResult({ level: finalLevel, acquisition: Math.round(acquisitionScore * 100) });
     setCalculatingResults(false);
     setAssessDone(true);
@@ -193,10 +226,10 @@ export default function OnboardingPage() {
       >
         <Hourglass size={36} className="text-primary animate-pulse mb-5" />
         <h2 className="font-heading text-xl font-bold text-text mb-2">
-          Calculating Results
+          Preparing your study profile
         </h2>
         <p className="text-sm font-body text-text/60 animate-pulse">
-          Finalizing your profile and estimating your vocabulary depth...
+          Finalizing your setup before the first word set...
         </p>
       </motion.div>
     );
@@ -208,23 +241,25 @@ export default function OnboardingPage() {
         initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
         className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-10 text-center"
       >
-        <div className="text-4xl mb-4">🎉</div>
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 mx-auto">
+          <Check size={28} className="text-emerald-600" strokeWidth={1.8} />
+        </div>
         <h2 className="font-heading text-2xl font-bold text-text mb-2">
-          Results Summary
+          Setup complete
         </h2>
         <div className="bg-black/[0.02] border border-black/10 rounded-xl p-6 mb-8 inline-block text-left w-full max-w-sm">
-          <p className="text-sm font-body text-text/60 mb-1">Your Estimated Dutch Level:</p>
+          <p className="text-sm font-body text-text/60 mb-1">Estimated Dutch level:</p>
           <p className="font-heading text-xl font-bold text-primary mb-4">{finalResult.level}</p>
           
-          <p className="text-sm font-body text-text/60 mb-1">Vocabulary Acquisition:</p>
+          <p className="text-sm font-body text-text/60 mb-1">Initial word estimate:</p>
           <p className="font-heading text-xl font-bold text-secondary">{finalResult.acquisition}%</p>
         </div>
         <button
           type="button"
-          onClick={() => navigate("/onboarding/flashcards", { replace: true })}
+          onClick={() => navigate(retakeAssessment ? "/settings" : "/home", { replace: true })}
           className="inline-flex items-center justify-center w-full max-w-sm gap-2 bg-primary text-white rounded-xl px-6 py-3 text-sm font-heading font-semibold hover:opacity-90"
         >
-          Continue to Flashcards <ArrowRight size={16} />
+          {retakeAssessment ? "Back to settings" : "Go to study home"} <ArrowRight size={16} />
         </button>
       </motion.div>
     );
@@ -250,9 +285,6 @@ export default function OnboardingPage() {
             otherLangs={otherLangs} setOtherLangs={setOtherLangs}
             purpose={purpose} setPurpose={setPurpose}
             selfCefr={selfCefr} setSelfCefr={setSelfCefr}
-            readingStyles={readingStyles} toggleStyle={toggleStyle}
-            consentAccepted={consentAccepted}
-            setConsentAccepted={setConsentAccepted}
             onNext={handlePersonalNext}
           />
         )}
@@ -269,8 +301,28 @@ export default function OnboardingPage() {
             batchNum={batchNum}
             knownIds={knownIds}
             loading={loadingBatch}
+            error={assessmentError}
             onToggle={toggleWord}
             onNext={handleNextBatch}
+            onRetry={() => {
+              if (!user) return;
+              setLoadingBatch(true);
+              setAssessmentError(null);
+              getAssessmentBatch(
+                batchNum,
+                user.id,
+                selfCefr,
+                [...allKnownIds].map((id) => allWordsSeen.find((w) => w.wordId === id)?.dutch ?? "").filter(Boolean),
+                allWordsSeen.map((w) => w.dutch),
+              )
+                .then((res) => {
+                  setBatch(res);
+                  if (!hasAssessmentWords(res)) {
+                    setAssessmentError(assessmentBatchError(res));
+                  }
+                })
+                .finally(() => setLoadingBatch(false));
+            }}
           />
         )}
       </AnimatePresence>
@@ -326,58 +378,25 @@ function PersonalStep(props: {
   motherLang: string; setMotherLang: (v: string) => void;
   otherLangs: string; setOtherLangs: (v: string) => void;
   purpose: Purpose | ""; setPurpose: (v: Purpose | "") => void;
-  selfCefr: CefrLevel; setSelfCefr: (v: CefrLevel) => void;
-  readingStyles: ReadingStyle[]; toggleStyle: (s: ReadingStyle) => void;
-  consentAccepted: boolean; setConsentAccepted: (v: boolean) => void;
+  selfCefr: string; setSelfCefr: (v: string) => void;
   onNext: () => void;
 }) {
-  const [showConsentDetails, setShowConsentDetails] = useState(false);
-  const canContinue = 
-    props.consentAccepted &&
-    props.displayName.trim().length > 0 && 
-    props.age !== "" && 
-    props.city.trim().length > 0 && 
-    props.gender !== "" && 
-    props.job.trim().length > 0 && 
+  const canContinue =
+    props.displayName.trim().length >= 2 &&
+    props.age !== "" &&
+    props.city.trim().length > 0 &&
+    props.gender !== "" &&
+    props.job.trim().length > 0 &&
     props.academic.trim().length > 0 && 
     props.motherLang.trim().length > 0 && 
     props.purpose !== "" && 
-    props.readingStyles.length > 0;
+    props.selfCefr !== "";
   return (
     <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
       <h1 className="font-heading text-2xl font-bold text-text mb-1">Tell us about yourself</h1>
-      <p className="text-sm text-text/50 font-body mb-6">This helps us personalise your reading texts.</p>
-
-      {!props.consentAccepted && (
-        <div className="mb-5 rounded-xl border border-black/10 bg-black/[0.02] p-4 transition-colors hover:border-black/20">
-          <div className="flex items-start justify-between gap-3">
-            <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
-              <input
-                type="checkbox"
-                checked={props.consentAccepted}
-                onChange={(e) => props.setConsentAccepted(e.target.checked)}
-                className="mt-1 h-4 w-4 accent-primary"
-              />
-              <span className="font-heading text-sm font-semibold text-text">
-                I agree to the study consent
-              </span>
-            </label>
-
-            <button
-              type="button"
-              onClick={() => setShowConsentDetails(true)}
-              className="shrink-0 text-xs font-heading font-semibold text-primary hover:underline"
-            >
-              Read more
-            </button>
-          </div>
-
-          <ConsentDetailsModal
-            open={showConsentDetails}
-            onClose={() => setShowConsentDetails(false)}
-          />
-        </div>
-      )}
+      <p className="text-sm text-text/50 font-body mb-6">
+        These answers help match the study texts to your Dutch level, goals, and interests.
+      </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Full name *"><input value={props.displayName} onChange={(e) => props.setDisplayName(e.target.value)} placeholder="Your name" className={inputCls} /></Field>
@@ -400,28 +419,11 @@ function PersonalStep(props: {
           </select>
         </Field>
         <Field label="Self-reported Dutch level *">
-          <select value={props.selfCefr} onChange={(e) => props.setSelfCefr(e.target.value as CefrLevel)} className={inputCls}>
+          <select value={props.selfCefr} onChange={(e) => props.setSelfCefr(e.target.value)} className={inputCls}>
             <option value="">Select...</option>
             {CEFR_LEVELS.map((l) => <option key={l}>{l}</option>)}
           </select>
         </Field>
-      </div>
-
-      <div className="mt-5">
-        <p className="text-xs font-body font-semibold text-text/60 uppercase tracking-wide mb-2">
-          Preferred reading styles <span className="normal-case font-normal text-text/40">(select up to 6)</span>
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {READING_STYLES.map((s) => {
-            const on = props.readingStyles.includes(s);
-            return (
-              <button key={s} type="button" onClick={() => props.toggleStyle(s)}
-                className={["px-3 py-1.5 rounded-full text-xs font-body font-semibold border transition-all", on ? "bg-primary text-white border-primary" : "border-black/12 text-text/60 hover:border-black/25"].join(" ")}>
-                {s}
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       <button type="button" onClick={props.onNext} disabled={!canContinue}
@@ -442,7 +444,9 @@ function InterestsStep({ selected, onToggle, onNext }: {
   return (
     <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
       <h1 className="font-heading text-2xl font-bold text-text mb-1">What are you interested in?</h1>
-      <p className="text-sm text-text/50 font-body mb-6">Pick topics you'd like to read about. You can select up to 6.</p>
+      <p className="text-sm text-text/50 font-body mb-6">
+        Pick topics you would be willing to read about during the study. You can select up to 6.
+      </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {INTERESTS.map((interest) => {
           const isSelected = selected.has(interest.id);
@@ -478,19 +482,23 @@ function InterestsStep({ selected, onToggle, onNext }: {
 }
 
 // ── Step 3 — Assessment ────────────────────────────────────────────────────────
-function AssessmentStep({ batch, batchNum, knownIds, loading, onToggle, onNext }: {
+function AssessmentStep({ batch, batchNum, knownIds, loading, error, onToggle, onNext, onRetry }: {
   batch: Awaited<ReturnType<typeof getAssessmentBatch>> | null;
   batchNum: number; knownIds: Set<string>; loading: boolean;
-  onToggle: (id: string) => void; onNext: () => void;
+  error: string | null;
+  onToggle: (id: string) => void; onNext: () => void; onRetry: () => void;
 }) {
   const words = batch?.success ? batch.data.words.filter((w) => !w.isPseudo) : [];
+  const isEmpty = !loading && words.length === 0;
   return (
     <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
       <div className="flex items-center justify-between mb-4">
         <h1 className="font-heading text-2xl font-bold text-text">Vocabulary check</h1>
         <span className="text-xs font-body text-text/40">Batch {batchNum} of {TOTAL_BATCHES}</span>
       </div>
-      <p className="text-sm text-text/50 font-body mb-5">Click the words you recognise. Leave unknown ones unselected.</p>
+      <p className="text-sm text-text/50 font-body mb-5">
+        Select only words you can understand without help. Leave uncertain or unknown words unselected.
+      </p>
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -502,6 +510,27 @@ function AssessmentStep({ batch, batchNum, knownIds, loading, onToggle, onNext }
             {Array.from({ length: 15 }).map((_, i) => (
               <div key={i} className="h-8 rounded-full bg-black/10 animate-pulse" style={{ width: `${60 + (i % 5) * 18}px` }} />
             ))}
+          </div>
+        </div>
+      ) : isEmpty ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+          <div className="flex gap-3">
+            <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+            <div>
+              <p className="text-sm font-body font-semibold text-amber-800">
+                This word check did not load correctly.
+              </p>
+              <p className="mt-1 text-sm font-body text-amber-700">
+                {error ?? "Please try loading the words again."}
+              </p>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-heading font-semibold text-amber-800 hover:bg-amber-100"
+              >
+                Try again
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -521,13 +550,23 @@ function AssessmentStep({ batch, batchNum, knownIds, loading, onToggle, onNext }
       )}
 
       <div className="mt-6 flex flex-col gap-2">
-        <button type="button" onClick={onNext} disabled={loading}
+        <button type="button" onClick={onNext} disabled={loading || isEmpty}
           className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90 disabled:opacity-50">
           {batchNum < TOTAL_BATCHES ? "Next batch" : "See my results"} <ArrowRight size={16} />
         </button>
       </div>
     </motion.div>
   );
+}
+
+function hasAssessmentWords(res: Awaited<ReturnType<typeof getAssessmentBatch>>) {
+  return res.success && res.data.words.some((word) => !word.isPseudo);
+}
+
+function assessmentBatchError(res: Awaited<ReturnType<typeof getAssessmentBatch>>) {
+  return res.success
+    ? "Could not load this word check. Please try again."
+    : res.error;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

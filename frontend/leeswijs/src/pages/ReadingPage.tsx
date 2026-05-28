@@ -1,7 +1,3 @@
-/**
- * ReadingPage — the primary workspace for generating and browsing readings.
- * Previously this content lived on HomePage; the Home route is now the analytics dashboard.
- */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,72 +10,139 @@ import {
   Lock,
   Loader2,
   Search,
+  X,
 } from "lucide-react";
 
-import { generateSession, listSessions, getCondition } from "../services/api";
+import { generateSession, getOnboardingWords, getOnboardingWordSetStatus, getVocabTestProgress, listSessions } from "../services/api";
+import type { ConditionType } from "../services/api";
 import type { SessionSummary } from "../types";
-import { READING_STYLES, type ReadingStyle } from "../types";
 import ReadingGenerationStatus from "../components/ReadingGenerationStatus";
 import { useStore } from "../store";
 
-const MAX_GATED = 3;
+const READINGS_PER_PHASE = 3;
+const TARGET_WORDS_PER_PHASE = 10;
 
 export default function ReadingPage() {
   const navigate = useNavigate();
   const user = useStore((s) => s.user);
 
   const [sessions,     setSessions]     = useState<SessionSummary[]>([]);
-  const [style,        setStyle]        = useState<ReadingStyle>("Narrative (Story)");
   const [loading,      setLoading]      = useState(false);
   const [loadingList,  setLoadingList]  = useState(true);
   const [error,        setError]        = useState<string | null>(null);
   const [alertMsg,     setAlertMsg]     = useState<string | null>(null);
-  // History will now use the sessions array directly from the API
   const [query,        setQuery]        = useState("");
+  const [immediateDone, setImmediateDone] = useState<number[]>([]);
+  const [readyWordSets, setReadyWordSets] = useState<number[]>([]);
+  const [introDismissed, setIntroDismissed] = useState(() =>
+    user ? window.localStorage.getItem(readingIntroKey(user.id)) === "true" : false,
+  );
 
   const refreshSessions = async () => {
     if (!user) return;
-    const data = await listSessions(user.id);
-    setSessions(data);
-    setLoadingList(false);
+    const phase = user.has_switched_conditions ? 2 : 1;
+    try {
+      const [data, progress, phaseWords] = await Promise.all([
+        listSessions(user.id),
+        getVocabTestProgress(user.id).catch(() => ({ immediateCompleted: [], delayedCompleted: [] })),
+        getOnboardingWordSetStatus(user.id, phase)
+          .catch(async () => {
+            const words = await getOnboardingWords(user.id, phase).catch(() => []);
+            return {
+              ready:
+                words.length >= TARGET_WORDS_PER_PHASE &&
+                window.localStorage.getItem(wordSetReadyKey(user.id, phase)) === "true",
+            };
+          }),
+      ]);
+      setSessions(data);
+      setImmediateDone(progress.immediateCompleted);
+      setReadyWordSets(phaseWords.ready ? [phase] : []);
+    } finally {
+      setLoadingList(false);
+    }
   };
 
   useEffect(() => {
     if (!user) return;
+    setIntroDismissed(window.localStorage.getItem(readingIntroKey(user.id)) === "true");
     void refreshSessions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    function refreshOnFocus() {
+      void refreshSessions();
+    }
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   if (!user) return null;
 
-  const slots: Array<SessionSummary | null> = [
-    sessions.find((s) => s.reading_number === 1) ?? null,
-    sessions.find((s) => s.reading_number === 2) ?? null,
-    sessions.find((s) => s.reading_number === 3) ?? null,
-  ];
-  const completedCount   = slots.filter((s) => s?.survey_completed).length;
-  const allGatedComplete = completedCount >= MAX_GATED;
-  const nextSlotIndex    = slots.findIndex((s) => s === null);
-  const nextReadingNumber = nextSlotIndex >= 0 ? nextSlotIndex + 1 : MAX_GATED + 1;
-  const activeGated = slots.find((s) => s !== null && !s.survey_completed) ?? null;
+  const completedImmediate = new Set(immediateDone);
+  const currentPhase = user.has_switched_conditions ? 2 : 1;
+  const phaseSessions = sessions
+    .filter((s) => s.study_phase === currentPhase)
+    .sort((a, b) => a.reading_number - b.reading_number);
+  const phaseSlots = Array.from({ length: READINGS_PER_PHASE }, (_, i) =>
+    phaseSessions.find((s) => s.reading_number === i + 1) ?? null,
+  );
+  const generatedInPhase = new Set(phaseSessions.map((s) => s.reading_number));
+  const completedCount = phaseSessions.filter((s) => s.survey_completed).length;
+  const nextLocalReadingNumber = generatedInPhase.size + 1;
+  const activeReading = phaseSessions.find((s) => !s.survey_completed) ?? null;
+  const currentPhaseDone = completedImmediate.has(currentPhase);
+  const nextTestSet =
+    completedCount >= READINGS_PER_PHASE && !currentPhaseDone ? currentPhase : undefined;
+  const currentWordSetReady = readyWordSets.includes(currentPhase);
+  const needsCurrentWordSet =
+    !activeReading &&
+    !nextTestSet &&
+    nextLocalReadingNumber <= READINGS_PER_PHASE &&
+    !currentWordSetReady;
+  const allStudyComplete = currentPhase === 2 && currentPhaseDone;
+  const showReadingIntro =
+    currentPhase === 1 &&
+    !allStudyComplete &&
+    !introDismissed;
+  const phaseInstruction =
+    currentPhase === 1
+      ? `Complete ${READINGS_PER_PHASE} readings in Phase 1, then do the vocabulary check.`
+      : `Phase 2: complete ${READINGS_PER_PHASE} readings, then do the vocabulary check.`;
 
   async function handleGenerate() {
     if (!user) return;
-    if (activeGated) {
-      setAlertMsg(`Please finish Reading ${activeGated.reading_number} and complete its survey first.`);
+    if (activeReading) {
+      setAlertMsg(`Please finish Phase ${currentPhase} Reading ${activeReading.reading_number} and complete its survey first.`);
       setTimeout(() => setAlertMsg(null), 4000);
       return;
     }
-    if (nextReadingNumber > MAX_GATED && !allGatedComplete) return;
+    if (nextTestSet) {
+      setAlertMsg(`Please finish the Phase ${nextTestSet} vocabulary check before starting the next block.`);
+      setTimeout(() => setAlertMsg(null), 4000);
+      return;
+    }
+    if (!currentWordSetReady) {
+      setAlertMsg(`Learn ${TARGET_WORDS_PER_PHASE} words before starting Phase ${currentPhase} readings.`);
+      setTimeout(() => setAlertMsg(null), 4000);
+      return;
+    }
+    if (nextLocalReadingNumber > READINGS_PER_PHASE) return;
 
     setLoading(true);
     setError(null);
     try {
-      const { sessionId } = await generateSession(user.id, getCondition(nextReadingNumber), style);
+      const condition = (user.current_condition ?? "ADAPTIVE") as ConditionType;
+      const { sessionId } = await generateSession(user.id, condition);
       await refreshSessions();
       navigate(`/read/${sessionId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
+      await refreshSessions();
+      window.setTimeout(() => void refreshSessions(), 8_000);
     } finally {
       setLoading(false);
     }
@@ -87,9 +150,11 @@ export default function ReadingPage() {
 
   const canGenerate =
     !loading &&
-    (slots.some((s) => s === null)
-      ? !activeGated
-      : allGatedComplete);
+    !loadingList &&
+    !activeReading &&
+    !nextTestSet &&
+    currentWordSetReady &&
+    nextLocalReadingNumber <= READINGS_PER_PHASE;
 
   const filteredHistory = query.trim()
     ? sessions.filter((s) =>
@@ -104,7 +169,6 @@ export default function ReadingPage() {
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className="mx-auto max-w-3xl space-y-6"
     >
-      {/* ── Header ── */}
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <BookOpen size={18} strokeWidth={2} />
@@ -112,14 +176,72 @@ export default function ReadingPage() {
         <div>
           <h1 className="font-heading text-2xl font-bold text-text">Reading</h1>
           <p className="text-sm font-body text-text/50">
-            {allGatedComplete
-              ? "Reading tasks completed. You can keep practicing with extra texts."
-              : `Complete ${MAX_GATED} readings and their surveys to unlock the vocabulary test.`}
+            {nextTestSet
+              ? `Phase ${nextTestSet} vocabulary check is ready.`
+              : needsCurrentWordSet
+              ? `Learn ${TARGET_WORDS_PER_PHASE} words to unlock this reading block.`
+              : allStudyComplete
+              ? "All reading phases are complete."
+              : phaseInstruction}
           </p>
         </div>
       </div>
 
-      {/* ── Alert ── */}
+      <AnimatePresence>
+        {showReadingIntro && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reading-intro-title"
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              className="w-full max-w-md rounded-2xl bg-white px-6 py-6 shadow-2xl shadow-black/20"
+            >
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <BookOpen size={22} />
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close reading introduction"
+                  onClick={() => {
+                    window.localStorage.setItem(readingIntroKey(user.id), "true");
+                    setIntroDismissed(true);
+                  }}
+                  className="rounded-lg p-1.5 text-text/35 hover:bg-black/5 hover:text-text"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <h2 id="reading-intro-title" className="mb-2 font-heading text-xl font-bold text-text">
+                How the reading part works
+              </h2>
+              <p className="mb-5 text-sm font-body leading-6 text-text/60">
+                The reading part has two phases. In each phase, you read three short Dutch texts,
+                answer a few questions after each text, and then complete a vocabulary check.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  window.localStorage.setItem(readingIntroKey(user.id), "true");
+                  setIntroDismissed(true);
+                }}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90"
+              >
+                Understood <ArrowRight size={16} />
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {alertMsg && (
           <motion.div
@@ -141,7 +263,6 @@ export default function ReadingPage() {
         </div>
       )}
 
-      {/* ── Generator card ── */}
       <div className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -150,22 +271,17 @@ export default function ReadingPage() {
           <div className="flex-1 min-w-0">
             <h2 className="font-heading text-base font-bold text-text">Create reading task</h2>
             <p className="text-xs text-text/50 font-body">
-              {allGatedComplete
-                ? "Extra practice is available after the required tasks."
-                : `Reading ${Math.min(nextReadingNumber, MAX_GATED)} of ${MAX_GATED}`}
+              {nextTestSet
+                ? `Check Phase ${nextTestSet} vocabulary before continuing.`
+                : needsCurrentWordSet
+                ? `Learn the ${TARGET_WORDS_PER_PHASE} words first.`
+                : allStudyComplete
+                ? "All study readings are complete."
+                : `Phase ${currentPhase}: reading ${Math.min(nextLocalReadingNumber, READINGS_PER_PHASE)} of ${READINGS_PER_PHASE}`}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={style}
-            onChange={(e) => setStyle(e.target.value as ReadingStyle)}
-            className="rounded-lg border border-black/12 bg-black/[0.02] px-3 py-2 text-sm font-body text-text outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-colors"
-          >
-            {READING_STYLES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
           <motion.button
             type="button"
             onClick={() => void handleGenerate()}
@@ -180,28 +296,30 @@ export default function ReadingPage() {
             {loading ? (
               <><Loader2 size={16} className="animate-spin" /> Generating…</>
             ) : (
-              <><BookOpen size={15} /> Create reading<ArrowRight size={15} /></>
+              <><BookOpen size={15} /> Generate<ArrowRight size={15} /></>
             )}
           </motion.button>
         </div>
         {loading && <ReadingGenerationStatus className="mt-4" />}
       </div>
 
-      {/* ── Study slots 1-3 ── */}
       <div className="space-y-3">
         <h3 className="font-heading text-sm font-bold text-text">Study readings</h3>
         {loadingList ? (
           <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
+            {Array.from({ length: READINGS_PER_PHASE }, (_, i) => i + 1).map((i) => (
               <div key={i} className="h-16 rounded-lg bg-black/4 animate-pulse" />
             ))}
           </div>
         ) : (
-          slots.map((session, i) => {
+          phaseSlots.map((session, i) => {
             const num = i + 1;
+            const localNum = num;
             const isActive    = session !== null && !session.survey_completed;
             const isCompleted = session !== null && session.survey_completed;
-            const isLocked    = session === null && num > nextReadingNumber;
+            const isLocked    = session === null && localNum > nextLocalReadingNumber;
+            const isReady     = session === null && localNum === nextLocalReadingNumber && canGenerate;
+            const isWaiting   = session === null && localNum === nextLocalReadingNumber && !canGenerate;
 
             return (
               <motion.div
@@ -217,11 +335,14 @@ export default function ReadingPage() {
                     ? "border-primary/25 bg-primary/[0.03]"
                     : isLocked
                     ? "border-black/8 bg-black/[0.015] opacity-40"
+                    : isWaiting
+                    ? "border-black/8 bg-black/[0.015] opacity-60"
                     : "border-black/8 bg-white hover:border-primary/20 cursor-pointer",
                 ].join(" ")}
                 onClick={() => {
                   if (isCompleted || isLocked) return;
                   if (session) navigate(`/read/${session.session_id}`);
+                  else if (isReady) void handleGenerate();
                 }}
               >
                 <div className={[
@@ -232,15 +353,19 @@ export default function ReadingPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-heading text-sm font-semibold text-text">
-                    {session?.title ?? `Reading ${num}`}
+                    {session?.title ?? `Reading ${localNum}`}
                   </p>
                   <p className="text-xs font-body text-text/45 mt-0.5">
                     {isCompleted
                       ? "Completed"
                       : isActive
-                      ? "In progress — tap to continue"
+                      ? "In progress - tap to continue"
                       : isLocked
-                      ? `Unlocks after Reading ${num - 1}`
+                      ? `Unlocks after Reading ${localNum - 1}`
+                      : isWaiting && needsCurrentWordSet
+                      ? "Learn the word set first"
+                      : isWaiting && nextTestSet
+                      ? "Vocabulary check comes next"
                       : "Ready to generate"}
                   </p>
                 </div>
@@ -251,30 +376,88 @@ export default function ReadingPage() {
         )}
       </div>
 
-      {/* ── Vocab test CTA ── */}
-      {allGatedComplete && (
+      {needsCurrentWordSet && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-4"
+          className="rounded-lg border border-primary/20 bg-primary/[0.04] px-5 py-4"
         >
-          <h3 className="font-heading text-sm font-bold text-emerald-800 mb-1">
-            Vocabulary test unlocked
-          </h3>
-          <p className="text-xs font-body text-emerald-700 mb-3">
-            Test your memory of the 7 words you studied before the readings.
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate(`/vocab-test/${sessions.find((s) => s.reading_number === 1)?.session_id ?? ""}`)}
-            className="inline-flex items-center gap-2 bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-heading font-semibold hover:opacity-90"
-          >
-            Start vocabulary test <ArrowRight size={14} />
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-heading text-sm font-bold text-primary mb-1">
+                Learn {TARGET_WORDS_PER_PHASE} words for Phase {currentPhase}
+              </h3>
+              <p className="text-xs font-body text-text/55">
+                This unlocks the three readings in this phase.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(`/onboarding/flashcards?phase=${currentPhase}`)}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-heading font-semibold text-white hover:opacity-90"
+            >
+              Start word set <ArrowRight size={14} />
+            </button>
+          </div>
         </motion.div>
       )}
 
-      {/* ── Reading history ── */}
+      {(completedCount >= READINGS_PER_PHASE || currentPhaseDone) && (
+        <div className="space-y-3">
+          {(() => {
+            const isDone = currentPhaseDone;
+            const firstSession = phaseSessions.find((s) => s.reading_number === 1);
+            const sgId = firstSession?.session_id ?? "";
+
+            return (
+              <motion.div
+                key={currentPhase}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={[
+                  "rounded-lg border px-5 py-4",
+                  isDone
+                    ? "border-black/8 bg-black/[0.025] text-text/50"
+                    : "border-emerald-200 bg-emerald-50",
+                ].join(" ")}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className={[
+                      "font-heading text-sm font-bold mb-1",
+                      isDone ? "text-text/55" : "text-emerald-800",
+                    ].join(" ")}>
+                      Phase {currentPhase} vocabulary {isDone ? "checked" : "ready"}
+                    </h3>
+                    <p className={[
+                      "text-xs font-body",
+                      isDone ? "text-text/45" : "text-emerald-700",
+                    ].join(" ")}>
+                      Words from the three readings in this phase.
+                    </p>
+                  </div>
+
+                  {isDone ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-black/8 bg-white px-3 py-2 text-xs font-heading font-semibold text-text/45">
+                      <CheckCircle2 size={14} /> Completed
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!sgId}
+                      onClick={() => navigate(`/vocab-test/${sgId}?phase=${currentPhase}`)}
+                      className="inline-flex items-center gap-2 bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-heading font-semibold hover:opacity-90"
+                    >
+                      Start vocabulary check <ArrowRight size={14} />
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            );
+          })()}
+        </div>
+      )}
+
       {sessions.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-3 mb-1">
@@ -323,7 +506,7 @@ export default function ReadingPage() {
 }
 
 function relTime(iso: string): string {
-  const then = new Date(iso).getTime();
+  const then = parseBackendTime(iso);
   if (Number.isNaN(then)) return iso;
   const diff = Date.now() - then;
   const m = Math.floor(diff / 60_000);
@@ -333,5 +516,19 @@ function relTime(iso: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return new Date(then).toLocaleDateString();
+}
+
+function parseBackendTime(iso: string): number {
+  const value = iso.trim().replace(" ", "T");
+  const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(value);
+  return new Date(hasTimezone ? value : `${value}Z`).getTime();
+}
+
+function readingIntroKey(userId: string) {
+  return `leeswijs-reading-intro-v2-seen-${userId}`;
+}
+
+function wordSetReadyKey(userId: string, phase: number) {
+  return `leeswijs-word-set-ready-${userId}-${phase}`;
 }

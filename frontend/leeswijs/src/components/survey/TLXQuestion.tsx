@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import type { TLXScale } from "../../types";
 
 type Props = {
+  tag?: string;
   question: string;
   value: TLXScale | null;
   onChange: (v: TLXScale) => void;

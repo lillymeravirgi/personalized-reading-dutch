@@ -1,6 +1,6 @@
-# Learn Dutch
+# LearnDutch
 
-Learn Dutch is an HCI course group project for studying personalized Dutch reading support for second-language learners. The frontend app is in `frontend/leeswijs`.
+LearnDutch is an HCI course group project for studying personalized Dutch reading support for second-language learners. The frontend app is in `frontend/leeswijs`.
 
 The main goal is to run a clean experiment and collect usable data about reading engagement, willingness to continue reading, cognitive load, and vocabulary learning.
 
@@ -30,84 +30,76 @@ The protocol is grounded in Flow Theory and the Zone of Proximal Development. Th
 - **API prefix:** `/api`
 - **Prototype auth:** login endpoint plus `X-User-Id` header for user-scoped API calls
 
-## Quick Start
+## How to Run
 
-You need:
-
-- Python 3.11 or newer. Python 3.9 will not work with the current backend code.
-- Node.js 20 or newer.
-- A Gemini API key for generated readings.
+You need Python 3.11+, Node.js 20+, and a Gemini API key.
 
 ### Backend
 
-macOS / Linux:
+1. Navigate to the backend directory and set up a virtual environment:
+   ```bash
+   cd backend
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
 
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+2. Configure environment variables:
+   ```bash
+   cp .env.example .env
+   # Open .env and add your GOOGLE_API_KEY and configure other settings
+   ```
 
-cp .env.example .env
-# Add GOOGLE_API_KEY in backend/.env
+3. Seed the database and start the FastAPI dev server:
+   ```bash
+   python seed.py
+   uvicorn main:app --port 8000 --reload
+   ```
 
-python seed.py
-uvicorn main:app --port 8000 --reload
-```
-
-Windows PowerShell:
-
-```powershell
-cd backend
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-copy .env.example .env
-# Add GOOGLE_API_KEY in backend\.env
-
-python seed.py
-uvicorn main:app --port 8000 --reload
-```
-
-API docs:
-
-```text
-http://localhost:8000/docs
-```
+The backend API documentation is available at:
+`http://localhost:8000/docs`
 
 ### Frontend
 
-Open a second terminal:
+1. Navigate to the frontend directory and install dependencies:
+   ```bash
+   cd frontend/leeswijs
+   npm install
+   ```
 
-macOS / Linux:
+2. Start the Vite development server:
+   ```bash
+   npm run dev -- --port 3000
+   ```
 
-```bash
-cd frontend/leeswijs
-npm install
-VITE_API_BASE_URL=http://localhost:8000/api npm run dev -- --host 127.0.0.1 --port 5174
-```
+The application will be accessible at `http://localhost:3000`.
 
-Windows PowerShell:
+---
 
-```powershell
-cd frontend/leeswijs
-npm install
-$env:VITE_API_BASE_URL="http://localhost:8000/api"
-npm run dev -- --host 127.0.0.1 --port 5174
-```
+## Crossover Study: Choosing Starting Condition
 
-App:
+To support our controlled **Within-Subjects Crossover Study**, researchers can assign participants to start in either the **ADAPTIVE** or **BASELINE** condition using URL query parameters during registration.
 
-```text
-http://127.0.0.1:5174/login
-```
+### 1. Register a Participant
+Direct the participant to the registration page with the `start` parameter:
 
-You can also use Vite's default port if it is free:
+* **To start with the Adaptive (Personalized) Condition:**
+  `http://localhost:3000/register?start=ADAPTIVE`
 
-```bash
-npm run dev
-```
+* **To start with the Baseline (Generic CEFR) Condition:**
+  `http://localhost:3000/register?start=BASELINE`
+
+### 2. Experiment Flow
+The current study uses two phases. Each participant completes both conditions, with the starting condition assigned during registration.
+
+1. **Phase 1 word set:** Participant studies 10 target words.
+2. **Phase 1 readings:** Participant reads three Dutch texts and completes the post-reading surveys.
+3. **Vocabulary check 1:** Participant completes an immediate vocabulary check for phase 1.
+4. **Transition:** Participant moves to the second condition and reviews the next word set.
+5. **Phase 2 readings:** Participant reads three Dutch texts and completes the post-reading surveys.
+6. **Vocabulary check 2:** Participant completes the final immediate vocabulary check.
+7. **Delayed checks:** The app prompts the delayed vocabulary checks when they are due.
+
 
 ## Environment Variables
 
@@ -116,7 +108,7 @@ Create `backend/.env` from `backend/.env.example`.
 ```env
 DATABASE_URL=sqlite:///./dev.db
 GOOGLE_API_KEY=your-key-here
-GEMINI_MODEL=gemini-3-flash-preview
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 Optional frontend variables:
@@ -125,79 +117,7 @@ Optional frontend variables:
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
-## Cloud Deployment
-
-Recommended setup for the public study version:
-
-```text
-Frontend: Vercel
-Backend: Render
-Database: Neon / Supabase / Render PostgreSQL
-```
-
-### Backend environment variables
-
-Set these in the backend hosting provider, not in GitHub:
-
-```env
-DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DB
-GOOGLE_API_KEY=your-gemini-key
-GEMINI_MODEL=gemini-3-flash-preview
-FRONTEND_ORIGINS=https://your-frontend.vercel.app
-
-REQUIRE_STUDY_CODE=true
-STUDY_INVITE_CODES=LW-A01,LW-A02,LW-A03,LW-A04,LW-A05,LW-A06,LW-A07
-```
-
-Backend start command:
-
-```bash
-uvicorn main:app --host 0.0.0.0 --port $PORT
-```
-
-Run the seed script once after the cloud database is connected:
-
-```bash
-python seed.py
-```
-
-### Frontend environment variables
-
-Set this in Vercel:
-
-```env
-VITE_API_BASE_URL=https://your-backend.onrender.com/api
-```
-
-Use `frontend/leeswijs` as the Vercel root directory. The app includes `vercel.json` so direct links such as `/register?code=LW-A07` work with React Router.
-
-Participants should receive a study-code link:
-
-```text
-https://your-frontend.vercel.app/register?code=LW-A07
-```
-
-If `REQUIRE_STUDY_CODE=true`, users cannot register without a valid unused code.
-
-### Public study safety checklist
-
-- Keep `GOOGLE_API_KEY` and `DATABASE_URL` only in hosting environment variables.
-- Do not use `allow_origins=["*"]` in production.
-- Use anonymous study codes instead of real names where possible.
-- Keep the study database separate from local development data.
-- Turn off or pause the deployment after the study if it is no longer needed.
-
-## Local Run Checklist
-
-If the app does not load after pulling:
-
-- Check your Python version with `python --version` or `py --version`. Use Python 3.11+.
-- If dependency installation fails, delete the old virtual environment and recreate it.
-- Make sure the backend is running on `http://localhost:8000`.
-- Make sure `backend/.env` exists and contains `GOOGLE_API_KEY`.
-- Run `python seed.py` if `backend/dev.db` does not exist.
-- Set `VITE_API_BASE_URL=http://localhost:8000/api` when starting the frontend.
-- If port 8000 or 5174 is already in use, stop the old server or choose another port.
+The current frontend does not use mock mode; all app requests go to the FastAPI backend.
 
 ## Project Structure
 

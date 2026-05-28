@@ -25,7 +25,7 @@ from app.routers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    _ensure_sqlite_columns()
+    _ensure_database_columns()
     yield
 
 
@@ -33,19 +33,104 @@ def _quote_sqlite_name(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _ensure_sqlite_columns() -> None:
-    if engine.dialect.name != "sqlite":
-        return
-
+def _ensure_database_columns() -> None:
     defaults = {
         ("users", "onboarding_completed"): "0",
+        ("users", "current_condition"): "'ADAPTIVE'",
+        ("users", "has_switched_conditions"): "0",
         ("user_vocabulary_vector", "mastery_score"): "0.0",
         ("user_vocabulary_vector", "exposure_count"): "1",
         ("user_vocabulary_vector", "review_priority"): "0",
         ("recommended_vocabulary", "is_used"): "0",
         ("reading_sessions", "reading_number"): "1",
         ("reading_sessions", "survey_completed"): "0",
+        ("reading_sessions", "study_phase"): "1",
+        ("vocabulary_test_results", "study_phase"): "1",
+        ("vocabulary_test_results", "test_type"): "'immediate'",
     }
+
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            conn.exec_driver_sql(
+                "ALTER TABLE users "
+                "ADD COLUMN IF NOT EXISTS study_code VARCHAR(50)"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE users "
+                "ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT false"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE users "
+                "ADD COLUMN IF NOT EXISTS current_condition VARCHAR(8) NOT NULL DEFAULT 'ADAPTIVE'"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE users "
+                "ADD COLUMN IF NOT EXISTS has_switched_conditions BOOLEAN NOT NULL DEFAULT false"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE user_vocabulary_vector "
+                "ADD COLUMN IF NOT EXISTS mastery_score DOUBLE PRECISION NOT NULL DEFAULT 0.0"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE user_vocabulary_vector "
+                "ADD COLUMN IF NOT EXISTS exposure_count INTEGER NOT NULL DEFAULT 1"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE user_vocabulary_vector "
+                "ADD COLUMN IF NOT EXISTS review_priority INTEGER NOT NULL DEFAULT 0"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE user_vocabulary_vector "
+                "ADD COLUMN IF NOT EXISTS next_review_at TIMESTAMP"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE user_vocabulary_vector "
+                "ADD COLUMN IF NOT EXISTS last_reviewed_at TIMESTAMP"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE user_vocabulary_vector "
+                "ADD COLUMN IF NOT EXISTS review_interval_days INTEGER"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE recommended_vocabulary "
+                "ADD COLUMN IF NOT EXISTS is_used BOOLEAN NOT NULL DEFAULT false"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE onboarding_words "
+                "ADD COLUMN IF NOT EXISTS study_phase INTEGER NOT NULL DEFAULT 1"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE reading_sessions "
+                "ADD COLUMN IF NOT EXISTS reading_number INTEGER NOT NULL DEFAULT 1"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE reading_sessions "
+                "ADD COLUMN IF NOT EXISTS survey_completed BOOLEAN NOT NULL DEFAULT false"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE reading_sessions "
+                "ADD COLUMN IF NOT EXISTS study_phase INTEGER NOT NULL DEFAULT 1"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE vocabulary_test_results "
+                "ADD COLUMN IF NOT EXISTS study_phase INTEGER NOT NULL DEFAULT 1"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE vocabulary_test_results "
+                "ADD COLUMN IF NOT EXISTS test_type VARCHAR(20) NOT NULL DEFAULT 'immediate'"
+            )
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_vocab_test_user_phase_type "
+                "ON vocabulary_test_results (user_id, session_group_id, study_phase, test_type)"
+            )
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_reading_sessions_user_phase_number "
+                "ON reading_sessions (user_id, study_phase, reading_number)"
+            )
+        return
+
+    if engine.dialect.name != "sqlite":
+        return
 
     with engine.begin() as conn:
         tables = {
@@ -85,6 +170,14 @@ def _ensure_sqlite_columns() -> None:
         )
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_users_study_code ON users (study_code)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_vocab_test_user_phase_type "
+            "ON vocabulary_test_results (user_id, session_group_id, study_phase, test_type)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_reading_sessions_user_phase_number "
+            "ON reading_sessions (user_id, study_phase, reading_number)"
         )
 
 

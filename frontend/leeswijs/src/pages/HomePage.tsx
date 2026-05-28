@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  ArrowRight,
   BookOpen,
   BrainCircuit,
+  ArrowRight,
   Layers,
   RefreshCw,
   Sparkles,
@@ -28,10 +28,6 @@ import { apiClient } from "../services/api";
 
 import type { DashboardStats } from "../types";
 
-type ChartTooltipPayload = {
-  value?: number | string | readonly (number | string)[];
-  payload?: { session_name?: string };
-};
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -69,10 +65,10 @@ export default function HomePage() {
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-heading text-3xl font-bold text-text">
-            Welcome back, {name}
+            Welcome back, {name} 👋
           </h1>
           <p className="mt-1 text-sm text-text/55 font-body">
-            Choose the next task for this study session.
+            Here's a snapshot of your Dutch learning journey.
           </p>
         </div>
         <button
@@ -80,7 +76,7 @@ export default function HomePage() {
           onClick={() => navigate("/reading")}
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90 transition-opacity"
         >
-          <BookOpen size={15} /> Start reading
+          <BookOpen size={15} /> New reading
         </button>
       </div>
 
@@ -106,31 +102,33 @@ function Dashboard({
 }) {
   return (
     <div className="space-y-5">
-      <NextStepCard stats={stats} onNavigate={onNavigate} />
+      <NextActionBanner stats={stats} onNavigate={onNavigate} />
 
+      {/* Row 1: CEFR gauge + Acquisition ring */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <CefrCard level={stats.cefr_level} />
         <AcquisitionCard score={stats.acquisition_score} />
       </div>
 
+      {/* Row 2: Vocab stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard
           icon={<Trophy size={18} />}
-          label="Known words"
+          label="Words Known"
           value={stats.total_known}
           accent="#0D7377"
           onClick={() => onNavigate("/flashcards")}
         />
         <StatCard
           icon={<Layers size={18} />}
-          label="Learning words"
+          label="In Learning"
           value={stats.total_learning}
           accent="#7C3AED"
           onClick={() => onNavigate("/flashcards")}
         />
         <StatCard
           icon={<BrainCircuit size={18} />}
-          label="Completed readings"
+          label="Readings Done"
           value={stats.readings_completed}
           accent="#D97706"
           onClick={() => onNavigate("/reading")}
@@ -138,12 +136,13 @@ function Dashboard({
         <DailyGoalCard stats={stats} onClick={() => onNavigate("/flashcards")} />
       </div>
 
-      <ReadingTimeChart stats={stats} />
+      {/* Row 3: Reading Productivity Chart */}
+      <ProductivityChart stats={stats} />
     </div>
   );
 }
 
-function NextStepCard({
+function NextActionBanner({
   stats,
   onNavigate,
 }: {
@@ -151,33 +150,39 @@ function NextStepCard({
   onNavigate: (path: string) => void;
 }) {
   const hasReviews = stats.to_review > 0;
-  const path = hasReviews ? "/flashcards" : "/reading";
-  const title = hasReviews ? "Review due words" : "Continue reading";
-  const copy = hasReviews
-    ? `${stats.to_review} word${stats.to_review === 1 ? "" : "s"} are ready for review.`
-    : "Create the next Dutch reading task when you are ready.";
+  const readingsRemaining = Math.max(0, stats.readings_total - stats.readings_completed);
+  const target = hasReviews ? "/flashcards" : "/reading";
+  const title = hasReviews
+    ? "Review words due today"
+    : readingsRemaining > 0
+      ? "Continue the reading study"
+      : "Study tasks complete";
+  const body = hasReviews
+    ? `${stats.to_review} words are ready for review before your next reading task.`
+    : readingsRemaining > 0
+      ? `${readingsRemaining} reading task${readingsRemaining === 1 ? "" : "s"} left in the study flow.`
+      : "Your reading tasks are complete. Return when your vocabulary check is available.";
+  const button = hasReviews ? "Open flashcards" : readingsRemaining > 0 ? "Open reading" : "View progress";
 
   return (
-    <Card>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            {hasReviews ? <RefreshCw size={22} /> : <BookOpen size={22} />}
-          </div>
-          <div>
-            <p className="font-heading text-lg font-bold text-text">{title}</p>
-            <p className="text-sm font-body text-text/50">{copy}</p>
-          </div>
+    <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] px-5 py-4 shadow-sm shadow-black/5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-body font-semibold uppercase tracking-wide text-primary/70">
+            Next step
+          </p>
+          <h2 className="mt-1 font-heading text-lg font-bold text-text">{title}</h2>
+          <p className="mt-1 text-sm font-body text-text/55">{body}</p>
         </div>
         <button
           type="button"
-          onClick={() => onNavigate(path)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
+          onClick={() => onNavigate(target)}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
         >
-          Open task <ArrowRight size={15} />
+          {button} <ArrowRight size={15} />
         </button>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -216,7 +221,7 @@ function CefrCard({ level }: { level: string }) {
             className="mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-heading font-semibold"
             style={{ backgroundColor: `${meta.color}18`, color: meta.color }}
           >
-            <Sparkles size={11} /> Current level
+            <Sparkles size={11} /> Active level
           </div>
         </div>
       </div>
@@ -261,7 +266,7 @@ function AcquisitionCard({ score }: { score: number }) {
         <div>
           <p className="font-heading text-xl font-bold text-text">{pct}%</p>
           <p className="text-xs font-body text-text/50 mt-1">
-            of the 1,000-word study goal
+            of your current level's vocabulary mastered
           </p>
           <div className="mt-3 h-1.5 rounded-full bg-black/8 w-32">
             <motion.div
@@ -284,9 +289,10 @@ function DailyGoalCard({ stats, onClick }: { stats: DashboardStats; onClick: () 
   const isDone = stats.to_review === 0 && stats.reviewed_today > 0;
   const isNew = stats.to_review === 0 && stats.reviewed_today === 0;
   
-  let accent = "#6B7280";
-  if (isDone) accent = "#10B981";
-  else if (stats.to_review > 0) accent = "#F59E0B";
+  // Choose color based on state
+  let accent = "#6B7280"; // Gray if no words yet
+  if (isDone) accent = "#10B981"; // Green if completed
+  else if (stats.to_review > 0) accent = "#F59E0B"; // Amber if pending
 
   const pct = isNew ? 0 : isDone ? 100 : Math.round(stats.daily_progress);
 
@@ -310,12 +316,12 @@ function DailyGoalCard({ stats, onClick }: { stats: DashboardStats; onClick: () 
         </div>
         <div className="text-right">
           <p className="font-heading text-xl font-black text-text">
-            {stats.to_review}
+            {isDone ? "Done" : stats.to_review}
           </p>
         </div>
       </div>
       
-      <p className="text-xs font-body text-text/50 mb-3 mt-1">Due for review</p>
+      <p className="text-xs font-body text-text/50 mb-3 mt-1">Daily Review Goal</p>
       
       <div className="h-1.5 w-full bg-black/5 rounded-full overflow-hidden">
         <motion.div
@@ -365,8 +371,8 @@ function StatCard({
   );
 }
 
-// ── Reading time chart ────────────────────────────────────────────────────────
-function ReadingTimeChart({ stats }: { stats: DashboardStats }) {
+// ── Reading Productivity Chart ────────────────────────────────────────────────
+function ProductivityChart({ stats }: { stats: DashboardStats }) {
   const data = stats.productivity_data || [];
   const avg  = stats.avg_duration_min || 0;
 
@@ -374,11 +380,11 @@ function ReadingTimeChart({ stats }: { stats: DashboardStats }) {
     return (
       <Card>
         <p className="text-xs font-body font-semibold uppercase tracking-wide text-text/40 mb-3">
-          Reading time
+          Reading Productivity
         </p>
         <div className="flex items-center justify-center h-48 rounded-xl bg-black/[0.025] border border-dashed border-black/12">
           <p className="text-sm font-body text-text/35">
-            Reading time appears after a completed reading task.
+            Productivity data will appear after your first reading session.
           </p>
         </div>
       </Card>
@@ -390,10 +396,10 @@ function ReadingTimeChart({ stats }: { stats: DashboardStats }) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <p className="text-xs font-body font-semibold uppercase tracking-wide text-text/40">
-            Reading time
+            Reading Productivity
           </p>
           <p className="font-heading text-base font-bold text-text mt-0.5">
-            Session duration
+            Duration vs. Average
           </p>
         </div>
         <div className="text-right">
@@ -418,13 +424,12 @@ function ReadingTimeChart({ stats }: { stats: DashboardStats }) {
             />
             <Tooltip 
               cursor={{ fill: "transparent" }}
-              content={({ active, payload }: { active?: boolean; payload?: readonly ChartTooltipPayload[] }) => {
+              content={({ active, payload }) => {
                 if (active && payload && payload.length) {
-                  const item = payload[0];
                   return (
                     <div className="bg-white p-3 rounded-xl shadow-xl border border-black/5">
-                      <p className="text-[10px] font-bold text-text/40 uppercase mb-1">{item.payload?.session_name ?? "Session"}</p>
-                      <p className="font-heading text-sm font-bold text-primary">{item.value} minutes</p>
+                      <p className="text-[10px] font-bold text-text/40 uppercase mb-1">{payload[0].payload.session_name}</p>
+                      <p className="font-heading text-sm font-bold text-primary">{payload[0].value} minutes</p>
                     </div>
                   );
                 }
@@ -451,22 +456,23 @@ function NewJourneyBanner({ onStart }: { onStart: () => void }) {
     <motion.div
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="rounded-2xl border border-black/8 bg-white px-8 py-10 shadow-sm shadow-black/5"
+      className="rounded-2xl overflow-hidden"
+      style={{ background: "linear-gradient(135deg, #7C3AED 0%, #0D7377 100%)" }}
     >
-      <div>
-        <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-heading font-semibold text-primary">
-          <Sparkles size={11} /> First task
+      <div className="px-8 py-10 text-white">
+        <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 text-xs font-heading font-semibold">
+          <Sparkles size={11} /> New Journey Started!
         </div>
-        <h2 className="font-heading text-2xl font-black text-text mt-3 mb-2">
-          Start with one short reading
+        <h2 className="font-heading text-2xl font-black mt-3 mb-2">
+          Your dashboard is getting ready 🚀
         </h2>
-        <p className="text-sm font-body text-text/55 max-w-md mb-6">
-          After your first reading task, this page will show your reading and vocabulary progress.
+        <p className="text-sm font-body text-white/80 max-w-md mb-6">
+          Complete your first reading and vocabulary session to see your personalized analytics here — CEFR progress, word acquisition, and engagement stats.
         </p>
         <button
           type="button"
           onClick={onStart}
-          className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90 transition-opacity"
+          className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-heading font-semibold text-[#7C3AED] hover:opacity-90 transition-opacity"
         >
           <BookOpen size={15} /> Start first reading
         </button>

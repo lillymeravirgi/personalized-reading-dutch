@@ -1,6 +1,9 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 export default function AuthLayout() {
+  const location = useLocation();
+  const isOnboarding = location.pathname.startsWith("/onboarding");
+
   return (
     <div className="relative min-h-screen bg-background flex flex-col items-center justify-center px-4 overflow-hidden">
       <DecorativeBackground />
@@ -29,11 +32,11 @@ export default function AuthLayout() {
           </span>
         </div>
         <p className="text-sm text-text/50 font-body">
-          Dutch reading practice for your study session
+          Dutch reading study session
         </p>
       </div>
 
-      <div className="relative z-10 w-full max-w-md">
+      <div className={["relative z-10 w-full", isOnboarding ? "max-w-3xl" : "max-w-md"].join(" ")}>
         <Outlet />
       </div>
     </div>
@@ -43,20 +46,6 @@ export default function AuthLayout() {
 function DecorativeBackground() {
   return (
     <>
-      <div
-        className="pointer-events-none absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-20"
-        style={{
-          background: "radial-gradient(circle, #0D7377 0%, transparent 70%)",
-          filter: "blur(40px)",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute -bottom-24 -right-24 w-80 h-80 rounded-full opacity-15"
-        style={{
-          background: "radial-gradient(circle, #F2A541 0%, transparent 70%)",
-          filter: "blur(48px)",
-        }}
-      />
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.035]"
         style={{

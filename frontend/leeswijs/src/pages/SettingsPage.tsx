@@ -167,7 +167,7 @@ export default function SettingsPage() {
             </div>
             <motion.button
               type="button"
-              onClick={() => navigate("/assessment")}
+              onClick={() => navigate("/onboarding?step=assessment")}
               whileTap={{ scale: 0.97 }}
               className="inline-flex items-center gap-1.5 rounded-xl border border-black/12 bg-white px-3 py-2 text-xs font-heading font-semibold text-text/80 hover:bg-black/[0.03] hover:border-black/20"
             >

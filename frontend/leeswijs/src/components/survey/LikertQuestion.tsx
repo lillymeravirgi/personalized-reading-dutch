@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import type { LikertScale } from "../../types";
 
 type Props = {
+  tag?: string;
   question: string;
   value: LikertScale | null;
   onChange: (v: LikertScale) => void;

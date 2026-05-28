@@ -2,10 +2,11 @@ import { TextToken } from "../../types";
 
 type Props = {
   tokens: TextToken[];
-  onHighlightClick: (wordId: string, el: HTMLElement) => void;
+  onHighlightClick: (token: TextToken, el: HTMLElement) => void;
   onPlainWordClick: (word: string, el: HTMLElement) => void;
   activeWordId?: string | null;
   activePlainWord?: string | null;
+  isLookupWord?: (word: string) => boolean;
 };
 
 export default function HighlightedText({
@@ -14,6 +15,7 @@ export default function HighlightedText({
   onPlainWordClick,
   activeWordId,
   activePlainWord,
+  isLookupWord,
 }: Props) {
   return (
     <article className="font-body text-[17px] leading-[1.85] text-text whitespace-pre-wrap select-text">
@@ -22,35 +24,35 @@ export default function HighlightedText({
           return <span key={i}>{token.text}</span>;
         }
 
-        const isHighlighted = !!token.status;
+        const canClick = isLookupWord ? isLookupWord(token.text) : true;
+        const isHighlighted = !!token.status && canClick;
         const isActive = isHighlighted
           ? activeWordId === token.wordId
           : activePlainWord?.toLowerCase() === token.text.toLowerCase();
 
-        // ── Highlighted Word (Blue/Yellow) ──────────────────────────
         if (isHighlighted) {
           const isNew = token.status === "new";
           const tone = isNew
-            ? "bg-blue-100 text-blue-900 hover:bg-blue-200"
-            : "bg-yellow-100 text-yellow-900 hover:bg-yellow-200";
-          
+            ? "border-blue-200/80 bg-blue-50 text-blue-800 hover:bg-blue-100"
+            : "border-amber-200/80 bg-amber-50 text-amber-800 hover:bg-amber-100";
+
           const ring = isActive ? "ring-2 ring-primary/50" : "";
 
           return (
             <button
               key={i}
               type="button"
-              onClick={(e) => onHighlightClick(token.wordId!, e.currentTarget)}
+              onClick={(e) => onHighlightClick(token, e.currentTarget)}
               className={`
-                word-token inline-flex items-center rounded px-0.5 
+                word-token inline-flex items-center border px-[2px]
                 transition-colors outline-none align-baseline
                 ${tone} ${ring}
               `}
               style={{ 
-                lineHeight: 1.2, 
+                lineHeight: 1.08,
                 verticalAlign: "baseline", 
-                borderRadius: "4px",
-                margin: "0 -1px", // Slight negative margin to keep words close
+                borderRadius: "3px",
+                margin: "0 -1px",
               }}
             >
               {token.text}
@@ -58,8 +60,11 @@ export default function HighlightedText({
           );
         }
 
-        // ── Plain Word (White) ──────────────────────────────────────
         const activeClass = isActive ? "bg-primary/10 text-primary ring-1 ring-primary/20" : "";
+
+        if (!canClick) {
+          return <span key={i}>{token.text}</span>;
+        }
         
         return (
           <button

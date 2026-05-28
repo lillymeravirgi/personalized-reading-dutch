@@ -75,6 +75,36 @@ Formatting: Return ONLY a JSON array: [{{"word": "Dutch", "translation": "Englis
     return []
 
 
+def _fallback_second_pitch(db: Session, cefr_level: str, all_words: list[str], limit: int = 50) -> list[dict]:
+    seen = {str(word).strip().lower() for word in all_words if str(word).strip()}
+    rows = (
+        db.query(Lexicon)
+        .filter(Lexicon.cefr_level == cefr_level)
+        .order_by(Lexicon.word_id)
+        .all()
+    )
+    candidates = [row for row in rows if row.word.lower() not in seen]
+
+    if len(candidates) < limit:
+        extra_rows = (
+            db.query(Lexicon)
+            .filter(Lexicon.cefr_level != cefr_level)
+            .order_by(Lexicon.word_id)
+            .all()
+        )
+        existing_ids = {row.word_id for row in candidates}
+        candidates.extend(
+            row
+            for row in extra_rows
+            if row.word_id not in existing_ids and row.word.lower() not in seen
+        )
+
+    return [
+        {"word": row.word, "translation": row.translation, "cefr": row.cefr_level}
+        for row in candidates[:limit]
+    ]
+
+
 @router.post("/batch/generate")
 def generate_batch(
     payload: dict,
@@ -121,7 +151,7 @@ def generate_batch(
         # Second Pitch: Use the Expert System Prompt
         words_data = _generate_second_pitch(user, known_words, all_words, cefr_level)
         if not words_data:
-            raise HTTPException(status_code=503, detail="Could not generate assessment words. Please try again.")
+            words_data = _fallback_second_pitch(db, cefr_level, all_words)
 
         for w in words_data[:50]:
             word = w.get("word", "")

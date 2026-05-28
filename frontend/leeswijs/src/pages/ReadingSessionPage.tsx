@@ -4,7 +4,7 @@
  *
  * Word-click flow:
  *   1st click → WordTooltip (small popup, translation + quick actions)
- *   "Learn it" / "Review it" → WordModal (big detail view)
+ *   "Learn it" / "Review it" → WordModal (big detail view with SRS picker)
  *   "I know it" → instant mark-known API call, word turns white immediately
  */
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,7 +30,7 @@ import { useReadingTimer } from "../hooks/useReadingTimer";
 import HighlightedText from "../components/reading/HighlightedText";
 import WordModal from "../components/reading/WordModal";
 import WordTooltip, { type TooltipWord } from "../components/reading/WordTooltip";
-import type { HighlightedWord, LexiconEntry } from "../types";
+import type { BilingualSentence, HighlightedWord, LexiconEntry, TextToken } from "../types";
 
 function formatElapsed(ms: number) {
   const total = Math.floor(ms / 1000);
@@ -39,8 +39,19 @@ function formatElapsed(ms: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+const TEAM_NAMES = new Set(["kim", "kiki", "julian", "tj", "evie", "jy"]);
+
 function wordKey(word: string) {
-  return word.trim().toLowerCase();
+  return word.trim().toLocaleLowerCase("nl-NL");
+}
+
+function canLookUpWord(word: string) {
+  const key = wordKey(word);
+  return key.length > 1 && !/\d/.test(key) && !TEAM_NAMES.has(key);
+}
+
+function cleanExamples(examples?: BilingualSentence[] | null) {
+  return (examples ?? []).filter((s) => s.nl?.trim());
 }
 
 export default function ReadingSessionPage() {
@@ -68,106 +79,159 @@ export default function ReadingSessionPage() {
   const [modalWordId, setModalWordId] = useState<string | null>(null);
   // Store LexiconEntries for white words defined on-the-fly
   const [definedEntries, setDefinedEntries] = useState<Record<string, LexiconEntry>>({});
+  const [showReadingGuide, setShowReadingGuide] = useState(
+    () => window.localStorage.getItem("leeswijs-reading-guide-seen") !== "true",
+  );
 
   const { elapsedMs } = useReadingTimer(!!currentSession && !error);
   const elapsedRef = useRef(0);
   useEffect(() => { elapsedRef.current = elapsedMs; }, [elapsedMs]);
 
-  // ── Click handlers ────────────────────────────────────────────────────────
-
-  function findLocalTranslation(word: string, wordId?: string | null) {
+  function findLocalEntry(word: string, wordId?: string | null) {
     if (!currentSession) return null;
-
     const key = wordKey(word);
-    const cached = definedEntries[key];
-    if (cached?.translation) {
+    const defined = definedEntries[key];
+    if (defined) {
       return {
-        english: cached.translation,
-        wordId: String(cached.word_id),
+        wordId: String(defined.word_id),
+        english: defined.translation,
+        examples: cleanExamples(defined.examples),
       };
     }
 
-    const highlight = currentSession.highlights.find((h) =>
-      (wordId && h.wordId === wordId) || wordKey(h.dutch) === key
-    );
-    const english = currentSession.wordTranslations[key] || highlight?.english || "";
-    if (!english) return null;
+    const highlight =
+      currentSession.highlights.find((h) => wordKey(h.dutch) === key) ??
+      currentSession.highlights.find((h) => h.wordId === wordId);
+    if (highlight) {
+      return {
+        wordId: highlight.wordId,
+        english: highlight.english,
+        examples: cleanExamples(highlight.exampleSentences),
+      };
+    }
 
-    return {
-      english,
-      wordId: wordId ?? highlight?.wordId,
-    };
+    const translation = currentSession.wordTranslations[key]
+      ?? Object.entries(currentSession.wordTranslations).find(([k]) => wordKey(k) === key)?.[1];
+    if (translation) {
+      return { wordId: wordId ?? undefined, english: translation, examples: [] };
+    }
+
+    return null;
   }
 
-  async function fetchMissingTranslation(word: string) {
+  function contextExamplesFor(word: string, wordId?: string | null): BilingualSentence[] {
+    if (!currentSession) return [];
+    const key = wordKey(word);
+    let index = currentSession.tokens.findIndex((token) =>
+      token.type === "word" && wordKey(token.text) === key
+    );
+    if (index === -1 && wordId) {
+      index = currentSession.tokens.findIndex((token) =>
+        token.type === "word" && token.wordId === wordId
+      );
+    }
+    if (index === -1) return [];
+
+    let start = index;
+    while (start > 0 && !/[.!?]/.test(currentSession.tokens[start - 1].text)) start -= 1;
+
+    let end = index;
+    while (end < currentSession.tokens.length - 1 && !/[.!?]/.test(currentSession.tokens[end].text)) end += 1;
+
+    const sentence = currentSession.tokens
+      .slice(start, end + 1)
+      .map((token) => token.text)
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return sentence ? [{ nl: sentence, en: "" }] : [];
+  }
+
+  async function fetchMissingTranslation(word: string, wordId?: string | null) {
+    const key = wordKey(word);
     try {
       const entry = await defineWord(word);
+      if (!entry) {
+        setTooltip((prev) => prev && wordKey(prev.word) === key
+          ? { ...prev, english: null, loading: false, message: "Translation not available yet." }
+          : prev
+        );
+        return;
+      }
+
       setDefinedEntries((prev) => ({
         ...prev,
-        [wordKey(word)]: entry,
+        [key]: entry,
         [wordKey(entry.word)]: entry,
       }));
-      setTooltip((prev) =>
-        prev && wordKey(prev.word) === wordKey(word)
-          ? {
-              ...prev,
-              english: entry.translation,
-              loading: false,
-              wordId: String(entry.word_id),
-              message: undefined,
-            }
-          : prev
+      setTooltip((prev) => prev && wordKey(prev.word) === key
+        ? {
+            ...prev,
+            english: entry.translation,
+            loading: false,
+            wordId: String(entry.word_id),
+            message: undefined,
+          }
+        : prev
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      setTooltip((prev) =>
-        prev && wordKey(prev.word) === wordKey(word)
-          ? {
-              ...prev,
-              english: null,
-              loading: false,
-              message: isBackendNotReadyMessage(msg)
-                ? "Translation needs backend support."
-                : "Translation not available.",
-            }
-          : prev
+      setTooltip((prev) => prev && wordKey(prev.word) === key
+        ? {
+            ...prev,
+            english: null,
+            loading: false,
+            wordId: wordId ?? prev.wordId,
+            message: isBackendNotReadyMessage(msg)
+              ? "Translation needs backend support."
+              : "Translation not available yet.",
+          }
+        : prev
       );
     }
   }
 
+  // ── Click handlers ────────────────────────────────────────────────────────
+
   /** ALL highlighted words now go through the tooltip first */
-  function handleHighlightClick(wordId: string, el: HTMLElement) {
-    const token = currentSession?.tokens.find((t) => t.wordId === wordId);
-    if (!token) return;
+  function handleHighlightClick(token: TextToken, el: HTMLElement) {
+    const wordId = token.wordId ?? undefined;
     const rect = el.getBoundingClientRect();
-    const local = findLocalTranslation(token.text, token.wordId);
+    const localEntry = findLocalEntry(token.text, wordId);
+    const canLookup = canLookUpWord(token.text);
     setTooltip({
       word:          token.text,
-      english:       local?.english ?? null,
-      loading:       !local?.english,
+      english:       localEntry?.english || null,
+      loading:       !localEntry?.english && canLookup,
       anchor:        { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-      wordId:        local?.wordId ?? token.wordId ?? undefined,
-      status:        knownOverride.has(wordId) ? "known" : token.status,
+      wordId:        localEntry?.wordId ?? wordId,
+      status:        wordId && knownOverride.has(wordId) ? "known" : token.status,
+      message:       canLookup ? undefined : "This looks like a name, so it is not added to vocabulary.",
     });
-    if (!local?.english) void fetchMissingTranslation(token.text);
+    if (!localEntry?.english && canLookup) void fetchMissingTranslation(token.text, wordId);
   }
 
   /** Plain (white) words — look up translation, then show tooltip */
   async function handlePlainWordClick(word: string, el: HTMLElement) {
+    if (!canLookUpWord(word)) return;
     const rect = el.getBoundingClientRect();
-    const token = currentSession?.tokens.find(t => t.text.toLowerCase() === word.toLowerCase() && t.type === "word");
-    const local = findLocalTranslation(word, token?.wordId);
+
+    // Try to find if this word has a status/id in tokens
+    const key = wordKey(word);
+    const token = currentSession?.tokens.find(t => wordKey(t.text) === key && t.type === "word");
+    const localEntry = findLocalEntry(word, token?.wordId);
 
     setTooltip({ 
       word, 
-      english: local?.english ?? null, 
-      loading: !local?.english, 
+      english: localEntry?.english || null,
+      loading: !localEntry?.english,
       anchor: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-      wordId: local?.wordId ?? token?.wordId ?? undefined,
+      wordId: localEntry?.wordId ?? token?.wordId ?? undefined,
       status: (token?.wordId && knownOverride.has(token.wordId)) ? "known" : token?.status
     });
 
-    if (!local?.english) await fetchMissingTranslation(word);
+    if (!localEntry?.english) await fetchMissingTranslation(word, token?.wordId);
   }
 
   /** "I know it" from the tooltip → instant API + local visual update */
@@ -228,18 +292,27 @@ export default function ReadingSessionPage() {
   useEffect(() => { return () => { clearSession(); }; }, [clearSession]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
-  const activeWord: HighlightedWord | null = useMemo(() => {
+  const activeWord: HighlightedWord | null = (() => {
     if (!currentSession || !modalWordId) return null;
-    const de = Object.values(definedEntries).find(e => String(e.word_id) === modalWordId);
+
+    // 1. Try finding in current session highlights
     const hw = currentSession.highlights.find((h) => h.wordId === modalWordId);
     if (hw) {
+      const localEntry = findLocalEntry(hw.dutch, hw.wordId);
+      const examples = cleanExamples(hw.exampleSentences);
       return {
         ...hw,
-        english: hw.english || de?.translation || "",
-        exampleSentences: hw.exampleSentences.length > 0 ? hw.exampleSentences : de?.examples || [],
+        english: hw.english || localEntry?.english || "",
+        exampleSentences: examples.length > 0
+          ? examples
+          : localEntry?.examples.length
+            ? localEntry.examples
+            : contextExamplesFor(hw.dutch, hw.wordId),
       };
     }
 
+    // 2. Try finding in on-the-fly defined entries
+    const de = Object.values(definedEntries).find(e => String(e.word_id) === modalWordId);
     if (de) {
       return {
         wordId: String(de.word_id),
@@ -248,19 +321,23 @@ export default function ReadingSessionPage() {
         startIndex: 0,
         endIndex: 0,
         highlightType: "unknown",
-        exampleSentences: de.examples || [],
+        exampleSentences: cleanExamples(de.examples).length > 0
+          ? cleanExamples(de.examples)
+          : contextExamplesFor(de.word, String(de.word_id)),
         usageFrequency: "common",
       };
     }
 
     return null;
-  }, [currentSession, modalWordId, definedEntries]);
+  })();
 
   // Apply knownOverride to tokens — words marked known become "plain" (no highlight)
   const effectiveTokens = useMemo(() => {
     if (!currentSession) return [];
-    if (knownOverride.size === 0) return currentSession.tokens;
     return currentSession.tokens.map(token => {
+      if (token.type === "word" && !canLookUpWord(token.text)) {
+        return { ...token, status: null, wordId: null };
+      }
       if (token.wordId && knownOverride.has(token.wordId)) {
         return { ...token, status: null };
       }
@@ -271,6 +348,11 @@ export default function ReadingSessionPage() {
   function handleFinish() {
     const dur = Math.floor(elapsedRef.current / 1000);
     navigate(`/survey/${sessionId}?duration=${dur}`);
+  }
+
+  function dismissReadingGuide() {
+    window.localStorage.setItem("leeswijs-reading-guide-seen", "true");
+    setShowReadingGuide(false);
   }
 
   async function handleContinue() {
@@ -360,10 +442,32 @@ export default function ReadingSessionPage() {
         </div>
       </header>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-body text-text/50">
-        <span className="rounded-full bg-blue-100 px-2.5 py-1 font-semibold text-blue-900">New words</span>
-        <span className="rounded-full bg-yellow-100 px-2.5 py-1 font-semibold text-yellow-900">Learning words</span>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px] font-body text-text/45">
+        <span className="rounded-md border border-blue-200/80 bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-800">
+          New words
+        </span>
+        <span className="rounded-md border border-amber-200/80 bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-800">
+          Learning words
+        </span>
       </div>
+
+      {showReadingGuide && (
+        <div className="mb-4 rounded-lg border border-primary/15 bg-primary/[0.035] px-3.5 py-2.5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <p className="text-xs font-body leading-5 text-text/60">
+              Blue words are new target words. Yellow words are words you are reviewing.
+              Select any word for help, then finish the reading when you are ready.
+            </p>
+            <button
+              type="button"
+              onClick={dismissReadingGuide}
+              className="self-start rounded-lg border border-primary/20 bg-white px-2.5 py-1 text-xs font-heading font-semibold text-primary hover:bg-primary/[0.06]"
+            >
+              Understood
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 rounded-lg border border-black/8 bg-white px-6 py-7 shadow-sm shadow-black/5 sm:px-8 sm:py-9">
         <HighlightedText
@@ -372,6 +476,7 @@ export default function ReadingSessionPage() {
           onPlainWordClick={handlePlainWordClick}
           activeWordId={modalWordId}
           activePlainWord={tooltip?.status == null ? (tooltip?.word ?? null) : null}
+          isLookupWord={canLookUpWord}
         />
       </div>
 

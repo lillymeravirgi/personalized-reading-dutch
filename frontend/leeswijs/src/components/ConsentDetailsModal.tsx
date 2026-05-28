@@ -32,7 +32,7 @@ export default function ConsentDetailsModal({ open, onClose }: Props) {
                 </span>
                 <div>
                   <h2 className="font-heading text-lg font-bold text-text">Study consent</h2>
-                  <p className="text-xs font-body text-text/45">For this project study</p>
+                  <p className="text-xs font-body text-text/45">Before you continue</p>
                 </div>
               </div>
               <button
@@ -47,13 +47,13 @@ export default function ConsentDetailsModal({ open, onClose }: Props) {
 
             <div className="space-y-3 text-sm font-body leading-relaxed text-text/65">
               <p>
-                We ask for a small amount of study data so LeesWijs can create reading tasks that fit your level and interests.
+                We ask for a small amount of study data so reading tasks can be prepared and the study results can be analysed.
               </p>
               <p>
                 This includes your profile answers, topic choices, vocabulary responses, reading activity, and survey answers.
               </p>
               <p>
-                Our team uses this information to analyse the HCI study, compare the adaptive version with the baseline version, and improve the prototype.
+                Our team uses this information to evaluate different reading setups and improve the prototype.
               </p>
             </div>
 
@@ -62,7 +62,7 @@ export default function ConsentDetailsModal({ open, onClose }: Props) {
               onClick={onClose}
               className="mt-5 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
             >
-              Got it
+              I understand
             </button>
           </motion.div>
         </motion.div>

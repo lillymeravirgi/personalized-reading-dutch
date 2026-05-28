@@ -223,3 +223,76 @@ def _save_matches(user_id: str, words: list[str], db: Session) -> tuple[int, int
 
     db.commit()
     return matched, new_count
+
+
+# ─────────────────────────────────────────────
+#  BASELINE KRS  (non-personalised)
+# ─────────────────────────────────────────────
+
+import random as _random
+
+def run_baseline_krs(user_id: str, db: Session, target_count: int = 10) -> list[int]:
+    """
+    BASELINE word selector — used for the control condition.
+
+    Picks words the user does NOT already know, selected purely from the
+    generic CEFR-level frequency band.  No Gemini call, no personal profile.
+
+    Returns a list of Lexicon.word_id values (up to target_count).
+    """
+    from app.models import OnboardingWords
+
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise ValueError(f"User '{user_id}' not found.")
+
+    cefr = user.estimated_cefr or "B1"
+
+    # Collect word_ids the user already knows or is learning
+    known_ids: set[int] = {
+        v.word_id for v in
+        db.query(UserVocabularyVector)
+        .filter(UserVocabularyVector.user_id == user_id)
+        .all()
+    }
+
+    # Avoid repeating words from earlier vocabulary sets.
+    used_ids: set[int] = {
+        ow.word_id for ow in
+        db.query(OnboardingWords)
+        .filter(OnboardingWords.user_id == user_id)
+        .all()
+    }
+
+    exclude_ids = known_ids | used_ids
+
+    # Pull a broad pool from the lexicon at the user's CEFR level
+    pool = (
+        db.query(Lexicon)
+        .filter(Lexicon.cefr_level == cefr)
+        .all()
+    )
+    # Filter out excluded words
+    candidates = [lex for lex in pool if lex.word_id not in exclude_ids]
+
+    if len(candidates) < target_count:
+        # Broaden to adjacent CEFR levels if pool is too small
+        cefr_order = ["A1", "A2", "B1", "B2", "C1", "C2"]
+        idx = cefr_order.index(cefr) if cefr in cefr_order else 2
+        adjacent = []
+        if idx > 0:
+            adjacent.append(cefr_order[idx - 1])
+        if idx < len(cefr_order) - 1:
+            adjacent.append(cefr_order[idx + 1])
+        for lvl in adjacent:
+            extra = db.query(Lexicon).filter(Lexicon.cefr_level == lvl).all()
+            candidates += [lex for lex in extra if lex.word_id not in exclude_ids]
+
+    _random.shuffle(candidates)
+    selected = candidates[:target_count]
+
+    logger.info(
+        "[Baseline KRS] user=%s cefr=%s pool=%d selected=%d",
+        user_id, cefr, len(candidates), len(selected),
+    )
+    return [lex.word_id for lex in selected]
