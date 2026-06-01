@@ -5,7 +5,6 @@ import MainLayout from "./layouts/MainLayout";
 import DelayedVocabReminder from "./components/DelayedVocabReminder";
 
 import LoginPage                from "./pages/LoginPage";
-import RegisterPage             from "./pages/RegisterPage";
 import OnboardingPage           from "./pages/OnboardingPage";
 import OnboardingFlashcardsPage from "./pages/OnboardingFlashcardsPage";
 import HomePage                 from "./pages/HomePage";
@@ -27,7 +26,7 @@ export default function App() {
         {/* ── Auth / Onboarding (no sidebar) ── */}
         <Route element={<AuthLayout />}>
           <Route path="/login"    element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/register" element={<Navigate to="/login" replace />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/onboarding/flashcards" element={<OnboardingFlashcardsPage />} />
         </Route>

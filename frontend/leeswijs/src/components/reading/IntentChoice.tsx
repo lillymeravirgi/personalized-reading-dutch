@@ -16,7 +16,10 @@ type Props = {
   onLogged: (action: InteractionAction) => void;
 };
 
+type ChoiceId = "context" | "learn" | "known";
+
 const CHOICES: {
+  id: ChoiceId;
   action: InteractionAction;
   weight: InteractionWeight;
   label: string;
@@ -25,14 +28,16 @@ const CHOICES: {
   status?: WordStatus;
 }[] = [
   {
-    action: "see_examples",
+    id: "context",
+    action: "DEEP_PROCESSING",
     weight: 5,
     label: "Context",
     hint: "I want examples",
     icon: BookOpenText,
   },
   {
-    action: "add_to_learn",
+    id: "learn",
+    action: "ACQUISITION_INTENT",
     weight: 2,
     label: "Learn",
     hint: "Save for review",
@@ -40,7 +45,8 @@ const CHOICES: {
     status: "learning",
   },
   {
-    action: "ignore",
+    id: "known",
+    action: "WORD_AVOIDANCE",
     weight: 1,
     label: "Known",
     hint: "No review needed",
@@ -60,8 +66,8 @@ export default function IntentChoice({
   const updateWordStatus = useStore((s) => s.updateWordStatus);
   const incrementExposure = useStore((s) => s.incrementExposure);
   const choices = CHOICES.filter((choice) => {
-    if (hideContext && choice.action === "see_examples") return false;
-    if (hideAddToLearn && choice.action === "add_to_learn") return false;
+    if (hideContext && choice.id === "context") return false;
+    if (hideAddToLearn && choice.id === "learn") return false;
     return true;
   });
 
@@ -96,12 +102,12 @@ export default function IntentChoice({
 
   return (
     <div className={gridClass}>
-      {choices.map(({ action, weight, label, hint, icon: Icon, status }) => {
+      {choices.map(({ id, action, weight, label, hint, icon: Icon, status }) => {
         const isPending = pending === action;
         const singleChoice = choices.length === 1;
         return (
           <button
-            key={action}
+            key={id}
             type="button"
             disabled={pending !== null}
             onClick={() => pick(action, weight, status)}

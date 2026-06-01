@@ -1,10 +1,5 @@
-"""
-surveys.py — Post-reading survey submission.
-
-Challenge direction is derived from TLX-MD only (spec item 9).
-The appropriateChallenge field is not shown to users; the frontend
-sends a neutral default of 3. The backend only uses TLX-MD as proxy.
-"""
+# post-reading survey — challenge direction comes from TLX-MD only (spec §9).
+# appropriateChallenge is never shown to users; frontend always sends 3 as a filler.
 
 import datetime
 import logging
@@ -21,10 +16,7 @@ router = APIRouter(prefix="/surveys", tags=["Surveys"])
 
 
 def _compute_survey_signal(payload: SurveyResponse) -> dict:
-    """
-    Derive a structured signal from survey answers.
-    TLX-MD (mental_effort 1–7) is the sole difficulty proxy (spec §9).
-    """
+    # TLX-MD is the only difficulty proxy we use (spec §9)
     tlx_md = payload.mental_effort   # 1–7
 
     if tlx_md >= 5:

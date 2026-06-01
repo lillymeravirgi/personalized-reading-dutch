@@ -170,16 +170,31 @@ def get_onboarding_word_status(
             OnboardingWords.user_id == user_id,
             OnboardingWords.study_phase == study_phase,
         )
+        .order_by(OnboardingWords.id.asc())
         .all()
     ]
-    learning_count = 0
+
     if phase_word_ids:
+        # Normal path: count LEARNING or MASTERED words from this phase's assigned set.
+        # MASTERED words count because "I know this" is a valid way to engage with the set.
         learning_count = (
             db.query(UserVocabularyVector)
             .filter(
                 UserVocabularyVector.user_id == user_id,
                 UserVocabularyVector.word_id.in_(phase_word_ids),
-                UserVocabularyVector.status == VocabStatus.LEARNING,
+                UserVocabularyVector.status.in_([VocabStatus.LEARNING, VocabStatus.MASTERED]),
+            )
+            .count()
+        )
+    else:
+        # Fallback for phase 2: OnboardingWords unique constraint blocks re-using phase 1
+        # word_ids, so phase 2 may have no assigned words. Count global vocabulary instead —
+        # if the user has >= 10 words they've engaged with, they're ready to read.
+        learning_count = (
+            db.query(UserVocabularyVector)
+            .filter(
+                UserVocabularyVector.user_id == user_id,
+                UserVocabularyVector.status.in_([VocabStatus.LEARNING, VocabStatus.MASTERED]),
             )
             .count()
         )
@@ -187,7 +202,7 @@ def get_onboarding_word_status(
     return {
         "study_phase": study_phase,
         "target_count": VOCAB_TEST_WORD_COUNT,
-        "selected_count": len(phase_word_ids),
+        "selected_count": min(len(phase_word_ids), VOCAB_TEST_WORD_COUNT),
         "learning_count": learning_count,
         "ready": learning_count >= VOCAB_TEST_WORD_COUNT,
     }

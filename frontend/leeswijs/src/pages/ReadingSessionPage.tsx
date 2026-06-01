@@ -1,12 +1,4 @@
-/**
- * ReadingSessionPage — displays and interacts with a specific reading session.
- * Accessed at /read/:sessionId
- *
- * Word-click flow:
- *   1st click → WordTooltip (small popup, translation + quick actions)
- *   "Learn it" / "Review it" → WordModal (big detail view with SRS picker)
- *   "I know it" → instant mark-known API call, word turns white immediately
- */
+// /read/:sessionId — word-click goes tooltip first, then one-click learn/review
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -24,6 +16,7 @@ import {
   isBackendNotReadyMessage,
   markKnownFlashcard,
   continueSession,
+  logInteraction,
 } from "../services/api";
 import { useStore } from "../store";
 import { useReadingTimer } from "../hooks/useReadingTimer";
@@ -69,13 +62,13 @@ export default function ReadingSessionPage() {
   const [continuing,    setContinuing]    = useState(false);
   const [continueError, setContinueError] = useState<string | null>(null);
 
-  // ── Tooltip state (small popup — first contact for ALL words) ──────────────
+  // tooltip = first contact for every word click
   const [tooltip,      setTooltip]      = useState<TooltipWord | null>(null);
   const [markingKnown, setMarkingKnown] = useState(false);
   // Local override: word IDs the user marked "known" this session (turn white immediately)
   const [knownOverride, setKnownOverride] = useState<Set<string>>(new Set());
 
-  // ── Big Modal state (detail view — only after "Learn it" / "Review it") ───
+  // big modal — only opens after "Learn it" / "Review it"
   const [modalWordId, setModalWordId] = useState<string | null>(null);
   // Store LexiconEntries for white words defined on-the-fly
   const [definedEntries, setDefinedEntries] = useState<Record<string, LexiconEntry>>({});
@@ -192,9 +185,6 @@ export default function ReadingSessionPage() {
     }
   }
 
-  // ── Click handlers ────────────────────────────────────────────────────────
-
-  /** ALL highlighted words now go through the tooltip first */
   function handleHighlightClick(token: TextToken, el: HTMLElement) {
     const wordId = token.wordId ?? undefined;
     const rect = el.getBoundingClientRect();
@@ -212,7 +202,6 @@ export default function ReadingSessionPage() {
     if (!localEntry?.english && canLookup) void fetchMissingTranslation(token.text, wordId);
   }
 
-  /** Plain (white) words — look up translation, then show tooltip */
   async function handlePlainWordClick(word: string, el: HTMLElement) {
     if (!canLookUpWord(word)) return;
     const rect = el.getBoundingClientRect();
@@ -234,13 +223,21 @@ export default function ReadingSessionPage() {
     if (!localEntry?.english) await fetchMissingTranslation(word, token?.wordId);
   }
 
-  /** "I know it" from the tooltip → instant API + local visual update */
   async function handleMarkKnown() {
     if (!user || !tooltip?.wordId || markingKnown) return;
     setMarkingKnown(true);
     try {
       await markKnownFlashcard(user.id, tooltip.wordId);
       setKnownOverride((prev) => new Set([...prev, tooltip.wordId!]));
+      if (currentSession) {
+        logInteraction({
+          wordId:    tooltip.wordId,
+          sessionId: currentSession.sessionId,
+          action:    "WORD_AVOIDANCE",
+          weight:    1,
+          timestamp: new Date().toISOString(),
+        }).catch(() => {});
+      }
       setTooltip(null);
     } catch {
       // silently fail — not critical
@@ -249,9 +246,17 @@ export default function ReadingSessionPage() {
     }
   }
 
-  /** "Learn it" / "Review it" from the tooltip → open big modal */
   function handleOpenDetail() {
     if (!tooltip?.wordId) return;
+    if (currentSession) {
+      logInteraction({
+        wordId:    tooltip.wordId,
+        sessionId: currentSession.sessionId,
+        action:    "DEEP_PROCESSING",
+        weight:    5,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
+    }
     setModalWordId(tooltip.wordId);
     setTooltip(null);
   }
@@ -260,16 +265,23 @@ export default function ReadingSessionPage() {
     if (newStatus === "known") {
       setKnownOverride((prev) => new Set([...prev, wordId]));
     } else if (newStatus === "learning" && currentSession) {
+      logInteraction({
+        wordId,
+        sessionId: currentSession.sessionId,
+        action:    "ACQUISITION_INTENT",
+        weight:    2,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       setCurrentSession({
         ...currentSession,
-        tokens: currentSession.tokens.map(t => 
+        tokens: currentSession.tokens.map(t =>
           t.wordId === wordId ? { ...t, status: "learning" } : t
         )
       });
     }
   }
 
-  // ── Session loading ────────────────────────────────────────────────────────
+  // load session on mount
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
@@ -291,7 +303,7 @@ export default function ReadingSessionPage() {
 
   useEffect(() => { return () => { clearSession(); }; }, [clearSession]);
 
-  // ── Derived state ─────────────────────────────────────────────────────────
+  // derived
   const activeWord: HighlightedWord | null = (() => {
     if (!currentSession || !modalWordId) return null;
 
@@ -331,7 +343,7 @@ export default function ReadingSessionPage() {
     return null;
   })();
 
-  // Apply knownOverride to tokens — words marked known become "plain" (no highlight)
+  // strip highlight from words the user just marked known
   const effectiveTokens = useMemo(() => {
     if (!currentSession) return [];
     return currentSession.tokens.map(token => {
@@ -378,7 +390,6 @@ export default function ReadingSessionPage() {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading && !currentSession) {
     return (
       <div className="max-w-3xl mx-auto py-12 text-center">
@@ -523,7 +534,7 @@ export default function ReadingSessionPage() {
         )}
       </div>
 
-      {/* Small tooltip — first contact for ALL word clicks */}
+      {/* tooltip */}
       <WordTooltip
         lookup={tooltip}
         onClose={() => setTooltip(null)}
@@ -532,7 +543,7 @@ export default function ReadingSessionPage() {
         markingKnown={markingKnown}
       />
 
-      {/* Big modal — only shown after "Learn it" / "Review it" */}
+      {/* word detail modal */}
       <WordModal
         word={activeWord}
         onClose={() => setModalWordId(null)}

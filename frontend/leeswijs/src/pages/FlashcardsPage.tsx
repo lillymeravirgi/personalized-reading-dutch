@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { BookOpen, Check, Home, Hourglass, Layers, RotateCcw, Sparkles } from "lucide-react";
@@ -12,35 +12,23 @@ import {
   type DiscoverCard,
   type FlashcardsResponse,
 } from "../services/api";
-import type { FlashcardItem, ReviewInterval } from "../types";
+import type { FlashcardItem } from "../types";
 import SpeakButton from "../components/SpeakButton";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 type Mode = "review" | "discover";
+const DEFAULT_REVIEW_DAYS = 1;
 
-const INTERVALS: { label: string; value: ReviewInterval; days: number }[] = [
-  { label: "Today",    value: "today", days: 0  },
-  { label: "1 day",   value: "1d",    days: 1  },
-  { label: "2 days",  value: "2d",    days: 2  },
-  { label: "4 days",  value: "4d",    days: 4  },
-  { label: "1 week",  value: "1w",    days: 7  },
-  { label: "1 month", value: "1m",    days: 30 },
-];
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function FlashcardsPage() {
   const navigate = useNavigate();
   const user = useStore((s) => s.user);
 
   const [mode, setMode] = useState<Mode>("review");
 
-  // Review state
   const [reviewData,    setReviewData]    = useState<FlashcardsResponse | null>(null);
   const [reviewLoading, setReviewLoading] = useState(true);
   const [reviewError,   setReviewError]   = useState<string | null>(null);
-  const [reviewedCount, setReviewedCount] = useState(0); // live count for header
+  const [reviewedCount, setReviewedCount] = useState(0);
 
-  // Discover state
   const [discoverCards,   setDiscoverCards]   = useState<DiscoverCard[]>([]);
   const [discoverFetched, setDiscoverFetched] = useState(false);
 
@@ -56,14 +44,10 @@ export default function FlashcardsPage() {
       .finally(() => setReviewLoading(false));
   }, [user]);
 
-  // Load review cards on mount
   useEffect(() => {
     fetchReview();
   }, [fetchReview]);
 
-  // ── Background warm-up on mount & Refill on exit ─────────────────────────
-  // Silently pre-loads the reservoir the moment this page opens.
-  // When the user leaves, we tell the backend to check if it needs a refill.
   useEffect(() => {
     if (!user) return;
     discoverPrefetch(user.id)
@@ -71,23 +55,17 @@ export default function FlashcardsPage() {
         setDiscoverCards(words);
         setDiscoverFetched(true);
       })
-      .catch(() => { setDiscoverFetched(true); }); // mark fetched even on error
+      .catch(() => { setDiscoverFetched(true); });
 
-    // 2. The Exit Trigger
     return () => {
-      // Use the VITE_API_BASE_URL if available, else default to 8000
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api";
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
       navigator.sendBeacon(`${baseUrl}/flashcards/refill-check?user_id=${user.id}`);
     };
-  // Only run once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
-  // Prefetch discover cards when tab is first opened
+
   function openDiscover() {
     setMode("discover");
-    // If background warm-up hasn't finished yet, still let the tab open.
-    // The empty state "Reservoir refilling..." will show gracefully until
-    // the prefetch useEffect completes.
     if (!discoverFetched && user) {
       discoverPrefetch(user.id)
         .then(({ words }) => { setDiscoverCards(words); setDiscoverFetched(true); })
@@ -102,7 +80,6 @@ export default function FlashcardsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      {/* Header */}
       <div className="rounded-2xl border border-black/8 bg-white px-5 py-4 shadow-sm shadow-black/5 mb-5">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
@@ -119,7 +96,6 @@ export default function FlashcardsPage() {
             </div>
           </div>
 
-          {/* Mode toggle */}
           <div className="flex rounded-xl border border-black/10 bg-black/[0.02] p-1 gap-1">
             {(["review", "discover"] as Mode[]).map((m) => (
               <button
@@ -164,6 +140,7 @@ export default function FlashcardsPage() {
                 setDiscoverCards((prev) => prev.filter((c) => c.wordId !== wordId))
               }
               onRefreshReview={fetchReview}
+              onNavigate={navigate}
             />
           </motion.div>
         )}
@@ -171,8 +148,6 @@ export default function FlashcardsPage() {
     </div>
   );
 }
-
-// ─── Review Mode ─────────────────────────────────────────────────────────────
 
 function ReviewMode({
   loading, error, data, userId, onHome, onReviewedChange,
@@ -184,18 +159,13 @@ function ReviewMode({
   onHome: () => void;
   onReviewedChange: (n: number) => void;
 }) {
-  // Local stack — includes "forgot" re-inserts
   const [stack,      setStack]      = useState<FlashcardItem[]>([]);
   const [stackReady, setStackReady] = useState(false);
-  // reviewed = words successfully remembered this session (NOT incremented on forgot)
   const [reviewed,   setReviewed]   = useState(0);
   const [flipped,    setFlipped]    = useState(false);
-  const [remembered, setRemembered] = useState<boolean | null>(null);
-  const [interval,   setInterval]   = useState<ReviewInterval>(null);
   const [saving,     setSaving]     = useState(false);
   const [done,       setDone]       = useState(false);
 
-  // Build stack when data arrives
   useEffect(() => {
     if (data) {
       setStack([...data.cards]);
@@ -203,18 +173,14 @@ function ReviewMode({
     }
   }, [data]);
 
-  // Propagate reviewed count up to parent for header
   useEffect(() => { onReviewedChange(reviewed); }, [reviewed, onReviewedChange]);
 
   const dueCount = data?.due_count ?? 0;
   const serverReviewed = data?.reviewed_today ?? 0;
   
-  // Total daily task = what we have left to do + what we already did + what we did locally this session
   const totalDailyTask = dueCount + serverReviewed;
   const totalReviewed = serverReviewed + reviewed;
 
-  // Progress bar: 0% = red, 1-99% = amber, 100% = green
-  // If total task is 0, user has nothing to review today -> treat as complete (green)
   const progress = totalDailyTask === 0 ? 1 : Math.min(1, totalReviewed / totalDailyTask);
   const barPct   = Math.round(progress * 100);
   const barColor = totalDailyTask === 0 || barPct === 100
@@ -225,40 +191,31 @@ function ReviewMode({
 
   const card = stack[0] ?? null;
 
-  function handleRemember() {
-    setRemembered(true);
-    setFlipped(true);
+  async function handleRemember() {
+    if (!card) return;
+    setSaving(true);
+    await submitFlashcardReview(userId, card.wordId, true, DEFAULT_REVIEW_DAYS).catch(() => {});
+    setSaving(false);
+    setReviewed((n) => n + 1);
+    setStack((prev) => prev.slice(1));
+    setFlipped(false);
+    if (stack.length <= 1) setDone(true);
   }
 
   function handleForgot() {
     if (!card) return;
-    setRemembered(false);
     setFlipped(true);
-    // Push to END of queue (not position 3) — user sees all other cards first
-    setStack((prev) => {
-      if (prev.length <= 1) return prev; // only card, keep it
-      return [...prev.slice(1), prev[0]];
-    });
-    // Tell backend (non-blocking) — does NOT increment reviewed
     void submitFlashcardReview(userId, card.wordId, false).catch(() => {});
   }
 
-  async function handleSchedule() {
-    if (!card || interval === null) return;
-    const opt = INTERVALS.find((o) => o.value === interval)!;
-    setSaving(true);
-    await submitFlashcardReview(userId, card.wordId, true, opt.days).catch(() => {});
-    setSaving(false);
-    // Only increment reviewed AFTER successful "I remember" + schedule
-    setReviewed((n) => n + 1);
-    setStack((prev) => prev.slice(1));   // remove from front
+  function continueAfterForgot() {
+    setStack((prev) => {
+      if (prev.length <= 1) return prev;
+      return [...prev.slice(1), prev[0]];
+    });
     setFlipped(false);
-    setRemembered(null);
-    setInterval(null);
-    if (stack.length <= 1) setDone(true);
   }
 
-  // Loading
   if (loading) return (
     <div className="flex flex-col items-center py-20">
       <Hourglass size={32} className="text-primary animate-pulse mb-3" />
@@ -273,12 +230,10 @@ function ReviewMode({
     </div>
   );
 
-  // No words at all
   if (stackReady && stack.length === 0 && !done) return (
     <EmptyReview onHome={onHome} />
   );
 
-  // Session complete
   if (done || (stackReady && stack.length === 0)) return (
     <DeckDone
       reviewed={reviewed}
@@ -292,7 +247,6 @@ function ReviewMode({
 
   return (
     <div className="max-w-md mx-auto">
-      {/* SRS Progress bar */}
       <div className="mb-4">
         <div className="flex justify-between text-xs font-body text-text/50 mb-1.5">
           <span>{reviewed} reviewed today</span>
@@ -311,7 +265,6 @@ function ReviewMode({
         )}
       </div>
 
-      {/* Card */}
       <AnimatePresence mode="wait">
         <motion.div
           key={card?.wordId}
@@ -320,7 +273,6 @@ function ReviewMode({
           exit={{ opacity: 0, y: -18, scale: 0.97 }}
           className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-10"
         >
-          {/* Word front */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 text-primary mb-4">
               <BookOpen size={22} />
@@ -341,27 +293,27 @@ function ReviewMode({
             </p>
           </div>
 
-          {/* Front action buttons */}
           {!flipped && (
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={handleForgot}
+                disabled={saving}
                 className="flex-1 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-heading font-semibold text-red-600 hover:bg-red-100 transition-colors"
               >
                 I forgot
               </button>
               <button
                 type="button"
-                onClick={handleRemember}
-                className="flex-1 rounded-xl bg-primary text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90 transition-opacity"
+                onClick={() => void handleRemember()}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-primary text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
               >
-                I remember
+                {saving ? "Saving..." : "I remember"}
               </button>
             </div>
           )}
 
-          {/* Flipped content */}
           <AnimatePresence>
             {flipped && (
               <motion.div
@@ -386,53 +338,18 @@ function ReviewMode({
                   </div>
                 )}
 
-                {/* Interval selector — only when remembered */}
-                {remembered === true && (
-                  <>
-                    <p className="text-xs font-body font-semibold text-text/50 mb-2">Review again in:</p>
-                    <div className="flex flex-wrap gap-1.5 mb-4">
-                      {INTERVALS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setInterval(opt.value)}
-                          className={[
-                            "px-3 py-1 rounded-full text-xs font-body font-semibold border transition-all",
-                            interval === opt.value
-                              ? "bg-primary text-white border-primary"
-                              : "border-black/12 text-text/60 hover:border-black/25",
-                          ].join(" ")}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleSchedule()}
-                      disabled={interval === null || saving}
-                      className="w-full rounded-xl bg-primary text-white py-2.5 text-sm font-heading font-semibold hover:opacity-90 disabled:opacity-40"
-                    >
-                      Schedule review
-                    </button>
-                  </>
-                )}
-
-                {/* Forgot — just show "Got it, next!" */}
-                {remembered === false && (
-                  <div className="text-center mt-2">
-                    <p className="text-xs font-body text-amber-600 font-semibold mb-3">
-                      This card will come back later in this session.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => { setFlipped(false); setRemembered(null); }}
-                      className="rounded-xl border border-black/12 px-5 py-2 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]"
-                    >
-                      Continue
-                    </button>
-                  </div>
-                )}
+                <div className="text-center mt-2">
+                  <p className="text-xs font-body text-amber-600 font-semibold mb-3">
+                    This card will come back later in this session.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={continueAfterForgot}
+                    className="rounded-xl border border-black/12 px-5 py-2 text-sm font-heading font-semibold text-text hover:bg-black/[0.03]"
+                  >
+                    Continue
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -442,31 +359,18 @@ function ReviewMode({
   );
 }
 
-// ─── Discover Mode ────────────────────────────────────────────────────────────
-
 function DiscoverMode({
-  cards, userId, onCardConsumed, onRefreshReview,
+  cards, userId, onCardConsumed, onRefreshReview, onNavigate,
 }: {
   cards: DiscoverCard[];
   userId: string;
   onCardConsumed: (wordId: string) => void;
   onRefreshReview: () => void;
+  onNavigate: (path: string) => void;
 }) {
-  const [flipped,   setFlipped]   = useState(false);
-  const [interval,  setInterval]  = useState<ReviewInterval>(null);
   const [saving,    setSaving]    = useState(false);
 
   const card = cards[0] ?? null;
-
-  // Reset flip when card changes
-  const prevWordId = useRef<string | null>(null);
-  useEffect(() => {
-    if (card?.wordId !== prevWordId.current) {
-      setFlipped(false);
-      setInterval(null);
-      prevWordId.current = card?.wordId ?? null;
-    }
-  }, [card]);
 
   async function handleKnown() {
     if (!card) return;
@@ -476,21 +380,13 @@ function DiscoverMode({
     onCardConsumed(card.wordId);
   }
 
-  async function handleLearn() {
-    setFlipped(true);
-  }
-
   async function handleAddToLearn() {
-    if (!card || interval === null) return;
-    const opt = INTERVALS.find((o) => o.value === interval)!;
+    if (!card) return;
     setSaving(true);
-    await addDiscoveredToLearn(userId, card.wordId, opt.days).catch(() => {});
+    await addDiscoveredToLearn(userId, card.wordId, DEFAULT_REVIEW_DAYS).catch(() => {});
     setSaving(false);
     onCardConsumed(card.wordId);
-
-    if (opt.days === 0) {
-      onRefreshReview();
-    }
+    onRefreshReview();
   }
 
   if (!card) return (
@@ -507,7 +403,7 @@ function DiscoverMode({
       </p>
       <button
         type="button"
-        onClick={() => window.location.assign("/reading")}
+        onClick={() => onNavigate("/reading")}
         className="rounded-xl bg-primary text-white px-5 py-2.5 text-sm font-heading font-semibold hover:opacity-90"
       >
         Go to Reading 📖
@@ -519,7 +415,6 @@ function DiscoverMode({
 
   return (
     <div className="max-w-md mx-auto">
-      {/* Counter */}
       <div className="flex justify-between text-xs font-body text-text/50 mb-4">
         <span className="flex items-center gap-1.5"><Sparkles size={12} /> Discover mode</span>
         <span>{cards.length} words left</span>
@@ -533,7 +428,6 @@ function DiscoverMode({
           exit={{ opacity: 0, y: -18, scale: 0.97 }}
           className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-10"
         >
-          {/* Word */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-violet-50 text-violet-600 mb-4">
               <Sparkles size={22} />
@@ -554,90 +448,45 @@ function DiscoverMode({
             </div>
           </div>
 
-          {/* Pre-flip actions */}
-          {!flipped && (
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => void handleKnown()}
-                disabled={saving}
-                className="flex-1 rounded-xl border border-black/12 px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/[0.03] disabled:opacity-50"
-              >
-                I know this word
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleLearn()}
-                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90"
-              >
-                Add to review
-              </button>
+          <div className="border-t border-black/6 pt-5 mb-5">
+            <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Meaning</p>
+            <p className="font-heading text-lg font-bold text-violet-600">{card.english}</p>
+          </div>
+
+          {examples.length > 0 && (
+            <div className="space-y-2 mb-5">
+              {examples.slice(0, 2).map((ex, i) => (
+                <div key={i} className="bg-black/[0.025] rounded-xl px-4 py-3">
+                  <p className="text-sm font-body text-text font-medium">{ex.nl}</p>
+                  <p className="text-xs font-body text-text/50 mt-0.5">{ex.en}</p>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Flipped — show meaning + interval picker */}
-          <AnimatePresence>
-            {flipped && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="border-t border-black/6 pt-5 mb-4">
-                  <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Meaning</p>
-                  <p className="font-heading text-lg font-bold text-violet-600">{card.english}</p>
-                </div>
-
-                {examples.length > 0 && (
-                  <div className="space-y-2 mb-5">
-                    {examples.slice(0, 2).map((ex, i) => (
-                      <div key={i} className="bg-black/[0.025] rounded-xl px-4 py-3">
-                        <p className="text-sm font-body text-text font-medium">{ex.nl}</p>
-                        <p className="text-xs font-body text-text/50 mt-0.5">{ex.en}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <p className="text-xs font-body font-semibold text-text/50 mb-2">First review in:</p>
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {INTERVALS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setInterval(opt.value)}
-                      className={[
-                        "px-3 py-1 rounded-full text-xs font-body font-semibold border transition-all",
-                        interval === opt.value
-                          ? "bg-violet-600 text-white border-violet-600"
-                          : "border-black/12 text-text/60 hover:border-black/25",
-                      ].join(" ")}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void handleAddToLearn()}
-                  disabled={interval === null || saving}
-                  className="w-full rounded-xl bg-violet-600 text-white py-2.5 text-sm font-heading font-semibold hover:opacity-90 disabled:opacity-40"
-                >
-                  <Check size={14} className="inline mr-1.5" />
-                  Add to word review
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => void handleKnown()}
+              disabled={saving}
+              className="flex-1 rounded-xl border border-black/12 px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/[0.03] disabled:opacity-50"
+            >
+              I know this word
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleAddToLearn()}
+              disabled={saving}
+              className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Add to review"}
+            </button>
+          </div>
         </motion.div>
       </AnimatePresence>
     </div>
   );
 }
-
-// ─── Sub-states ───────────────────────────────────────────────────────────────
 
 function EmptyReview({ onHome }: { onHome: () => void }) {
   return (

@@ -34,6 +34,13 @@ REQUIRE_STUDY_CODE: bool = os.getenv("REQUIRE_STUDY_CODE", "false").lower() in {
     "true",
     "yes",
 }
+
+ALLOW_SELF_REGISTRATION: bool = os.getenv("ALLOW_SELF_REGISTRATION", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
 STUDY_INVITE_CODES: set[str] = {
     code.strip().upper()
     for code in os.getenv("STUDY_INVITE_CODES", "").split(",")

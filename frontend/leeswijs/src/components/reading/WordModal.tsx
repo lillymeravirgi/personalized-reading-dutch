@@ -1,20 +1,10 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookOpenText, X, Clock } from "lucide-react";
+import { BookOpenText, X, Check } from "lucide-react";
 import type { HighlightedWord } from "../../types";
 import SpeakButton from "../SpeakButton";
 import { addDiscoveredToLearn, submitFlashcardReview } from "../../services/api";
 import { useStore } from "../../store";
-
-type ReviewInterval = 0 | 1 | 2 | 4 | 7 | 30;
-const INTERVALS: { label: string; days: ReviewInterval }[] = [
-  { label: "Today",   days: 0  },
-  { label: "1 day",  days: 1  },
-  { label: "2 days", days: 2  },
-  { label: "4 days", days: 4  },
-  { label: "1 week", days: 7  },
-  { label: "1 month",days: 30 },
-];
 
 type Props = {
   word: HighlightedWord | null;
@@ -39,16 +29,14 @@ export default function WordModal({ word, onClose, onWordStatusChange }: Props) 
   const isNew    = word.highlightType === "unknown";
   const examples = word.exampleSentences.filter((s) => s.nl?.trim());
 
-  async function handleSelectInterval(days: ReviewInterval) {
+  async function handleSaveWord() {
     if (!user || saving) return;
     setSaving(true);
     try {
       if (!isNew) {
-        // Already learning -> submit review
-        await submitFlashcardReview(user.id, word!.wordId, true, days);
+        await submitFlashcardReview(user.id, word!.wordId, true);
       } else {
-        // New word -> add to learn
-        await addDiscoveredToLearn(user.id, word!.wordId, days);
+        await addDiscoveredToLearn(user.id, word!.wordId);
       }
       onWordStatusChange?.(word!.wordId, "learning");
       onClose();
@@ -136,24 +124,21 @@ export default function WordModal({ word, onClose, onWordStatusChange }: Props) 
             </div>
           )}
 
-          {/* ── Footer: One-Click Auto Save ─────────────────────── */}
+          {/* ── Footer ──────────────────────────────────────────── */}
           <div className="px-5 py-4 shrink-0 bg-white">
-            <h3 className="mb-3 flex items-center gap-2 font-heading text-xs font-semibold uppercase tracking-wide text-text/50">
-              <Clock size={14} /> When to review?
-            </h3>
-            <div className="grid grid-cols-3 gap-2">
-              {INTERVALS.map((opt) => (
-                <button
-                  key={opt.days}
-                  type="button"
-                  disabled={saving}
-                  onClick={() => handleSelectInterval(opt.days)}
-                  className="rounded-lg border border-black/8 bg-white py-2.5 text-sm font-heading font-semibold text-text hover:border-primary/40 hover:bg-primary/[0.04] transition-colors disabled:opacity-50"
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void handleSaveWord()}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              <Check size={16} strokeWidth={2.4} />
+              {saving
+                ? "Saving..."
+                : isNew
+                  ? "Add to learning list"
+                  : "Mark as reviewed"}
+            </button>
           </div>
         </motion.div>
       </motion.div>

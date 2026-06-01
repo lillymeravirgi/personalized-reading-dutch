@@ -60,13 +60,14 @@ export default function OnboardingPage() {
   const [finalResult,  setFinalResult]  = useState<{ level: string; acquisition: number } | null>(null);
 
   useEffect(() => {
-    if (!retakeAssessment || !user) return;
+    if (!retakeAssessment || !user?.id) return;
+    const userId = user.id;
 
     let cancelled = false;
     setStep("assessment");
     setLoadingBatch(true);
     setAssessmentError(null);
-    getAssessmentBatch(1, user.id, selfCefr)
+    getAssessmentBatch(1, userId, selfCefr)
       .then((res) => {
         if (cancelled) return;
         setBatch(res);

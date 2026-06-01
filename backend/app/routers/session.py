@@ -278,6 +278,8 @@ def get_session(session_id: int, user_id: str, db: Session = Depends(get_db)):
     blue_list = _build_word_list(blue)
     yellow_list = _build_word_list(yellow)
 
+    user = db.query(User).filter(User.user_id == session.user_id).first()
+
     return {
         "session_id":        session.session_id,
         "title":             session.title or f"Reading #{session.reading_number}",
@@ -290,4 +292,5 @@ def get_session(session_id: int, user_id: str, db: Session = Depends(get_db)):
         "word_translations": session.word_translations or {},
         "blue_words":        blue_list,
         "yellow_words":      yellow_list,
+        "cefr_level":        user.estimated_cefr if user else None,
     }

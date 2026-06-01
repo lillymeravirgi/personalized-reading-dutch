@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { useStore } from "../store";
+import DelayedVocabReminder from "../components/DelayedVocabReminder";
 
 const NAV_ITEMS = [
   { to: "/home",       label: "Dashboard", icon: Home },
@@ -98,6 +99,7 @@ export default function MainLayout() {
         </main>
       </div>
 
+      <DelayedVocabReminder />
     </div>
   );
 }

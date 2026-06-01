@@ -11,7 +11,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from app.config import REQUIRE_STUDY_CODE, STUDY_INVITE_CODES
+from app.config import ALLOW_SELF_REGISTRATION, REQUIRE_STUDY_CODE, STUDY_INVITE_CODES
 from app.database import get_db
 from app.models import ConditionType, User
 from app.schemas import AuthResponse, LoginRequest, RegisterRequest
@@ -78,6 +78,9 @@ def _user_to_auth_response(user: User) -> AuthResponse:
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    if not ALLOW_SELF_REGISTRATION:
+        raise HTTPException(status_code=403, detail="Account creation is closed for this study.")
+
     raw_identifier = req.email.strip()
     study_code = normalise_study_id(req.study_code) if req.study_code else None
     if not study_code and raw_identifier and not is_email(raw_identifier):

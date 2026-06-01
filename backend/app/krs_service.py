@@ -26,9 +26,7 @@ GATEKEEPER_FLOOR   = 25   # minimum before a Gemini call is allowed
 LOW_WATERMARK      = 25   # alias used by discover-prefetch endpoint
 
 
-# ─────────────────────────────────────────────
 #  Public entry point
-# ─────────────────────────────────────────────
 
 def run_krs(user_id: str, db: Session, is_refill: bool = False) -> dict:
     """
@@ -56,7 +54,7 @@ def run_krs(user_id: str, db: Session, is_refill: bool = False) -> dict:
     )
     usable_count = sum(1 for r in current_recs if r.word_id not in vector_ids)
 
-    # ── Gatekeeper: abort if reservoir is adequate ──────────────────────────
+    # gatekeeper: abort if reservoir is adequate
     if usable_count >= GATEKEEPER_FLOOR:
         logger.info(
             f"[KRS] user={user_id} | reservoir={usable_count} >= {GATEKEEPER_FLOOR} "
@@ -104,9 +102,7 @@ def reservoir_count(user_id: str, db: Session) -> int:
     return sum(1 for r in recs if r.word_id not in vector_ids)
 
 
-# ─────────────────────────────────────────────
 #  Helpers
-# ─────────────────────────────────────────────
 
 def _get_excluded_words(user_id: str, db: Session) -> list[str]:
     """Words the user already knows or is learning — never recommend these."""
@@ -225,9 +221,7 @@ def _save_matches(user_id: str, words: list[str], db: Session) -> tuple[int, int
     return matched, new_count
 
 
-# ─────────────────────────────────────────────
 #  BASELINE KRS  (non-personalised)
-# ─────────────────────────────────────────────
 
 import random as _random
 

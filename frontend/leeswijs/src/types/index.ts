@@ -1,10 +1,10 @@
-// ── CEFR ──────────────────────────────────────────────────────────────────────
+// cefr
 export type CefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
 export const PURPOSES = ["work", "study", "integration", "travel", "other"] as const;
 export type Purpose = (typeof PURPOSES)[number];
 
-// ── User ──────────────────────────────────────────────────────────────────────
+// user
 export interface User {
   id: string;
   user_id: string;
@@ -33,7 +33,7 @@ export interface User {
   has_switched_conditions?: boolean;
 }
 
-// ── Vocabulary ────────────────────────────────────────────────────────────────
+// vocabulary
 export interface BilingualSentence {
   nl: string;
   en: string;
@@ -82,7 +82,7 @@ export interface TextToken {
   wordId?: string | null;
 }
 
-// ── Reading Session ───────────────────────────────────────────────────────────
+// reading session
 export interface ReadingSession {
   sessionId: string;
   text: string;
@@ -134,7 +134,7 @@ export interface DashboardStats {
   is_new: boolean;
 }
 
-// ── Flashcards ────────────────────────────────────────────────────────────────
+// flashcards
 export type ReviewInterval = "today" | "1d" | "2d" | "4d" | "1w" | "1m" | "never" | null;
 
 export interface FlashcardItem {
@@ -149,8 +149,9 @@ export interface FlashcardItem {
   reviewInterval: ReviewInterval;
 }
 
-// ── Interactions ──────────────────────────────────────────────────────────────
-export type InteractionAction = "see_examples" | "add_to_learn" | "ignore";
+// interactions
+// keep in sync with backend IntentTagType enum or telemetry will 422
+export type InteractionAction = "DEEP_PROCESSING" | "ACQUISITION_INTENT" | "WORD_AVOIDANCE";
 export type InteractionWeight = 5 | 2 | 1;
 
 export interface WordInteraction {
@@ -161,7 +162,7 @@ export interface WordInteraction {
   timestamp: string;
 }
 
-// ── Survey ────────────────────────────────────────────────────────────────────
+// survey
 export type LikertScale = 1 | 2 | 3 | 4 | 5;
 export type TLXScale = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -182,7 +183,7 @@ export interface SurveyResponse {
   duration_seconds?: number;
 }
 
-// ── Vocabulary Test ───────────────────────────────────────────────────────────
+// vocabulary test
 export interface VocabTestQuestion {
   questionId: string;
   wordId: string;
@@ -205,7 +206,7 @@ export interface VocabTestResult {
   total: number;
 }
 
-// ── Assessment ────────────────────────────────────────────────────────────────
+// assessment
 export interface AssessmentWord {
   wordId: string;
   dutch: string;
@@ -229,7 +230,7 @@ export interface AssessmentResult {
   confidenceScore: number;
 }
 
-// ── API helpers ───────────────────────────────────────────────────────────────
+// api helpers
 export type ApiResponse<T> =
   | { success: true; data: T }
   | { success: false; error: string };

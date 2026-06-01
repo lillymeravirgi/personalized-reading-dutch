@@ -189,23 +189,6 @@ export default function LoginPage() {
         </motion.button>
       </form>
 
-      <div className="relative my-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-black/8" />
-        </div>
-        <div className="relative flex justify-center">
-          <span className="bg-white px-3 text-xs text-text/35 font-body">New here?</span>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => navigate("/register")}
-        className="w-full flex items-center justify-center gap-2 rounded-xl border border-black/12 px-5 py-2.5 text-sm font-body font-semibold text-text/70 hover:bg-black/[0.03] hover:text-text transition-colors"
-      >
-        Create account
-      </button>
-
       <p className="mt-6 text-center text-xs text-text/30 font-body">
         Dutch reading study
       </p>

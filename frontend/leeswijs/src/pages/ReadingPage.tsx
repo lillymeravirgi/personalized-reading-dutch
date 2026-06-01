@@ -103,6 +103,10 @@ export default function ReadingPage() {
     !nextTestSet &&
     nextLocalReadingNumber <= READINGS_PER_PHASE &&
     !currentWordSetReady;
+  const showWordSetCard =
+    !activeReading &&
+    !nextTestSet &&
+    nextLocalReadingNumber <= READINGS_PER_PHASE;
   const allStudyComplete = currentPhase === 2 && currentPhaseDone;
   const showReadingIntro =
     currentPhase === 1 &&
@@ -199,9 +203,10 @@ export default function ReadingPage() {
               role="dialog"
               aria-modal="true"
               aria-labelledby="reading-intro-title"
-              initial={{ opacity: 0, y: 16, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
               className="w-full max-w-md rounded-2xl bg-white px-6 py-6 shadow-2xl shadow-black/20"
             >
               <div className="mb-4 flex items-start justify-between gap-4">
@@ -376,28 +381,46 @@ export default function ReadingPage() {
         )}
       </div>
 
-      {needsCurrentWordSet && (
+      {showWordSetCard && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-primary/20 bg-primary/[0.04] px-5 py-4"
+          className={[
+            "rounded-lg border px-5 py-4",
+            currentWordSetReady
+              ? "border-black/8 bg-black/[0.025] text-text/55"
+              : "border-primary/20 bg-primary/[0.04]",
+          ].join(" ")}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="font-heading text-sm font-bold text-primary mb-1">
-                Learn {TARGET_WORDS_PER_PHASE} words for Phase {currentPhase}
+              <h3 className={[
+                "font-heading text-sm font-bold mb-1",
+                currentWordSetReady ? "text-text/55" : "text-primary",
+              ].join(" ")}>
+                {currentWordSetReady
+                  ? `Phase ${currentPhase} word set completed`
+                  : `Learn ${TARGET_WORDS_PER_PHASE} words for Phase ${currentPhase}`}
               </h3>
               <p className="text-xs font-body text-text/55">
-                This unlocks the three readings in this phase.
+                {currentWordSetReady
+                  ? "You can generate the next reading now."
+                  : "This unlocks the three readings in this phase."}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate(`/onboarding/flashcards?phase=${currentPhase}`)}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-heading font-semibold text-white hover:opacity-90"
-            >
-              Start word set <ArrowRight size={14} />
-            </button>
+            {currentWordSetReady ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-black/8 bg-white px-3 py-2 text-xs font-heading font-semibold text-text/45">
+                <CheckCircle2 size={14} /> Completed
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => navigate(`/onboarding/flashcards?phase=${currentPhase}`)}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-heading font-semibold text-white hover:opacity-90"
+              >
+                Start word set <ArrowRight size={14} />
+              </button>
+            )}
           </div>
         </motion.div>
       )}

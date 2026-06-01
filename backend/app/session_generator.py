@@ -93,9 +93,7 @@ READING_STYLES = [
 _FIXED_STYLE = "Informative Educational Semi-Narrative Article"
 
 
-# ─────────────────────────────────────────────
 #  Survey → Prompt signal
-# ─────────────────────────────────────────────
 
 def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
     """
@@ -149,9 +147,7 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
     return "\n".join(lines)
 
 
-# ─────────────────────────────────────────────
 #  Public entry point
-# ─────────────────────────────────────────────
 
 def generate_session(
     user_id: str,
@@ -238,9 +234,7 @@ def generate_session(
     }
 
 
-# ─────────────────────────────────────────────
 #  Helpers
-# ─────────────────────────────────────────────
 
 def _next_reading_number(user_id: str, study_phase: int, db: Session) -> int:
     """Count sessions in the current study phase."""
@@ -324,9 +318,7 @@ def _lex_to_dict(entry: Lexicon) -> dict:
     }
 
 
-# ─────────────────────────────────────────────
 #  Text generation
-# ─────────────────────────────────────────────
 
 def _generate_story_content(
     user: User,
@@ -435,9 +427,7 @@ Return ONLY a valid JSON object with these exact keys:
     ) from last_error
 
 
-# ─────────────────────────────────────────────
 #  Narrative memory helpers
-# ─────────────────────────────────────────────
 
 def _generate_session_summary(content: str, topic: str) -> str:
     """
@@ -506,9 +496,7 @@ def _build_narrative_memory(
     }
 
 
-# ─────────────────────────────────────────────
 #  Continuation generator (Continue button)
-# ─────────────────────────────────────────────
 
 def generate_continuation(
     user_id: str,

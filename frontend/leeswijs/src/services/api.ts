@@ -1,7 +1,4 @@
-/**
- * api.ts — All backend communication for Leeswijs.
- * No mock data. All calls go to the real FastAPI backend.
- */
+// all API calls for Leeswijs — no mock mode, hits the real FastAPI backend
 import axios, { AxiosError } from "axios";
 import type {
   ApiResponse,
@@ -15,7 +12,7 @@ import type {
   VocabTestQuestion,
 } from "../types";
 
-// ── Axios client ──────────────────────────────────────────────────────────────
+// axios client
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
@@ -56,9 +53,7 @@ function extractError(err: unknown): string {
   return err instanceof Error ? err.message : "An unexpected error occurred.";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Auth
-// ─────────────────────────────────────────────────────────────────────────────
 
 interface BackendAuthResponse {
   user_id: string;
@@ -108,9 +103,7 @@ function mapAuthResponseToUser(data: BackendAuthResponse): User {
   };
 }
 
-/** Create a new account (Study ID + password).
- *  startCondition is set by the researcher via ?start=ADAPTIVE|BASELINE in the URL.
- */
+// startCondition comes from ?start=ADAPTIVE|BASELINE in the URL (researcher sets it)
 export async function registerUser(
   studyId: string,
   password: string,
@@ -129,7 +122,6 @@ export async function registerUser(
   }
 }
 
-/** Log in with Study ID + password. */
 export async function login(studyId: string, password: string): Promise<User> {
   try {
     const { data } = await apiClient.post<BackendAuthResponse>("/auth/login", {
@@ -142,11 +134,8 @@ export async function login(studyId: string, password: string): Promise<User> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  User / Profile
-// ─────────────────────────────────────────────────────────────────────────────
 
-/** Fetch the current user's full profile from the backend. */
 export async function fetchMe(userId: string): Promise<User> {
   try {
     const { data } = await apiClient.get<{ success: boolean; data: Record<string, unknown> }>(
@@ -180,7 +169,6 @@ export async function fetchMe(userId: string): Promise<User> {
   }
 }
 
-/** Save full profile update (all editable fields). */
 export async function saveProfile(user: Partial<User> & { id: string }): Promise<void> {
   try {
     await apiClient.put(
@@ -206,7 +194,6 @@ export async function saveProfile(user: Partial<User> & { id: string }): Promise
   }
 }
 
-/** Mark onboarding as completed. */
 export async function completeOnboarding(userId: string): Promise<void> {
   try {
     await apiClient.post(
@@ -219,11 +206,8 @@ export async function completeOnboarding(userId: string): Promise<void> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Onboarding
-// ─────────────────────────────────────────────────────────────────────────────
 
-/** Save Step 1 personal info. */
 export async function savePersonalInfo(
   userId: string,
   info: {
@@ -247,7 +231,6 @@ export async function savePersonalInfo(
   }
 }
 
-/** Select the flashcard words for a reading block. */
 export async function selectOnboardingWords(
   userId: string,
   isRefill: boolean = false,
@@ -263,7 +246,6 @@ export async function selectOnboardingWords(
   }
 }
 
-/** Get the stored flashcard words for a reading block. */
 export async function getOnboardingWords(
   userId: string,
   studyPhase: number = 1,
@@ -302,16 +284,9 @@ export async function getOnboardingWordSetStatus(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Assessment
-// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Generate a vocabulary batch via Gemini.
- * batchNumber: 1, 2, or 3.
- * selfReportedCefr: from Step 1 dropdown.
- * knownWords / allWords: provided for batches 2 & 3 to target the boundary.
- */
+// batches 2 & 3 pass knownWords/allWords so Gemini targets the CEFR boundary
 export async function getAssessmentBatch(
   batchNumber: number,
   userId: string,
@@ -348,7 +323,6 @@ export async function getAssessmentBatch(
   }
 }
 
-/** Submit the final assessment result. */
 export async function submitAssessment(
   userId: string,
   batchNumber: number,
@@ -373,13 +347,11 @@ export async function submitAssessment(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Reading sessions
-// ─────────────────────────────────────────────────────────────────────────────
 
 export type ConditionType = "ADAPTIVE" | "BASELINE";
 
-/** Returns "ADAPTIVE" for odd sessions, "BASELINE" for even (counterbalancing). */
+// unused — condition now comes from user.current_condition (set by backend)
 export function getCondition(sessionNumber?: number): ConditionType {
   if (sessionNumber === undefined) return "ADAPTIVE";
   return sessionNumber % 2 === 1 ? "ADAPTIVE" : "BASELINE";
@@ -429,7 +401,7 @@ function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
       wordId: t.word_id ? String(t.word_id) : null,
     })),
     topic:            String(data.topic_used ?? ""),
-    cefrLevel:        "B1",
+    cefrLevel:        String(data.cefr_level ?? data.cefr ?? "B1"),
     highlights:       [
       ...buildHighlights(rawBlue,   "unknown"),
       ...buildHighlights(rawYellow, "learning"),
@@ -441,7 +413,6 @@ function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
   };
 }
 
-/** Generate a new reading session. */
 export async function generateSession(
   userId: string,
   condition: ConditionType,
@@ -464,7 +435,6 @@ export async function generateSession(
   }
 }
 
-/** Fetch a full reading session by ID. */
 export async function getReadingSession(
   sessionId: string,
   userId?: string,
@@ -480,7 +450,6 @@ export async function getReadingSession(
   }
 }
 
-/** List reading sessions for a user, optionally filtered by study_phase. */
 export async function listSessions(
   userId: string,
   studyPhase?: number,
@@ -495,27 +464,28 @@ export async function listSessions(
   }
 }
 
-/** Continue a reading session (extend same topic). */
 export async function continueSession(
   userId: string,
   previousSessionId: string,
 ): Promise<ReadingSession> {
-  const { data } = await apiClient.post<Record<string, unknown>>(
-    "/session/continue",
-    {
-      user_id:             userId,
-      previous_session_id: previousSessionId,
-    },
-    { timeout: READING_GENERATION_TIMEOUT_MS },
-  );
-  return mapSessionResponse(data);
+  try {
+    const { data } = await apiClient.post<Record<string, unknown>>(
+      "/session/continue",
+      {
+        user_id:             userId,
+        previous_session_id: previousSessionId,
+      },
+      { timeout: READING_GENERATION_TIMEOUT_MS },
+    );
+    return mapSessionResponse(data);
+  } catch (err) {
+    throw new Error(extractError(err));
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Vocabulary
-// ─────────────────────────────────────────────────────────────────────────────
 
-/** Define an unknown word (looks up lexicon or calls Gemini). */
+// tries lexicon first, falls back to Gemini for unknown words
 export async function defineWord(word: string): Promise<LexiconEntry | null> {
   try {
     const { data } = await apiClient.get<LexiconEntry>(
@@ -527,7 +497,6 @@ export async function defineWord(word: string): Promise<LexiconEntry | null> {
   }
 }
 
-/** Add a word to the user's learning list. */
 export async function addToLearnList(
   userId: string,
   wordId: number,
@@ -550,9 +519,7 @@ export async function markKnown(
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Survey
-// ─────────────────────────────────────────────────────────────────────────────
 
 export async function submitSurvey(
   payload: SurveyResponse,
@@ -578,9 +545,7 @@ export async function submitSurvey(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Flashcards
-// ─────────────────────────────────────────────────────────────────────────────
 
 import type { FlashcardItem } from "../types";
 
@@ -630,7 +595,7 @@ export async function getFlashcards(
   }
 }
 
-/** Fetch pre-buffered KRS recommendations (non-blocking, uses existing DB buffer). */
+// non-blocking — reads from the DB buffer the backend already filled
 export async function discoverPrefetch(
   userId: string,
 ): Promise<{ words: DiscoverCard[]; remaining: number }> {
@@ -669,7 +634,6 @@ export async function markKnownFlashcard(
   });
 }
 
-/** Add a discovered word to the user's LEARNING list with an initial SRS interval. */
 export async function addDiscoveredToLearn(
   userId: string,
   wordId: string,
@@ -697,11 +661,8 @@ export async function discoverNewWords(
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Vocabulary Test
-// ─────────────────────────────────────────────────────────────────────────────
 
-/** Start the vocab test from the user's onboarding words for the given study phase. */
 export async function startVocabTest(
   userId: string,
   sessionGroupId: number,
@@ -804,9 +765,7 @@ export async function submitVocabTest(
   return data;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Telemetry (lightweight — fire and forget)
-// ─────────────────────────────────────────────────────────────────────────────
 
 // Telemetry (disabled non-existent endpoints)
 export function logWordLookup(): void {}
@@ -823,9 +782,7 @@ export function logInteraction(interaction: WordInteraction): Promise<void> {
   }).then(() => {});
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Activity (localStorage — client-side session tracking)
-// ─────────────────────────────────────────────────────────────────────────────
 
 export interface Activity {
   sessions: Array<{

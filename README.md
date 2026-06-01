@@ -12,157 +12,100 @@ The main goal is to run a clean experiment and collect usable data about reading
 
 **RQ3.** Does personalized reading content improve vocabulary acquisition and 24-hour retention compared with a non-personalized baseline
 
-## Experiment Protocol
-
-The study uses a within-subject, counterbalanced design. Each participant completes both conditions:
-
-- **Adaptive:** CEFR-matched, interest-based, vocabulary-aware, with cross-session adaptation.
-- **Baseline:** CEFR-matched, general/random topic selection, static CEFR vocabulary, no cross-session adaptation.
-
-The protocol is grounded in Flow Theory and the Zone of Proximal Development. The system does not aim to make texts simply easier; it aims to keep texts appropriately challenging and engaging.
-
-
 ## Stack
 
 - **Frontend:** React 19, Vite, TypeScript, Zustand, React Router
-- **Backend:** FastAPI, SQLAlchemy, SQLite
-- **LLM:** Google Gemini 2.5 Flash
+- **Backend:** FastAPI, SQLAlchemy, SQLite (local)
+- **LLM:** Google Gemini 2.5 Flash Lite
 - **API prefix:** `/api`
-- **Prototype auth:** login endpoint plus `X-User-Id` header for user-scoped API calls
 
-## How to Run
+## Local Setup
 
-You need Python 3.11+, Node.js 20+, and a Gemini API key.
+You need Python 3.11+, Node 20+, and a Gemini API key.
 
 ### Backend
 
-1. Navigate to the backend directory and set up a virtual environment:
-   ```bash
-   cd backend
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
-2. Configure environment variables:
-   ```bash
-   cp .env.example .env
-   # Open .env and add your GOOGLE_API_KEY and configure other settings
-   ```
+Copy the env file and add your key:
 
-3. Seed the database and start the FastAPI dev server:
-   ```bash
-   python seed.py
-   uvicorn main:app --port 8000 --reload
-   ```
+```bash
+cp .env.example .env
+```
 
-The backend API documentation is available at:
-`http://localhost:8000/docs`
+```env
+GOOGLE_API_KEY=your-key-here
+DATABASE_URL=sqlite:///./dev.db
+GEMINI_MODEL=gemini-2.5-flash-lite
+ALLOW_SELF_REGISTRATION=false
+SEED_TEST_ACCOUNTS=true
+```
+
+Seed the database (creates tables + test accounts):
+
+```bash
+python seed.py
+```
+
+Default test accounts (all use password `LeesWijs2026!`):
+
+```
+KIM  KIKI  JULIAN  TJ  EVIE  JY
+```
+
+To reset: stop the server, delete `backend/dev.db`, run `python seed.py` again.
+
+Start the server:
+
+```bash
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+API docs at `http://127.0.0.1:8000/docs`.
 
 ### Frontend
 
-1. Navigate to the frontend directory and install dependencies:
-   ```bash
-   cd frontend/leeswijs
-   npm install
-   ```
-
-2. Start the Vite development server:
-   ```bash
-   npm run dev -- --port 3000
-   ```
-
-The application will be accessible at `http://localhost:3000`.
-
----
-
-## Crossover Study: Choosing Starting Condition
-
-To support our controlled **Within-Subjects Crossover Study**, researchers can assign participants to start in either the **ADAPTIVE** or **BASELINE** condition using URL query parameters during registration.
-
-### 1. Register a Participant
-Direct the participant to the registration page with the `start` parameter:
-
-* **To start with the Adaptive (Personalized) Condition:**
-  `http://localhost:3000/register?start=ADAPTIVE`
-
-* **To start with the Baseline (Generic CEFR) Condition:**
-  `http://localhost:3000/register?start=BASELINE`
-
-### 2. Experiment Flow
-The current study uses two phases. Each participant completes both conditions, with the starting condition assigned during registration.
-
-1. **Phase 1 word set:** Participant studies 10 target words.
-2. **Phase 1 readings:** Participant reads three Dutch texts and completes the post-reading surveys.
-3. **Vocabulary check 1:** Participant completes an immediate vocabulary check for phase 1.
-4. **Transition:** Participant moves to the second condition and reviews the next word set.
-5. **Phase 2 readings:** Participant reads three Dutch texts and completes the post-reading surveys.
-6. **Vocabulary check 2:** Participant completes the final immediate vocabulary check.
-7. **Delayed checks:** The app prompts the delayed vocabulary checks when they are due.
-
-
-## Environment Variables
-
-Create `backend/.env` from `backend/.env.example`.
-
-```env
-DATABASE_URL=sqlite:///./dev.db
-GOOGLE_API_KEY=your-key-here
-GEMINI_MODEL=gemini-2.5-flash
+```bash
+cd frontend/leeswijs
+npm install
+npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Optional frontend variables:
+App runs at `http://127.0.0.1:5173`.
+
+Optional: create `frontend/leeswijs/.env.local` to override the API URL:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
-The current frontend does not use mock mode; all app requests go to the FastAPI backend.
-
 ## Project Structure
 
-```text
-personalized-reading-dutch/
-|-- backend/
-|   |-- main.py
-|   |-- seed.py
-|   |-- requirements.txt
-|   |-- .env.example
-|   `-- app/
-|       |-- config.py
-|       |-- database.py
-|       |-- deps.py
-|       |-- models.py
-|       |-- schemas.py
-|       |-- session_generator.py
-|       |-- krs_service.py
-|       |-- topic_service.py
-|       |-- validator.py
-|       `-- routers/
-|           |-- assessment.py
-|           |-- auth.py
-|           |-- experiment.py
-|           |-- flashcards.py
-|           |-- krs.py
-|           |-- lexicon.py
-|           |-- session.py
-|           |-- surveys.py
-|           |-- telemetry.py
-|           |-- users.py
-|           |-- vocab_test.py
-|           `-- vocabulary.py
-`-- frontend/
-    `-- leeswijs/
-        |-- package.json
-        `-- src/
-            |-- App.tsx
-            |-- main.tsx
-            |-- components/
-            |-- hooks/
-            |-- layouts/
-            |-- mocks/
-            |-- pages/
-            |-- services/api.ts
-            |-- store/index.ts
-            `-- types/
+```
+backend/
+  main.py
+  seed.py
+  requirements.txt
+  .env.example
+  app/
+    models.py
+    schemas.py
+    session_generator.py
+    krs_service.py
+    routers/
+      auth.py  session.py  surveys.py  vocab_test.py
+      flashcards.py  telemetry.py  users.py  ...
+
+frontend/leeswijs/
+  src/
+    pages/
+    components/
+    services/api.ts
+    store/index.ts
+    types/index.ts
 ```

@@ -24,7 +24,7 @@ export default function SystemTransitionPage() {
   }, [nextPhase, user]);
 
   function handleContinue() {
-    navigate(`/onboarding/flashcards?phase=${nextPhase}`);
+    navigate("/reading");
   }
 
   return (
@@ -69,8 +69,8 @@ export default function SystemTransitionPage() {
             Take a short moment, then continue when you are ready.
           </p>
           <p className="text-sm font-body text-white/80 leading-relaxed">
-            Next, review a new word set before continuing with the next reading block and
-            vocabulary check.
+            Next, go back to the reading page. The next word set will unlock the following
+            reading block.
           </p>
         </motion.div>
 
@@ -87,7 +87,7 @@ export default function SystemTransitionPage() {
             disabled={loading}
             className="inline-flex items-center gap-2.5 rounded-2xl bg-indigo-500 hover:bg-indigo-400 disabled:opacity-60 px-8 py-4 text-base font-heading font-semibold text-white transition-all shadow-lg shadow-indigo-500/30 hover:shadow-indigo-400/40"
           >
-            {loading ? "Preparing words..." : "Continue to next word set"}
+            {loading ? "Preparing words..." : "Continue to reading"}
             <ArrowRight size={18} strokeWidth={2.5} />
           </button>
         </motion.div>

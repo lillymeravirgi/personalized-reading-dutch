@@ -4,20 +4,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Check, BookOpen } from "lucide-react";
 import { getOnboardingWords, addToLearnList, completeOnboarding, markKnown, selectOnboardingWords } from "../services/api";
 import { useStore } from "../store";
-import type { LexiconEntry, ReviewInterval } from "../types";
+import type { LexiconEntry } from "../types";
 import SpeakButton from "../components/SpeakButton";
 
 const TARGET_WORDS = 10;
 const READINGS_PER_PHASE = 3;
-
-const REVIEW_OPTIONS: { label: string; value: ReviewInterval; days?: number }[] = [
-  { label: "Today",   value: "today",  days: 0 },
-  { label: "1 day",   value: "1d",     days: 1 },
-  { label: "2 days",  value: "2d",     days: 2 },
-  { label: "4 days",  value: "4d",     days: 4 },
-  { label: "1 week",  value: "1w",     days: 7 },
-  { label: "1 month", value: "1m",     days: 30 },
-];
 
 export default function OnboardingFlashcardsPage() {
   const navigate = useNavigate();
@@ -31,14 +22,27 @@ export default function OnboardingFlashcardsPage() {
 
   const [words,      setWords]      = useState<LexiconEntry[]>([]);
   const [index,      setIndex]      = useState(0);
-  const [flipped,    setFlipped]    = useState(false);
   const [done,       setDone]       = useState(false);
   const [loading,    setLoading]    = useState(true);
-  const [interval,   setInterval]   = useState<ReviewInterval>(null);
   const [saving,     setSaving]     = useState(false);
   const [learningCount, setLearningCount] = useState(0);
-  const [, setKnowCount] = useState(0);
   const [refilling,  setRefilling]  = useState(false);
+
+  function mergeUnique(current: LexiconEntry[], incoming: LexiconEntry[]) {
+    const seen = new Set(current.map((w) => w.word_id));
+    return [...current, ...incoming.filter((w) => !seen.has(w.word_id))];
+  }
+
+  async function refillWords() {
+    if (!user || refilling) return;
+    setRefilling(true);
+    try {
+      const refillWords = await selectOnboardingWords(user.id, true, studyPhase);
+      setWords((prev) => mergeUnique(prev, refillWords));
+    } finally {
+      setRefilling(false);
+    }
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -59,42 +63,24 @@ export default function OnboardingFlashcardsPage() {
 
   const word = words[index] ?? null;
 
-  function handleKnow() {
+  async function handleKnow() {
     if (!user || !word) return;
-    void markKnown(user.id, word.word_id).catch(() => {});
-    
-    setKnowCount((prev) => {
-      const next = prev + 1;
-      if (next % 10 === 0 && !refilling) {
-        setRefilling(true);
-        // Call with isRefill = true and correct study phase
-        selectOnboardingWords(user.id, true, studyPhase).then((newWords) => {
-          setWords((prevWords) => {
-            const existingIds = new Set(prevWords.map(w => w.word_id));
-            const uniqueNew = newWords.filter(w => !existingIds.has(w.word_id));
-            return [...prevWords, ...uniqueNew];
-          });
-          setRefilling(false);
-        }).catch(() => setRefilling(false));
-      }
-      return next;
-    });
-    
+    setSaving(true);
+    await markKnown(user.id, word.word_id).catch(() => {});
+    setSaving(false);
     advanceCard(false);
+    void refillWords();
   }
 
   async function handleAddToLearn() {
     if (!user || !word) return;
     setSaving(true);
-    await addToLearnList(user.id, word.word_id, interval ? REVIEW_OPTIONS.find((r) => r.value === interval)?.days : undefined).catch(() => {});
+    await addToLearnList(user.id, word.word_id).catch(() => {});
     setSaving(false);
     advanceCard(true);
   }
 
   function advanceCard(isLearning: boolean) {
-    setFlipped(false);
-    setInterval(null);
-    
     const newCount = isLearning ? learningCount + 1 : learningCount;
     if (isLearning) {
       setLearningCount(newCount);
@@ -108,17 +94,8 @@ export default function OnboardingFlashcardsPage() {
     const nextIndex = index + 1;
     setIndex(nextIndex);
     
-    // Background refill based on buffer size
     if (words.length - nextIndex < 5 && !refilling && user) {
-      setRefilling(true);
-      selectOnboardingWords(user.id, false, studyPhase).then((newWords) => {
-        setWords((prev) => {
-          const existingIds = new Set(prev.map(w => w.word_id));
-          const uniqueNew = newWords.filter(w => !existingIds.has(w.word_id));
-          return [...prev, ...uniqueNew];
-        });
-        setRefilling(false);
-      }).catch(() => setRefilling(false));
+      void refillWords();
     }
   }
 
@@ -129,7 +106,7 @@ export default function OnboardingFlashcardsPage() {
     if (studyPhase === 1) {
       await completeOnboarding(user.id).catch(() => {});
       setUser({ ...user, onboarding_completed: true });
-      navigate("/home", { replace: true });
+      navigate("/reading", { replace: true });
     } else {
       navigate("/reading", { replace: true });
     }
@@ -163,13 +140,11 @@ export default function OnboardingFlashcardsPage() {
           onClick={() => void handleFinish()}
           className="inline-flex items-center gap-2 bg-primary text-white rounded-xl px-6 py-3 text-sm font-heading font-semibold hover:opacity-90"
         >
-          {studyPhase === 1 ? "Go to study home" : "Continue reading"} <ArrowRight size={16} />
+          {studyPhase === 1 ? "Start reading" : "Continue reading"} <ArrowRight size={16} />
         </button>
       </motion.div>
     );
   }
-
-  const examples = (word?.examples as Array<{ nl: string; en: string }> | null) ?? [];
 
   return (
     <motion.div
@@ -191,6 +166,11 @@ export default function OnboardingFlashcardsPage() {
           transition={{ duration: 0.3 }}
         />
       </div>
+      {refilling && (
+        <p className="mb-3 text-center text-xs font-body text-text/45">
+          Finding another word...
+        </p>
+      )}
 
       {/* Card */}
       <AnimatePresence mode="wait">
@@ -208,7 +188,9 @@ export default function OnboardingFlashcardsPage() {
             </div>
             <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Dutch word</p>
             <div className="flex items-center justify-center gap-2">
-              <h2 className="font-heading text-3xl font-bold text-text">{word?.word}</h2>
+              <h2 className="font-heading text-3xl font-bold text-text">
+                {word?.word ?? "Finding another word..."}
+              </h2>
               {word?.word && (
                 <SpeakButton
                   text={word.word}
@@ -219,79 +201,25 @@ export default function OnboardingFlashcardsPage() {
             </div>
           </div>
 
-          {/* Back: translation + examples (shown after flip) */}
-          <AnimatePresence>
-            {flipped && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="border-t border-black/6 pt-5 mb-5">
-                  <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Meaning</p>
-                  <p className="font-heading text-lg font-bold text-primary">{word?.translation}</p>
-                </div>
-
-                {examples.length > 0 && (
-                  <div className="space-y-3 mb-5">
-                    {examples.slice(0, 3).map((ex, i) => (
-                      <div key={i} className="bg-black/[0.025] rounded-xl px-4 py-3">
-                        <p className="text-sm font-body text-text font-medium">{ex.nl}</p>
-                        <p className="text-xs font-body text-text/50 mt-0.5">{ex.en}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="mb-5">
-                  <p className="text-xs font-body font-semibold text-text/50 mb-2">Review again in:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {REVIEW_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setInterval(opt.value)}
-                        className={["px-3 py-1 rounded-full text-xs font-body font-semibold border transition-all",
-                          interval === opt.value ? "bg-primary text-white border-primary" : "border-black/12 text-text/60 hover:border-black/25"].join(" ")}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void handleAddToLearn()}
-                  disabled={saving}
-                  className="w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-5 py-2.5 text-sm font-heading font-semibold hover:opacity-90 disabled:opacity-60"
-                >
-                  Add to learn list <ArrowRight size={15} />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {/* Buttons */}
-          {!flipped && (
-            <div className="flex gap-3 mt-2">
-              <button
-                type="button"
-                onClick={handleKnow}
-                className="flex-1 rounded-xl border border-black/12 px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/[0.03] transition-colors"
-              >
-                I know this word
-              </button>
-              <button
-                type="button"
-                onClick={() => setFlipped(true)}
-                className="flex-1 rounded-xl bg-primary text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90 transition-opacity"
-              >
-                Add to learn
-              </button>
-            </div>
-          )}
+          <div className="flex gap-3 mt-2">
+            <button
+              type="button"
+              onClick={() => void handleKnow()}
+              disabled={!word || saving}
+              className="flex-1 rounded-xl border border-black/12 px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/[0.03] transition-colors disabled:opacity-50"
+            >
+              I know this word
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleAddToLearn()}
+              disabled={!word || saving}
+              className="flex-1 rounded-xl bg-primary text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              Add to learn
+            </button>
+          </div>
         </motion.div>
       </AnimatePresence>
     </motion.div>
