@@ -174,9 +174,8 @@ def get_onboarding_word_status(
         .all()
     ]
 
-    if phase_word_ids:
-        # Normal path: count LEARNING or MASTERED words from this phase's assigned set.
-        # MASTERED words count because "I know this" is a valid way to engage with the set.
+    if len(phase_word_ids) >= VOCAB_TEST_WORD_COUNT:
+        # Full assigned set: count how many of those specific words the user has engaged with.
         learning_count = (
             db.query(UserVocabularyVector)
             .filter(
@@ -187,9 +186,9 @@ def get_onboarding_word_status(
             .count()
         )
     else:
-        # Fallback for phase 2: OnboardingWords unique constraint blocks re-using phase 1
-        # word_ids, so phase 2 may have no assigned words. Count global vocabulary instead —
-        # if the user has >= 10 words they've engaged with, they're ready to read.
+        # Incomplete or empty assigned set (common for phase 2 when phase 1 exhausted most
+        # of the available words). Fall back to counting the user's total engaged vocabulary —
+        # if they have >= 10 words they've engaged with overall, they're ready to read.
         learning_count = (
             db.query(UserVocabularyVector)
             .filter(

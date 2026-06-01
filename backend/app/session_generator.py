@@ -177,8 +177,22 @@ def generate_session(
     )
     survey_block = _survey_signal_prompt_block(prev_session)
 
-    # 3. Topic Roll — kept aligned with the feature branch.
-    selected_topic = _topic_roll(user_id, K, db)
+    # Collect recently used topics + titles in this phase to prevent repeats
+    recent_sessions = (
+        db.query(ReadingSession)
+        .filter(
+            ReadingSession.user_id == user_id,
+            ReadingSession.study_phase == study_phase,
+        )
+        .order_by(ReadingSession.session_id.desc())
+        .limit(6)
+        .all()
+    )
+    used_topics = {s.topic_used for s in recent_sessions if s.topic_used}
+    recent_titles = [s.title for s in recent_sessions if s.title]
+
+    # 3. Topic Roll — exclude topics already used this phase
+    selected_topic = _topic_roll(user_id, K, db, used_topics=used_topics)
 
     # 4. Word Injection
     blue_entries   = _fetch_blue_words(user_id, db)
@@ -196,6 +210,7 @@ def generate_session(
         blue_words=[w["word"] for w in blue_words],
         yellow_words=[w["word"] for w in yellow_words],
         survey_block=survey_block,
+        recent_titles=recent_titles,
     )
 
     # 6. Build word_translations dict (all highlighted words → translation)
@@ -249,13 +264,14 @@ def _next_reading_number(user_id: str, study_phase: int, db: Session) -> int:
     return count + 1
 
 
-def _topic_roll(user_id: str, K: float, db: Session) -> str:
+def _topic_roll(user_id: str, K: float, db: Session, used_topics: set[str] | None = None) -> str:
     hated = {
         t.topic_name
         for t in db.query(UserTopic)
         .filter(UserTopic.user_id == user_id, UserTopic.status == TopicStatus.HATED)
         .all()
     }
+    excluded = hated | (used_topics or set())
 
     r = random.random()
 
@@ -265,17 +281,28 @@ def _topic_roll(user_id: str, K: float, db: Session) -> str:
             for t in db.query(UserTopic)
             .filter(UserTopic.user_id == user_id, UserTopic.status == TopicStatus.INTERESTED)
             .all()
-            if t.topic_name not in hated
+            if t.topic_name not in excluded
         ]
+        # If all interest topics already used, allow repeats (prefer non-hated)
+        if not candidates:
+            candidates = [
+                t.topic_name
+                for t in db.query(UserTopic)
+                .filter(UserTopic.user_id == user_id, UserTopic.status == TopicStatus.INTERESTED)
+                .all()
+                if t.topic_name not in hated
+            ]
     else:
         neutral = [
             t.topic_name
             for t in db.query(UserTopic)
             .filter(UserTopic.user_id == user_id, UserTopic.status == TopicStatus.NEUTRAL)
             .all()
-            if t.topic_name not in hated
+            if t.topic_name not in excluded
         ]
-        candidates = neutral + [t for t in _NEUTRAL_POOL if t not in hated]
+        candidates = neutral + [t for t in _NEUTRAL_POOL if t not in excluded]
+        if not candidates:
+            candidates = [t for t in _NEUTRAL_POOL if t not in hated]
 
     if not candidates:
         candidates = [t for t in _NEUTRAL_POOL if t not in hated] or ["dagelijks leven"]
@@ -328,6 +355,7 @@ def _generate_story_content(
     blue_words: list[str],
     yellow_words: list[str],
     survey_block: str,
+    recent_titles: list[str] | None = None,
 ) -> dict:
     blue_str   = ", ".join(blue_words)   if blue_words   else "(none)"
     yellow_str = ", ".join(yellow_words) if yellow_words else "(none)"
@@ -336,6 +364,11 @@ def _generate_story_content(
         f"\n### FEEDBACK FROM LEARNER'S PREVIOUS SESSION\n{survey_block}\n"
         if survey_block else ""
     )
+
+    titles_to_avoid_section = ""
+    if recent_titles:
+        avoid_list = "\n".join(f"- {t}" for t in recent_titles)
+        titles_to_avoid_section = f"\n### TITLES ALREADY USED (do NOT reuse or closely paraphrase these)\n{avoid_list}\n"
 
     languages = user.other_languages or "none specified"
     styles    = ", ".join(user.preferred_styles or []) or "any"
@@ -366,7 +399,7 @@ def _generate_story_content(
 ### MANDATORY VOCABULARY INJECTION
 1. BLUE WORDS (New Recommendations — must appear at least once): {blue_str}
 2. YELLOW WORDS (Active Learning — reinforce by using them naturally): {yellow_str}
-{survey_section}
+{survey_section}{titles_to_avoid_section}
 ### INSTRUCTIONS
 Write a cohesive Dutch text of approximately {word_count_range} words.
 - Ensure ALL Blue and Yellow words appear at least once, bracketed as [[word]].
@@ -413,7 +446,12 @@ Return ONLY a valid JSON object with these exact keys:
         except Exception as e:
             last_error = e
             if _is_rate_limit_error(e):
-                logger.warning(f"[SessionGen] Gemini rate-limited: {e}")
+                logger.warning(f"[SessionGen] Gemini rate-limited (attempt {attempt}): {e}")
+                if attempt < 3:
+                    wait = 15 * attempt
+                    logger.info(f"[SessionGen] Waiting {wait}s before retry...")
+                    time.sleep(wait)
+                    continue
                 raise GenerationRateLimitError(
                     "The text generator is temporarily rate limited. Please wait a moment and try again."
                 ) from e
@@ -609,6 +647,12 @@ Return ONLY valid JSON:
         except Exception as e:
             last_error = e
             if _is_rate_limit_error(e):
+                logger.warning(f"[SessionGen] Gemini rate-limited continuation (attempt {attempt}): {e}")
+                if attempt < 3:
+                    wait = 15 * attempt
+                    logger.info(f"[SessionGen] Waiting {wait}s before retry...")
+                    time.sleep(wait)
+                    continue
                 raise GenerationRateLimitError(
                     "The text generator is temporarily rate limited. Please wait a moment."
                 ) from e

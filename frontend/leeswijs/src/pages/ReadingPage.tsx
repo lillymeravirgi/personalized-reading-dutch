@@ -57,7 +57,8 @@ export default function ReadingPage() {
       ]);
       setSessions(data);
       setImmediateDone(progress.immediateCompleted);
-      setReadyWordSets(phaseWords.ready ? [phase] : []);
+      const localReady = window.localStorage.getItem(wordSetReadyKey(user.id, phase)) === "true";
+      setReadyWordSets((phaseWords.ready || localReady) ? [phase] : []);
     } finally {
       setLoadingList(false);
     }
