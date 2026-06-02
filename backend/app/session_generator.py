@@ -93,12 +93,12 @@ READING_STYLES = [
 _FIXED_STYLE = "Informative Educational Semi-Narrative Article"
 
 
-#  Survey → Prompt signal
+# Survey prompt signal
 
 def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
     """
     Translate the survey_signal stored on the previous session into
-    natural-language instructions for the LLM.
+    instructions for the text generator.
     Uses TLX-MD as the sole difficulty proxy (not shown to user).
     Returns "" on first session.
     """
@@ -108,7 +108,7 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
     sig = session.survey_signal
     lines: list[str] = []
 
-    # ── Challenge direction — driven by TLX-MD only (as per spec)
+    # Adjust difficulty based on the previous mental-effort score.
     tlx_md = sig.get("tlx_md", 4)  # raw NASA-TLX score 1-7
     if tlx_md >= 5:
         lines.append(
@@ -128,7 +128,7 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
             "Maintain a similar difficulty and sentence complexity."
         )
 
-    # ── Engagement refresh (UES composite < 3)
+    # Refresh the style if the previous text felt low-engagement.
     if sig.get("engagement_boost"):
         lines.append(
             "The learner's engagement score was LOW. "
@@ -136,7 +136,7 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
             "or use an unexpected setting). Make the topic feel fresh and surprising."
         )
 
-    # ── Perceived personalisation (manipulation check failed)
+    # Make the topic link clearer when personalisation was not noticed.
     if not sig.get("felt_personalised", True):
         lines.append(
             "The learner did NOT feel the previous text was personalised. "
@@ -191,27 +191,35 @@ def generate_session(
     used_topics = {s.topic_used for s in recent_sessions if s.topic_used}
     recent_titles = [s.title for s in recent_sessions if s.title]
 
-    # 3. Topic Roll — exclude topics already used this phase
-    selected_topic = _topic_roll(user_id, K, db, used_topics=used_topics)
-
-    # 4. Word Injection
-    blue_entries   = _fetch_blue_words(user_id, db)
-    yellow_entries = _fetch_yellow_words(user_id, db)
-
-    blue_words   = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
-    yellow_words = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
-
-    # 5. Generate reading text
-    story_json = _generate_story_content(
-        user=user,
-        selected_topic=selected_topic,
-        narrative_style=narrative_style,
-        word_count_range=word_count_range,
-        blue_words=[w["word"] for w in blue_words],
-        yellow_words=[w["word"] for w in yellow_words],
-        survey_block=survey_block,
-        recent_titles=recent_titles,
-    )
+    # Pick the topic and target words based on the assigned condition.
+    if condition == ConditionType.ADAPTIVE:
+        selected_topic = _topic_roll(user_id, K, db, used_topics=used_topics)
+        blue_entries   = _fetch_blue_words(user_id, db)
+        yellow_entries = _fetch_yellow_words(user_id, db)
+        blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
+        yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
+        story_json = _generate_story_content(
+            user=user,
+            selected_topic=selected_topic,
+            narrative_style=narrative_style,
+            word_count_range=word_count_range,
+            blue_words=[w["word"] for w in blue_words],
+            yellow_words=[w["word"] for w in yellow_words],
+            survey_block=survey_block,
+            recent_titles=recent_titles,
+        )
+    else:  # BASELINE
+        # Baseline keeps the same level target but avoids personal profile data.
+        neutral_unused = [t for t in _NEUTRAL_POOL if t not in used_topics]
+        selected_topic = random.choice(neutral_unused or _NEUTRAL_POOL)
+        blue_words  = []
+        yellow_words = []
+        story_json = _generate_baseline_content(
+            cefr_level=user.estimated_cefr or "B1",
+            topic=selected_topic,
+            word_count_range=word_count_range,
+            recent_titles=recent_titles,
+        )
 
     # 6. Build word_translations dict (all highlighted words → translation)
     word_translations: dict[str, str] = {}
@@ -460,6 +468,77 @@ Return ONLY a valid JSON object with these exact keys:
                 time.sleep(2)
 
     logger.error(f"[SessionGen] All attempts failed: {last_error}")
+    raise GenerationFailedError(
+        "The text generator could not create a reading right now. Please try again."
+    ) from last_error
+
+
+def _generate_baseline_content(
+    cefr_level: str,
+    topic: str,
+    word_count_range: str,
+    recent_titles: list[str] | None = None,
+) -> dict:
+    """Build a simple prompt for the baseline condition."""
+    titles_section = ""
+    if recent_titles:
+        avoid_list = "\n".join(f"- {t}" for t in recent_titles)
+        titles_section = f"\n### TITLES ALREADY USED (do NOT reuse)\n{avoid_list}\n"
+
+    prompt = f"""\
+### TASK
+Write a Dutch reading text for a language learner at CEFR level {cefr_level}.
+
+### CONTENT CONFIGURATION
+- Topic: {topic}
+- Style: Informative Educational Semi-Narrative Article
+{titles_section}
+### INSTRUCTIONS
+Write a cohesive Dutch text of approximately {word_count_range} words.
+- Ensure difficulty does not exceed CEFR {cefr_level}.
+- Write for a general adult learner. Do NOT personalise with names, cities, or jobs.
+- Do NOT wrap any words in double brackets.
+
+### OUTPUT SPECIFICATION
+Return ONLY a valid JSON object:
+{{
+  "title": "A Dutch headline",
+  "content": "The full Dutch text",
+  "metadata": {{
+    "topic_used": "{topic}",
+    "cefr_actual": "{cefr_level}",
+    "narrative_style": "Informative Educational Semi-Narrative Article",
+    "injected_blue_count": 0,
+    "injected_yellow_count": 0
+  }}
+}}
+"""
+    logger.info("[SessionGen] BASELINE generating topic=%s level=%s", topic, cefr_level)
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            response = _client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config={"system_instruction": _SYSTEM_INSTRUCTION},
+            )
+            text = response.text.strip()
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+            result = json.loads(text)
+            logger.info("[SessionGen] BASELINE title=%r", result.get("title"))
+            return result
+        except Exception as e:
+            last_error = e
+            if _is_rate_limit_error(e):
+                if attempt < 3:
+                    time.sleep(15 * attempt)
+                    continue
+                raise GenerationRateLimitError(
+                    "The text generator is temporarily rate limited. Please wait a moment and try again."
+                ) from e
+            if attempt < 3:
+                time.sleep(2)
     raise GenerationFailedError(
         "The text generator could not create a reading right now. Please try again."
     ) from last_error

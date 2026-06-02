@@ -69,7 +69,6 @@ export default function OnboardingFlashcardsPage() {
     await markKnown(user.id, word.word_id).catch(() => {});
     setSaving(false);
     advanceCard(false);
-    void refillWords();
   }
 
   async function handleAddToLearn() {

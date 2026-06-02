@@ -1,7 +1,10 @@
 import { motion } from "framer-motion";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Home } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export default function ThankYouPage() {
+  const navigate = useNavigate();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
@@ -10,7 +13,6 @@ export default function ThankYouPage() {
       className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-900 via-teal-900 to-slate-900 px-6"
     >
       <div className="w-full max-w-lg text-center">
-        {/* Icon */}
         <motion.div
           initial={{ scale: 0.6, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -21,7 +23,6 @@ export default function ThankYouPage() {
           <CheckCircle2 size={46} className="text-white" strokeWidth={2} />
         </motion.div>
 
-        {/* Heading */}
         <motion.h1
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -41,7 +42,6 @@ export default function ThankYouPage() {
           will help us improve Dutch reading support for future learners.
         </motion.p>
 
-        {/* Summary card */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -62,10 +62,22 @@ export default function ThankYouPage() {
           </div>
         </motion.div>
 
+        <motion.button
+          type="button"
+          onClick={() => navigate("/home")}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55, duration: 0.45 }}
+          className="mb-6 inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 font-heading text-sm font-semibold text-emerald-900 shadow-lg shadow-black/15 hover:bg-white/90"
+        >
+          <Home size={16} />
+          Back to home
+        </motion.button>
+
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.6, duration: 0.45 }}
+          transition={{ delay: 0.65, duration: 0.45 }}
           className="text-sm text-white/40 font-body"
         >
           You may now close this browser window. Please let the researcher know you are finished.

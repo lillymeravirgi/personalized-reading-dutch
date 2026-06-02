@@ -16,7 +16,10 @@ export default function DelayedVocabReminder() {
   const [delayedCheck, setDelayedCheck] = useState<DelayedVocabTestStatus | null>(null);
 
   useEffect(() => {
-    if (!user?.id || !user.onboarding_completed || shouldSkipReminder(location.pathname)) return;
+    if (!user?.id || !user.onboarding_completed || shouldSkipReminder(location.pathname)) {
+      setDelayedCheck(null);
+      return;
+    }
 
     const userId = user.id;
     let cancelled = false;
@@ -30,6 +33,8 @@ export default function DelayedVocabReminder() {
           : null;
         if (status.due && key && !isDelayedCheckSnoozed(key)) {
           setDelayedCheck(status);
+        } else if (!status.due) {
+          setDelayedCheck(null);
         }
       } catch {
         // Try again on the next poll.
@@ -37,11 +42,13 @@ export default function DelayedVocabReminder() {
     }
 
     void checkDelayedTest();
+    window.addEventListener("focus", checkDelayedTest);
     const timer = window.setInterval(() => void checkDelayedTest(), DELAYED_CHECK_POLL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      window.removeEventListener("focus", checkDelayedTest);
     };
   }, [user?.id, user?.onboarding_completed, location.pathname]);
 
@@ -84,7 +91,10 @@ function isDelayedCheckSnoozed(key: string): boolean {
   const raw = window.localStorage.getItem(`delayed-vocab-snooze-${key}`);
   if (!raw) return false;
   const until = Number(raw);
-  if (!Number.isFinite(until)) return false;
+  if (!Number.isFinite(until) || Date.now() >= until) {
+    window.localStorage.removeItem(`delayed-vocab-snooze-${key}`);
+    return false;
+  }
   return Date.now() < until;
 }
 

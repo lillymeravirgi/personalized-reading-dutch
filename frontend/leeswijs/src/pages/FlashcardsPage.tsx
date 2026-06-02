@@ -210,7 +210,7 @@ function ReviewMode({
 
   function continueAfterForgot() {
     setStack((prev) => {
-      if (prev.length <= 1) return prev;
+      if (prev.length <= 1) { setDone(true); return prev; }
       return [...prev.slice(1), prev[0]];
     });
     setFlipped(false);

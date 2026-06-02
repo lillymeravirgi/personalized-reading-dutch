@@ -95,10 +95,10 @@ def start_vocab_test(
             rows = [_MockRow(lex) for lex in lex_rows]
 
         questions = []
-        for idx, row in enumerate(rows):
+        for row in rows:
             word = row.lexicon_entry
             distractors = _get_distractors(word.translation, word.cefr_level, db)
-            correct_index = idx % 4
+            correct_index = random.randint(0, 3)
             options = list(distractors)
             options.insert(correct_index, word.translation)
 

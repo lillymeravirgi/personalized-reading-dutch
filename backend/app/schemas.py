@@ -99,6 +99,7 @@ class GenerateSessionResponse(BaseModel):
     metadata: dict[str, Any]
     reading_number: int
     condition: str
+    cefr_level: Optional[str] = None
 
 class SessionDetailResponse(BaseModel):
     session_id: int
