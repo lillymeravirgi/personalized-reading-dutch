@@ -132,7 +132,9 @@ if seed_team_accounts:
         ("EVIE", "Evie", ConditionType.ADAPTIVE),
         ("JY", "Jy", ConditionType.BASELINE),
     ]
-    password = os.getenv("SEED_TEST_PASSWORD", "LeesWijs2026!")
+    password = os.getenv("SEED_TEST_PASSWORD")
+    if not password:
+        raise RuntimeError("Set SEED_TEST_PASSWORD before seeding team test accounts.")
 
     print("Seeding team test accounts...")
     db.query(User).filter(User.email.like("test%@leeswijs.local")).delete(synchronize_session=False)

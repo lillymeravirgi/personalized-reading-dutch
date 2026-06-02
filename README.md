@@ -19,6 +19,17 @@ The main goal is to run a clean experiment and collect usable data about reading
 - **LLM:** Google Gemini 2.5 Flash Lite
 - **API prefix:** `/api`
 
+## Environment Policy
+
+This repository is kept as the local development version. Team members should run the app with a local SQLite database and a local FastAPI backend.
+
+Online deployment is handled separately by the deployment owner:
+
+- **Local team testing:** SQLite, localhost backend, localhost frontend
+- **Online study:** Vercel frontend, Render backend, Neon database
+
+Do not put Render, Neon, Vercel, API keys, database passwords, or participant passwords into committed files. Keep those values in local `.env` files or in the deployment platform settings.
+
 ## Local Setup
 
 You need Python 3.11+, Node 20+, and a Gemini API key.
@@ -44,6 +55,7 @@ DATABASE_URL=sqlite:///./dev.db
 GEMINI_MODEL=gemini-2.5-flash-lite
 ALLOW_SELF_REGISTRATION=false
 SEED_TEST_ACCOUNTS=true
+SEED_TEST_PASSWORD=your-local-test-password
 ```
 
 Seed the database (creates tables + test accounts):
@@ -52,11 +64,13 @@ Seed the database (creates tables + test accounts):
 python seed.py
 ```
 
-Default test accounts (all use password `LeesWijs2026!`):
+Default test Study IDs:
 
 ```
 KIM  KIKI  JULIAN  TJ  EVIE  JY
 ```
+
+Use the local password you set in `SEED_TEST_PASSWORD`.
 
 To reset: stop the server, delete `backend/dev.db`, run `python seed.py` again.
 

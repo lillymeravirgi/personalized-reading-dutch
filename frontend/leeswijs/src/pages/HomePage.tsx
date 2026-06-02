@@ -29,8 +29,6 @@ import { apiClient } from "../services/api";
 import type { DashboardStats } from "../types";
 
 
-// ── Main page ─────────────────────────────────────────────────────────────────
-
 export default function HomePage() {
   const user     = useStore((s) => s.user);
   const navigate = useNavigate();
@@ -61,7 +59,6 @@ export default function HomePage() {
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className="mx-auto max-w-4xl space-y-6"
     >
-      {/* ── Greeting ──────────────────────────────────────────────────────── */}
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-heading text-3xl font-bold text-text">
@@ -90,8 +87,6 @@ export default function HomePage() {
     </motion.div>
   );
 }
-
-// ── Dashboard ─────────────────────────────────────────────────────────────────
 
 function Dashboard({
   stats,
@@ -186,7 +181,7 @@ function NextActionBanner({
   );
 }
 
-// ── CEFR Level Card ───────────────────────────────────────────────────────────
+// CEFR card
 
 const CEFR_META: Record<string, { color: string; label: string }> = {
   A1: { color: "#94A3B8", label: "Beginner" },
@@ -229,7 +224,7 @@ function CefrCard({ level }: { level: string }) {
   );
 }
 
-// ── Acquisition Ring ──────────────────────────────────────────────────────────
+// Vocabulary progress
 
 function AcquisitionCard({ score }: { score: number }) {
   const pct = Math.min(100, Math.max(0, Math.round(score)));
@@ -283,13 +278,13 @@ function AcquisitionCard({ score }: { score: number }) {
   );
 }
 
-// ── Daily Goal Card ─────────────────────────────────────────────────────────────
+// Daily review card
 
 function DailyGoalCard({ stats, onClick }: { stats: DashboardStats; onClick: () => void }) {
   const isDone = stats.to_review === 0 && stats.reviewed_today > 0;
   const isNew = stats.to_review === 0 && stats.reviewed_today === 0;
   
-  // Choose color based on state
+  // Color follows the review state.
   let accent = "#6B7280"; // Gray if no words yet
   if (isDone) accent = "#10B981"; // Green if completed
   else if (stats.to_review > 0) accent = "#F59E0B"; // Amber if pending
@@ -336,7 +331,7 @@ function DailyGoalCard({ stats, onClick }: { stats: DashboardStats; onClick: () 
   );
 }
 
-// ── Stat Card ─────────────────────────────────────────────────────────────────
+// Stat card
 
 function StatCard({
   icon, label, value, accent, onClick, highlight,
@@ -371,7 +366,7 @@ function StatCard({
   );
 }
 
-// ── Reading Productivity Chart ────────────────────────────────────────────────
+// Reading chart
 function ProductivityChart({ stats }: { stats: DashboardStats }) {
   const data = stats.productivity_data || [];
   const avg  = stats.avg_duration_min || 0;
@@ -449,8 +444,6 @@ function ProductivityChart({ stats }: { stats: DashboardStats }) {
   );
 }
 
-// ── New Journey Banner ────────────────────────────────────────────────────────
-
 function NewJourneyBanner({ onStart }: { onStart: () => void }) {
   return (
     <motion.div
@@ -481,8 +474,6 @@ function NewJourneyBanner({ onStart }: { onStart: () => void }) {
   );
 }
 
-// ── Skeleton ──────────────────────────────────────────────────────────────────
-
 function SkeletonGrid() {
   return (
     <div className="space-y-5">
@@ -500,8 +491,6 @@ function SkeletonGrid() {
     </div>
   );
 }
-
-// ── Shared Card wrapper ───────────────────────────────────────────────────────
 
 function Card({ children }: { children: React.ReactNode }) {
   return (

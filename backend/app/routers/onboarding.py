@@ -174,25 +174,13 @@ def get_onboarding_word_status(
         .all()
     ]
 
+    learning_count = 0
     if len(phase_word_ids) >= VOCAB_TEST_WORD_COUNT:
-        # Full assigned set: count how many of those specific words the user has engaged with.
         learning_count = (
             db.query(UserVocabularyVector)
             .filter(
                 UserVocabularyVector.user_id == user_id,
                 UserVocabularyVector.word_id.in_(phase_word_ids),
-                UserVocabularyVector.status.in_([VocabStatus.LEARNING, VocabStatus.MASTERED]),
-            )
-            .count()
-        )
-    else:
-        # Incomplete or empty assigned set (common for phase 2 when phase 1 exhausted most
-        # of the available words). Fall back to counting the user's total engaged vocabulary —
-        # if they have >= 10 words they've engaged with overall, they're ready to read.
-        learning_count = (
-            db.query(UserVocabularyVector)
-            .filter(
-                UserVocabularyVector.user_id == user_id,
                 UserVocabularyVector.status.in_([VocabStatus.LEARNING, VocabStatus.MASTERED]),
             )
             .count()
@@ -203,5 +191,5 @@ def get_onboarding_word_status(
         "target_count": VOCAB_TEST_WORD_COUNT,
         "selected_count": min(len(phase_word_ids), VOCAB_TEST_WORD_COUNT),
         "learning_count": learning_count,
-        "ready": learning_count >= VOCAB_TEST_WORD_COUNT,
+        "ready": len(phase_word_ids) >= VOCAB_TEST_WORD_COUNT and learning_count >= VOCAB_TEST_WORD_COUNT,
     }

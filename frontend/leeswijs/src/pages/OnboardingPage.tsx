@@ -15,7 +15,6 @@ import { INTERESTS, type InterestId } from "../constants/interests";
 import { PURPOSES, type Purpose } from "../types";
 
 const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
-const GENDERS = ["Male", "Female", "Non-binary", "Prefer not to say"];
 
 const TOTAL_BATCHES = 2;
 
@@ -30,24 +29,19 @@ export default function OnboardingPage() {
 
   const [step, setStep] = useState<Step>(retakeAssessment ? "assessment" : "personal");
 
-  // ── Step 1 state ───────────────────────────
-  const [displayName, setDisplayName] = useState(user?.display_name ?? "");
-  const [age,         setAge]         = useState<number | "">(user?.age ?? "");
-  const [city,        setCity]        = useState(user?.city ?? "");
-  const [gender,      setGender]      = useState(user?.gender ?? "");
-  const [job,         setJob]         = useState(user?.job ?? "");
-  const [academic,    setAcademic]    = useState(user?.academic_background ?? "");
-  const [motherLang,  setMotherLang]  = useState(user?.mother_language ?? "");
-  const [otherLangs,  setOtherLangs]  = useState(user?.other_languages ?? "");
-  const [purpose,     setPurpose]     = useState<Purpose | "">(user?.purpose ?? "");
-  const [selfCefr,    setSelfCefr]    = useState<string>(user?.cefrLevel ?? "B1");
+  // Step state
+  const [age,        setAge]        = useState<number | "">(user?.age ?? "");
+  const [city,       setCity]       = useState(user?.city ?? "");
+  const [job,        setJob]        = useState(user?.job ?? "");
+  const [academic,   setAcademic]   = useState(user?.academic_background ?? "");
+  const [motherLang, setMotherLang] = useState(user?.mother_language ?? "");
+  const [purpose,    setPurpose]    = useState<Purpose | "">(user?.purpose ?? "");
+  const [selfCefr,   setSelfCefr]   = useState<string>(user?.cefrLevel ?? "B1");
 
-  // ── Step 2 state ───────────────────────────
   const [selectedInterests, setSelectedInterests] = useState<Set<InterestId>>(
     new Set((user?.interests ?? []) as InterestId[]),
   );
 
-  // ── Step 3 state ───────────────────────────
   const [batchNum,     setBatchNum]     = useState(1);
   const [batch,        setBatch]        = useState<null | Awaited<ReturnType<typeof getAssessmentBatch>>>(null);
   const [knownIds,     setKnownIds]     = useState<Set<string>>(new Set());
@@ -84,38 +78,31 @@ export default function OnboardingPage() {
     };
   }, [retakeAssessment, selfCefr, user?.id]);
 
-  // ── Step 1 handlers ────────────────────────
+  // Step handlers
 
   async function handlePersonalNext() {
     if (!user) return;
     await savePersonalInfo(user.id, {
-      display_name:        displayName,
       age:                 age !== "" ? Number(age) : undefined,
       city,
-      gender,
       job,
       academic_background: academic,
       mother_language:     motherLang,
-      other_languages:     otherLangs,
       purpose:             purpose || undefined,
       self_reported_cefr:  selfCefr,
     });
     setUser({
       ...user,
-      display_name: displayName,
-      name: displayName || user.email,
       age: age !== "" ? Number(age) : null,
-      city, gender, job,
+      city, job,
       academic_background: academic,
       mother_language: motherLang,
-      other_languages: otherLangs,
       purpose: (purpose as Purpose) || null,
       cefrLevel: selfCefr as typeof user.cefrLevel,
     });
     setStep("interests");
   }
 
-  // ── Step 2 handlers ────────────────────────
   function toggleInterest(id: InterestId) {
     setSelectedInterests((prev) => {
       const next = new Set(prev);
@@ -129,7 +116,7 @@ export default function OnboardingPage() {
     if (!user || selectedInterests.size < 1) return;
     await saveProfile({ ...user, interests: [...selectedInterests] });
     setUser({ ...user, interests: [...selectedInterests] });
-    // Kick off batch 1 generation
+    // Start the first word-check batch.
     setStep("assessment");
     setLoadingBatch(true);
     setAssessmentError(null);
@@ -141,7 +128,6 @@ export default function OnboardingPage() {
     setLoadingBatch(false);
   }
 
-  // ── Step 3 handlers ────────────────────────
   function toggleWord(wordId: string) {
     setKnownIds((prev) => {
       const next = new Set(prev);
@@ -181,7 +167,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    // Final batch — compute CEFR and Acquisition
+    // Final batch: estimate CEFR and initial word knowledge.
     setCalculatingResults(true);
     const secondPitchWords = words.filter((w) => !w.isPseudo);
     const secondPitchKnown = secondPitchWords.filter((w) => knownIds.has(w.wordId));
@@ -276,14 +262,11 @@ export default function OnboardingPage() {
       <AnimatePresence mode="wait">
         {step === "personal" && (
           <PersonalStep key="personal"
-            displayName={displayName} setDisplayName={setDisplayName}
             age={age} setAge={setAge}
             city={city} setCity={setCity}
-            gender={gender} setGender={setGender}
             job={job} setJob={setJob}
             academic={academic} setAcademic={setAcademic}
             motherLang={motherLang} setMotherLang={setMotherLang}
-            otherLangs={otherLangs} setOtherLangs={setOtherLangs}
             purpose={purpose} setPurpose={setPurpose}
             selfCefr={selfCefr} setSelfCefr={setSelfCefr}
             onNext={handlePersonalNext}
@@ -331,7 +314,7 @@ export default function OnboardingPage() {
   );
 }
 
-// ── Step Indicator ────────────────────────────────────────────────────────────
+// Step indicator
 function StepIndicator({ step }: { step: Step }) {
   const steps: { key: Step; label: string }[] = [
     { key: "personal",   label: "About you" },
@@ -368,29 +351,24 @@ function StepIndicator({ step }: { step: Step }) {
   );
 }
 
-// ── Step 1 — Personal Info ────────────────────────────────────────────────────
+// Personal info
 function PersonalStep(props: {
-  displayName: string; setDisplayName: (v: string) => void;
   age: number | ""; setAge: (v: number | "") => void;
   city: string; setCity: (v: string) => void;
-  gender: string; setGender: (v: string) => void;
   job: string; setJob: (v: string) => void;
   academic: string; setAcademic: (v: string) => void;
   motherLang: string; setMotherLang: (v: string) => void;
-  otherLangs: string; setOtherLangs: (v: string) => void;
   purpose: Purpose | ""; setPurpose: (v: Purpose | "") => void;
   selfCefr: string; setSelfCefr: (v: string) => void;
   onNext: () => void;
 }) {
   const canContinue =
-    props.displayName.trim().length >= 2 &&
     props.age !== "" &&
     props.city.trim().length > 0 &&
-    props.gender !== "" &&
     props.job.trim().length > 0 &&
-    props.academic.trim().length > 0 && 
-    props.motherLang.trim().length > 0 && 
-    props.purpose !== "" && 
+    props.academic.trim().length > 0 &&
+    props.motherLang.trim().length > 0 &&
+    props.purpose !== "" &&
     props.selfCefr !== "";
   return (
     <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
@@ -400,19 +378,11 @@ function PersonalStep(props: {
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Full name *"><input value={props.displayName} onChange={(e) => props.setDisplayName(e.target.value)} placeholder="Your name" className={inputCls} /></Field>
         <Field label="Age *"><input type="number" min={10} max={99} value={props.age} onChange={(e) => props.setAge(e.target.value === "" ? "" : Number(e.target.value))} placeholder="e.g. 24" className={inputCls} /></Field>
         <Field label="City *"><input value={props.city} onChange={(e) => props.setCity(e.target.value)} placeholder="e.g. Amsterdam" className={inputCls} /></Field>
-        <Field label="Gender *">
-          <select value={props.gender} onChange={(e) => props.setGender(e.target.value)} className={inputCls}>
-            <option value="">Select…</option>
-            {GENDERS.map((g) => <option key={g}>{g}</option>)}
-          </select>
-        </Field>
         <Field label="Job / occupation *"><input value={props.job} onChange={(e) => props.setJob(e.target.value)} placeholder="e.g. Software engineer" className={inputCls} /></Field>
         <Field label="Academic background *"><input value={props.academic} onChange={(e) => props.setAcademic(e.target.value)} placeholder="e.g. BSc Computer Science" className={inputCls} /></Field>
         <Field label="Mother language *"><input value={props.motherLang} onChange={(e) => props.setMotherLang(e.target.value)} placeholder="e.g. Arabic" className={inputCls} /></Field>
-        <Field label="Other languages (optional)"><input value={props.otherLangs} onChange={(e) => props.setOtherLangs(e.target.value)} placeholder="e.g. English, French" className={inputCls} /></Field>
         <Field label="Purpose of learning Dutch *">
           <select value={props.purpose} onChange={(e) => props.setPurpose(e.target.value as Purpose | "")} className={inputCls}>
             <option value="">Select…</option>
@@ -435,7 +405,7 @@ function PersonalStep(props: {
   );
 }
 
-// ── Step 2 — Interests ────────────────────────────────────────────────────────
+// Interests
 function InterestsStep({ selected, onToggle, onNext }: {
   selected: Set<InterestId>;
   onToggle: (id: InterestId) => void;
@@ -482,7 +452,7 @@ function InterestsStep({ selected, onToggle, onNext }: {
   );
 }
 
-// ── Step 3 — Assessment ────────────────────────────────────────────────────────
+// Word check
 function AssessmentStep({ batch, batchNum, knownIds, loading, error, onToggle, onNext, onRetry }: {
   batch: Awaited<ReturnType<typeof getAssessmentBatch>> | null;
   batchNum: number; knownIds: Set<string>; loading: boolean;
@@ -570,7 +540,7 @@ function assessmentBatchError(res: Awaited<ReturnType<typeof getAssessmentBatch>
     : res.error;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 const inputCls =
   "w-full rounded-xl border border-black/12 bg-black/[0.02] px-3.5 py-2.5 text-sm font-body text-text placeholder:text-text/30 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-colors";
 

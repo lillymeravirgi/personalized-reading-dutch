@@ -14,7 +14,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Lexicon, ReadingSession, RecommendedVocabulary, User, UserVocabularyVector, VocabularyTestResult
+from app.models import (
+    Lexicon,
+    OnboardingWords,
+    ReadingSession,
+    RecommendedVocabulary,
+    User,
+    UserVocabularyVector,
+    VocabularyTestResult,
+    VocabStatus,
+)
 from app.schemas import GenerateSessionRequest, GenerateSessionResponse, SessionDetailResponse, WordInfo
 from app.session_generator import (
     GenerationFailedError,
@@ -27,6 +36,7 @@ router = APIRouter(prefix="/session", tags=["Session"])
 
 READINGS_PER_PHASE = 3
 FINAL_STUDY_PHASE = 2
+TARGET_WORDS_PER_PHASE = 10
 
 
 import re
@@ -42,6 +52,33 @@ def _build_word_list(rows) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def _phase_word_set_ready(db: Session, user_id: str, study_phase: int) -> bool:
+    word_ids = [
+        row.word_id
+        for row in db.query(OnboardingWords)
+        .filter(
+            OnboardingWords.user_id == user_id,
+            OnboardingWords.study_phase == study_phase,
+        )
+        .order_by(OnboardingWords.id.asc())
+        .limit(TARGET_WORDS_PER_PHASE)
+        .all()
+    ]
+    if len(word_ids) < TARGET_WORDS_PER_PHASE:
+        return False
+
+    learned_count = (
+        db.query(UserVocabularyVector)
+        .filter(
+            UserVocabularyVector.user_id == user_id,
+            UserVocabularyVector.word_id.in_(word_ids),
+            UserVocabularyVector.status.in_([VocabStatus.LEARNING, VocabStatus.MASTERED]),
+        )
+        .count()
+    )
+    return learned_count >= TARGET_WORDS_PER_PHASE
 
 def _tokenize_content(content: str, blue_words: list, yellow_words: list) -> list[dict]:
     """
@@ -144,6 +181,12 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
                 detail="All study readings are complete.",
             )
 
+    if not _phase_word_set_ready(db, req.user_id, current_phase):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Please complete the Phase {current_phase} word set before generating readings.",
+        )
+
     try:
         result = generate_session(
             user_id=req.user_id,
@@ -212,6 +255,8 @@ def continue_reading(payload: dict, db: Session = Depends(get_db)):
     blue_words = [WordInfo(**w) for w in result["blue_words"]]
     yellow_words = [WordInfo(**w) for w in result["yellow_words"]]
 
+    user = db.query(User).filter(User.user_id == user_id).first()
+
     return GenerateSessionResponse(
         session_id=result["session_id"],
         title=result["title"],
@@ -224,6 +269,7 @@ def continue_reading(payload: dict, db: Session = Depends(get_db)):
         metadata=result["metadata"],
         reading_number=result["reading_number"],
         condition=result["condition"],
+        cefr_level=user.estimated_cefr if user else None,
     )
 
 

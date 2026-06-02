@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 
-import { generateSession, getOnboardingWords, getOnboardingWordSetStatus, getVocabTestProgress, listSessions } from "../services/api";
+import { generateSession, getOnboardingWordSetStatus, getVocabTestProgress, listSessions } from "../services/api";
 import type { ConditionType } from "../services/api";
 import type { SessionSummary } from "../types";
 import ReadingGenerationStatus from "../components/ReadingGenerationStatus";
@@ -45,20 +45,11 @@ export default function ReadingPage() {
       const [data, progress, phaseWords] = await Promise.all([
         listSessions(user.id),
         getVocabTestProgress(user.id).catch(() => ({ immediateCompleted: [], delayedCompleted: [] })),
-        getOnboardingWordSetStatus(user.id, phase)
-          .catch(async () => {
-            const words = await getOnboardingWords(user.id, phase).catch(() => []);
-            return {
-              ready:
-                words.length >= TARGET_WORDS_PER_PHASE &&
-                window.localStorage.getItem(wordSetReadyKey(user.id, phase)) === "true",
-            };
-          }),
+        getOnboardingWordSetStatus(user.id, phase).catch(() => ({ ready: false })),
       ]);
       setSessions(data);
       setImmediateDone(progress.immediateCompleted);
-      const localReady = window.localStorage.getItem(wordSetReadyKey(user.id, phase)) === "true";
-      setReadyWordSets((phaseWords.ready || localReady) ? [phase] : []);
+      setReadyWordSets(phaseWords.ready ? [phase] : []);
     } finally {
       setLoadingList(false);
     }
@@ -111,6 +102,7 @@ export default function ReadingPage() {
   const allStudyComplete = currentPhase === 2 && currentPhaseDone;
   const showReadingIntro =
     currentPhase === 1 &&
+    phaseSessions.length === 0 &&
     !allStudyComplete &&
     !introDismissed;
   const phaseInstruction =
@@ -550,9 +542,5 @@ function parseBackendTime(iso: string): number {
 }
 
 function readingIntroKey(userId: string) {
-  return `leeswijs-reading-intro-v2-seen-${userId}`;
-}
-
-function wordSetReadyKey(userId: string, phase: number) {
-  return `leeswijs-word-set-ready-${userId}-${phase}`;
+  return `leeswijs-reading-intro-v3-seen-${userId}`;
 }

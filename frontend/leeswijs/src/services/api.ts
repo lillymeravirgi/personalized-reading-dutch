@@ -1,4 +1,4 @@
-// all API calls for Leeswijs — no mock mode, hits the real FastAPI backend
+// API calls for the FastAPI backend.
 import axios, { AxiosError } from "axios";
 import type {
   ApiResponse,
@@ -351,12 +351,6 @@ export async function submitAssessment(
 
 export type ConditionType = "ADAPTIVE" | "BASELINE";
 
-// unused — condition now comes from user.current_condition (set by backend)
-export function getCondition(sessionNumber?: number): ConditionType {
-  if (sessionNumber === undefined) return "ADAPTIVE";
-  return sessionNumber % 2 === 1 ? "ADAPTIVE" : "BASELINE";
-}
-
 function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
   const content = String(data.content ?? "");
   const rawBlue   = (data.blue_words   as Array<Record<string, unknown>>) ?? [];
@@ -537,6 +531,7 @@ export async function submitSurvey(
         perceivedRelevance:       payload.perceivedRelevance,
         mentalEffort:             payload.mentalEffort,
         perceivedPersonalization: payload.perceivedPersonalization,
+        duration_seconds:         payload.duration_seconds,
       },
     );
     return { success: true, data: { signal: data.signal } };
