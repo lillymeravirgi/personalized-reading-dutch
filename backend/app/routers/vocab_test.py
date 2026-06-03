@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import DELAYED_VOCAB_TEST_MINUTES
 from app.database import get_db
-from app.models import ConditionType, Lexicon, OnboardingWords, User, VocabularyTestResult
+from app.models import ConditionType, Lexicon, OnboardingWords, User, UserVocabularyVector, VocabularyTestResult, VocabStatus
 from app.schemas import VocabTestSubmitRequest
 
 router = APIRouter(prefix="/vocab-test", tags=["VocabTest"])
@@ -38,16 +38,22 @@ def start_vocab_test(
 ):
     try:
         rows = (
-            db.query(OnboardingWords)
+                db.query(OnboardingWords)
+                .join(OnboardingWords.lexicon_entry)
+                .join(
+            UserVocabularyVector,
+            (UserVocabularyVector.user_id == OnboardingWords.user_id)
+            & (UserVocabularyVector.word_id == OnboardingWords.word_id),
+    )
             .filter(
-                OnboardingWords.user_id   == user_id,
+                OnboardingWords.user_id == user_id,
                 OnboardingWords.study_phase == study_phase,
-            )
-            .join(OnboardingWords.lexicon_entry)
+                UserVocabularyVector.status == VocabStatus.LEARNING,
+    )
             .order_by(OnboardingWords.id.asc())
             .limit(VOCAB_TEST_WORD_COUNT)
             .all()
-        )
+)
 
         if not rows:
             user = db.query(User).filter(User.user_id == user_id).first()

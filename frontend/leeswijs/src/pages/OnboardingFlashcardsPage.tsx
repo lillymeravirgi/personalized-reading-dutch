@@ -212,7 +212,7 @@ export default function OnboardingFlashcardsPage() {
                   <p className="font-heading text-lg font-semibold text-text">{word.translation}</p>
                   {word.examples && word.examples.length > 0 && (
                     <p className="mt-2 text-xs font-body text-text/50 italic">
-                      "{word.examples[0].dutch}"
+                      "{word.examples[0].nl}"
                     </p>
                   )}
                 </div>
