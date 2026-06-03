@@ -1,10 +1,10 @@
 import logging
 import random
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.krs_service import run_krs
 from app.models import Lexicon, OnboardingWords, RecommendedVocabulary, User, UserVocabularyVector, VocabStatus
 from app.schemas import LexiconEntry, OnboardingPersonalInfoRequest
@@ -14,6 +14,17 @@ router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
 ONBOARDING_WORD_COUNT = 20
 VOCAB_TEST_WORD_COUNT = 10
+PHASE_BUFFER_WORD_COUNT = 20
+
+
+def _run_krs_background(user_id: str, is_refill: bool):
+    db = SessionLocal()
+    try:
+        run_krs(user_id=user_id, db=db, is_refill=is_refill)
+    except Exception as e:
+        logger.warning(f"[Onboarding] Background KRS failed for {user_id}: {e}")
+    finally:
+        db.close()
 
 
 def _phase_words(db: Session, user_id: str, study_phase: int):
@@ -25,7 +36,7 @@ def _phase_words(db: Session, user_id: str, study_phase: int):
         )
         .join(OnboardingWords.lexicon_entry)
         .order_by(OnboardingWords.id.asc())
-        .limit(VOCAB_TEST_WORD_COUNT)
+        .limit(PHASE_BUFFER_WORD_COUNT)
         .all()
     )
     return [LexiconEntry.model_validate(row.lexicon_entry).model_dump() for row in rows]
@@ -56,6 +67,7 @@ def save_personal_info(payload: OnboardingPersonalInfoRequest, db: Session = Dep
 @router.post("/words/{user_id}")
 def select_onboarding_words(
     user_id: str,
+    background_tasks: BackgroundTasks,
     is_refill: bool = False,
     study_phase: int = 1,
     db: Session = Depends(get_db),
@@ -64,10 +76,7 @@ def select_onboarding_words(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    try:
-        run_krs(user_id=user_id, db=db, is_refill=is_refill)
-    except Exception as e:
-        logger.warning(f"[Onboarding] KRS failed for {user_id}: {e}")
+    background_tasks.add_task(_run_krs_background, user_id, is_refill)
 
     recs = (
         db.query(RecommendedVocabulary)
@@ -112,7 +121,7 @@ def select_onboarding_words(
 
     saved_count = 0
     for rec in selected:
-        if saved_count >= VOCAB_TEST_WORD_COUNT:
+        if saved_count >= PHASE_BUFFER_WORD_COUNT:
             break
         word_id = rec.lexicon_entry.word_id
         if word_id in used_ids:

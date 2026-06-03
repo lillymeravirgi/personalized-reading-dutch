@@ -9,6 +9,7 @@ import SpeakButton from "../components/SpeakButton";
 
 const TARGET_WORDS = 10;
 const READINGS_PER_PHASE = 3;
+const PREFETCH_THRESHOLD = 12;
 
 export default function OnboardingFlashcardsPage() {
   const navigate = useNavigate();
@@ -93,10 +94,9 @@ export default function OnboardingFlashcardsPage() {
     const nextIndex = index + 1;
     setIndex(nextIndex);
     
-    if (words.length - nextIndex < 5 && !refilling && user) {
+    if (words.length - nextIndex <= PREFETCH_THRESHOLD && !refilling && user) {
       void refillWords();
     }
-  }
 
   async function handleFinish() {
     if (!user) return;
@@ -219,4 +219,4 @@ export default function OnboardingFlashcardsPage() {
       </AnimatePresence>
     </motion.div>
   );
-}
+}}
