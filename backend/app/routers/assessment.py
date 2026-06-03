@@ -107,7 +107,21 @@ def generate_batch(
     word_objects = []
 
     if batch_number == 1:
-        lex_words = db.query(Lexicon).filter(Lexicon.cefr_level == cefr_level).all()
+        cefr_order = ["A1", "A2", "B1", "B2", "C1", "C2"]
+        levels_to_try = [cefr_level]
+        idx = cefr_order.index(cefr_level) if cefr_level in cefr_order else len(cefr_order) - 1
+        for i in range(1, len(cefr_order)):
+            if idx - i >= 0:
+                levels_to_try.append(cefr_order[idx - i])
+            if idx + i < len(cefr_order):
+                levels_to_try.append(cefr_order[idx + i])
+
+        lex_words = []
+        for lvl in levels_to_try:
+            lex_words = db.query(Lexicon).filter(Lexicon.cefr_level == lvl).all()
+            if lex_words:
+                break
+
         for lex in lex_words[:100]:
             word_objects.append({
                 "word_id":   str(lex.word_id),
