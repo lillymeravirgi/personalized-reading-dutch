@@ -158,7 +158,7 @@ def generate_session(
     if condition == ConditionType.ADAPTIVE:
         selected_topic = _topic_roll(user_id, K, db, used_topics=used_topics)
         blue_entries   = _fetch_blue_words(user_id, db)
-        yellow_entries = _fetch_yellow_words(user_id, db)
+        yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
         blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
         yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
         story_json = _generate_story_content(
@@ -175,7 +175,7 @@ def generate_session(
         neutral_unused = [t for t in _NEUTRAL_POOL if t not in used_topics]
         selected_topic = random.choice(neutral_unused or _NEUTRAL_POOL)
         blue_entries   = _fetch_blue_words(user_id, db)
-        yellow_entries = _fetch_yellow_words(user_id, db)
+        yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
         blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
         yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
         story_json = _generate_baseline_content(
@@ -289,7 +289,27 @@ def _fetch_blue_words(user_id: str, db: Session) -> list[RecommendedVocabulary]:
     return random.sample(all_recs, min(k, len(all_recs)))
 
 
-def _fetch_yellow_words(user_id: str, db: Session) -> list[UserVocabularyVector]:
+def _fetch_yellow_words(user_id: str, study_phase: int, db: Session) -> list[UserVocabularyVector]:
+    phase_learning = (
+        db.query(UserVocabularyVector)
+        .join(Lexicon)
+        .join(
+            OnboardingWords,
+            (OnboardingWords.user_id == UserVocabularyVector.user_id)
+            & (OnboardingWords.word_id == UserVocabularyVector.word_id),
+        )
+        .filter(
+            UserVocabularyVector.user_id == user_id,
+            UserVocabularyVector.status == VocabStatus.LEARNING,
+            OnboardingWords.study_phase == study_phase,
+        )
+        .order_by(OnboardingWords.id.asc())
+        .all()
+    )
+
+    if phase_learning:
+        return phase_learning[:5]
+
     all_learning = (
         db.query(UserVocabularyVector)
         .filter(
@@ -574,9 +594,10 @@ def generate_continuation(
         raise ValueError(f"User '{user_id}' not found.")
 
     reading_number = previous_session.reading_number
+    study_phase = previous_session.study_phase
 
     blue_entries   = _fetch_blue_words(user_id, db)
-    yellow_entries = _fetch_yellow_words(user_id, db)
+    yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
     blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
     yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
 
