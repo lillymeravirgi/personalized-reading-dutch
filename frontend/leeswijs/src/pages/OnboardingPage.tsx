@@ -14,7 +14,7 @@ import {
 import { INTERESTS, type InterestId } from "../constants/interests";
 import { PURPOSES, type Purpose } from "../types";
 
-const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1"] as const;
+const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 
 const TOTAL_BATCHES = 2;
 
