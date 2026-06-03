@@ -1,16 +1,4 @@
-"""
-Session Generator
-Executes the K-probability topic roll, injects Blue and Yellow words,
-generates a reading text via Gemini, and persists the ReadingSession.
-
-Survey → Prompt:
-  _survey_signal_prompt_block() reads the survey_signal stored on the user's
-  most recent completed session. The TLX-MD score is the difficulty proxy:
-    TLX-MD ≥ 5 → easier next session
-    TLX-MD ≤ 2 → harder next session
-    TLX-MD 3-4 → keep same level
-  This happens silently (not shown to the user).
-"""
+"""Reading generation for adaptive and baseline study sessions."""
 
 from __future__ import annotations
 
@@ -45,11 +33,11 @@ _client = genai.Client(api_key=GOOGLE_API_KEY)
 
 
 class GenerationRateLimitError(RuntimeError):
-    """Raised when Gemini quota/rate limits prevent text generation."""
+    pass
 
 
 class GenerationFailedError(RuntimeError):
-    """Raised when Gemini fails for a non-quota reason."""
+    pass
 
 
 def _is_rate_limit_error(error: Exception) -> bool:
@@ -62,20 +50,12 @@ def _is_rate_limit_error(error: Exception) -> bool:
     )
 
 _SYSTEM_INSTRUCTION = """\
-You are an expert Dutch Pedagogical Content Creator and Linguist. \
-Your goal is to write highly personalized reading materials for L2 Dutch learners.
-
-Your writing must adhere to three strict pillars:
-
-1. CEFR Alignment: Strictly follow the specified CEFR level's grammatical structures and sentence lengths.
-2. Contextual Relevance: Use the user's city, job, purpose, and background to make the text feel 'real'.
-3. Lexical Injection: Naturally weave every word from the provided Target Lists into the narrative.
-
-Formatting Rule: Every time you use a word from the provided 'Target Lists,' \
-you MUST wrap it in double brackets, like this: [[woord]].\
+Write Dutch reading texts for second-language learners.
+Match the requested CEFR level, use the supplied learner context when allowed,
+and place each target word naturally in the text.
+Wrap every target word in double brackets, like [[woord]].
 """
 
-# Extra topic pool for NEUTRAL rolls
 _NEUTRAL_POOL = [
     "winkelen", "reizen", "technologie", "muziek",
     "film", "natuur", "gezondheid", "wetenschap",
@@ -93,23 +73,14 @@ READING_STYLES = [
 _FIXED_STYLE = "Informative Educational Semi-Narrative Article"
 
 
-# Survey prompt signal
-
 def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
-    """
-    Translate the survey_signal stored on the previous session into
-    instructions for the text generator.
-    Uses TLX-MD as the sole difficulty proxy (not shown to user).
-    Returns "" on first session.
-    """
     if session is None or not session.survey_signal:
         return ""
 
     sig = session.survey_signal
     lines: list[str] = []
 
-    # Adjust difficulty based on the previous mental-effort score.
-    tlx_md = sig.get("tlx_md", 4)  # raw NASA-TLX score 1-7
+    tlx_md = sig.get("tlx_md", 4)
     if tlx_md >= 5:
         lines.append(
             "The learner found the previous text TOO DIFFICULT (high mental effort). "
@@ -128,7 +99,6 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
             "Maintain a similar difficulty and sentence complexity."
         )
 
-    # Refresh the style if the previous text felt low-engagement.
     if sig.get("engagement_boost"):
         lines.append(
             "The learner's engagement score was LOW. "
@@ -136,7 +106,6 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
             "or use an unexpected setting). Make the topic feel fresh and surprising."
         )
 
-    # Make the topic link clearer when personalisation was not noticed.
     if not sig.get("felt_personalised", True):
         lines.append(
             "The learner did NOT feel the previous text was personalised. "
@@ -147,25 +116,21 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
     return "\n".join(lines)
 
 
-#  Public entry point
-
 def generate_session(
     user_id: str,
     K: float,
     word_count_range: str,
     condition: ConditionType,
     db: Session,
-    narrative_style: str = _FIXED_STYLE,   # kept for schema compat; always overridden
+    narrative_style: str = _FIXED_STYLE,
 ) -> dict:
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise ValueError(f"User '{user_id}' not found.")
 
-    # 1. Determine the current phase and local reading number.
     study_phase = 2 if user.has_switched_conditions else 1
     reading_number = _next_reading_number(user_id, study_phase, db)
 
-    # 2. Fetch previous session's survey signal (drives prompt adaptation)
     prev_session = (
         db.query(ReadingSession)
         .filter(
@@ -177,7 +142,6 @@ def generate_session(
     )
     survey_block = _survey_signal_prompt_block(prev_session)
 
-    # Collect recently used topics + titles in this phase to prevent repeats
     recent_sessions = (
         db.query(ReadingSession)
         .filter(
@@ -191,7 +155,6 @@ def generate_session(
     used_topics = {s.topic_used for s in recent_sessions if s.topic_used}
     recent_titles = [s.title for s in recent_sessions if s.title]
 
-    # Pick the topic and target words based on the assigned condition.
     if condition == ConditionType.ADAPTIVE:
         selected_topic = _topic_roll(user_id, K, db, used_topics=used_topics)
         blue_entries   = _fetch_blue_words(user_id, db)
@@ -208,8 +171,7 @@ def generate_session(
             survey_block=survey_block,
             recent_titles=recent_titles,
         )
-    else:  # BASELINE
-        # Baseline keeps the same level target but avoids personal profile data.
+    else:
         neutral_unused = [t for t in _NEUTRAL_POOL if t not in used_topics]
         selected_topic = random.choice(neutral_unused or _NEUTRAL_POOL)
         blue_words  = []
@@ -221,12 +183,10 @@ def generate_session(
             recent_titles=recent_titles,
         )
 
-    # 6. Build word_translations dict (all highlighted words → translation)
     word_translations: dict[str, str] = {}
     for w in blue_words + yellow_words:
         word_translations[w["word"].lower()] = w["translation"]
 
-    # 7. Persist session
     session = ReadingSession(
         user_id=user_id,
         title=story_json.get("title", ""),
@@ -257,10 +217,7 @@ def generate_session(
     }
 
 
-#  Helpers
-
 def _next_reading_number(user_id: str, study_phase: int, db: Session) -> int:
-    """Count sessions in the current study phase."""
     count = (
         db.query(ReadingSession)
         .filter(
@@ -291,7 +248,6 @@ def _topic_roll(user_id: str, K: float, db: Session, used_topics: set[str] | Non
             .all()
             if t.topic_name not in excluded
         ]
-        # If all interest topics already used, allow repeats (prefer non-hated)
         if not candidates:
             candidates = [
                 t.topic_name
@@ -352,8 +308,6 @@ def _lex_to_dict(entry: Lexicon) -> dict:
         "examples":    entry.examples or [],
     }
 
-
-#  Text generation
 
 def _generate_story_content(
     user: User,
@@ -479,7 +433,6 @@ def _generate_baseline_content(
     word_count_range: str,
     recent_titles: list[str] | None = None,
 ) -> dict:
-    """Build a simple prompt for the baseline condition."""
     titles_section = ""
     if recent_titles:
         avoid_list = "\n".join(f"- {t}" for t in recent_titles)
@@ -544,14 +497,7 @@ Return ONLY a valid JSON object:
     ) from last_error
 
 
-#  Narrative memory helpers
-
 def _generate_session_summary(content: str, topic: str) -> str:
-    """
-    Ask Gemini to produce a 3-5 sentence semantic summary of the generated text.
-    This summary replaces raw text truncation in continuation prompts.
-    Falls back to a simple tail-excerpt on failure.
-    """
     summary_prompt = (
         f"Read the following Dutch educational text about '{topic}' and write a concise "
         f"3-5 sentence summary IN ENGLISH covering: the main topic, key entities or characters "
@@ -567,7 +513,6 @@ def _generate_session_summary(content: str, topic: str) -> str:
         return response.text.strip()
     except Exception as exc:
         logger.warning("[SessionGen] Summary generation failed, using tail excerpt: %s", exc)
-        # Graceful fallback: last 400 chars give the "ending context"
         return content[-400:].strip()
 
 
@@ -578,33 +523,24 @@ def _build_narrative_memory(
     yellow_words: list[str],
     existing_memory: dict | None = None,
 ) -> dict:
-    """
-    Build / update the structured narrative memory for a session.
-    Merges with any pre-existing memory so continuation chains accumulate state.
-    """
     prev = existing_memory or {}
 
-    # Accumulate subtopics_used (topic is always the first entry)
     subtopics_used: list[str] = list(prev.get("subtopics_used", []))
     if topic and topic not in subtopics_used:
         subtopics_used.append(topic)
 
-    # Accumulate vocabulary_used
     vocabulary_used: list[str] = list(prev.get("vocabulary_used", []))
     for w in blue_words + yellow_words:
         if w not in vocabulary_used:
             vocabulary_used.append(w)
 
-    # Generate fresh discourse summary
     discourse_summary = _generate_session_summary(content, topic)
 
-    # Last-ending context: final ~300 chars of current content for narrative bridging
     last_ending_context = content.strip()[-300:].strip()
 
     return {
         "topic": topic,
         "subtopics_used": subtopics_used,
-        # entities / concepts_explained start empty; the LLM fills them over time
         "entities": prev.get("entities", []),
         "concepts_explained": prev.get("concepts_explained", []),
         "vocabulary_used": vocabulary_used,
@@ -613,18 +549,12 @@ def _build_narrative_memory(
     }
 
 
-#  Continuation generator (Continue button)
-
 def generate_continuation(
     user_id: str,
     previous_session: ReadingSession,
     condition: ConditionType,
     db: Session,
 ) -> dict:
-    """
-    Generate a genuine story continuation from the previous session's text.
-    Carries the narrative forward rather than starting a fresh topic.
-    """
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise ValueError(f"User '{user_id}' not found.")

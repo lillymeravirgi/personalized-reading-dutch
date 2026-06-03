@@ -1,4 +1,4 @@
-import json
+from pathlib import Path
 
 data = {
     "A1": [
@@ -53,15 +53,14 @@ data = {
 lines = []
 lines.append("LEXICON_DATA = [")
 for level, items in data.items():
-    lines.append(f'    # ── {level} ─────────────────────────────────────────────────────────────────')
     for item in items:
         nl, en = item.split("|")
-        # Removing quotes to prevent issues
         nl = nl.replace('"', "'")
         en = en.replace('"', "'")
         lines.append(f'    {{"word": "{nl}", "translation": "{en}", "cefr_level": "{level}"}},')
 
 lines.append("]")
 
-with open("/Users/rowaidasaba/Desktop/University/project2-2/personalized-reading-dutch/backend/lexicon_data.py", "w") as f:
+output_path = Path(__file__).with_name("lexicon_data.py")
+with output_path.open("w", encoding="utf-8") as f:
     f.write("\n".join(lines) + "\n")

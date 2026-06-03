@@ -37,7 +37,7 @@ export default function DelayedVocabReminder() {
           setDelayedCheck(null);
         }
       } catch {
-        // Try again on the next poll.
+        return;
       }
     }
 

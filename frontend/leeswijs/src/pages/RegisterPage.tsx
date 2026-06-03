@@ -30,7 +30,6 @@ export default function RegisterPage() {
   const [searchParams] = useSearchParams();
   const setUser  = useStore((s) => s.setUser);
 
-  // Researcher sets ?start=ADAPTIVE or ?start=BASELINE in the URL
   const startCondition = searchParams.get("start") ?? undefined;
 
   const initialStudyCode = (searchParams.get("code") || "").trim().toUpperCase();
@@ -69,7 +68,6 @@ export default function RegisterPage() {
       localStorage.setItem(`leeswijs-consent:${user.id}`, "true");
       localStorage.setItem(`leeswijs-consent-at:${user.id}`, new Date().toISOString());
       setUser(user);
-      // Always go to onboarding after registration
       navigate("/onboarding", { replace: true });
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Something went wrong.");
@@ -122,7 +120,6 @@ export default function RegisterPage() {
           </p>
         </Field>
 
-        {/* Password */}
         <Field label="Password" error={passwordError} htmlFor="register-password">
           <InputWrapper icon={<Lock size={16} />} hasError={!!passwordError}>
             <input
@@ -147,7 +144,6 @@ export default function RegisterPage() {
           </InputWrapper>
         </Field>
 
-        {/* Confirm Password */}
         <Field label="Confirm Password" error={confirmError} htmlFor="register-confirm">
           <InputWrapper icon={<Lock size={16} />} hasError={!!confirmError}>
             <input
@@ -209,7 +205,6 @@ export default function RegisterPage() {
           )}
         </div>
 
-        {/* Submit */}
         <motion.button
           type="submit"
           disabled={submitting}
@@ -262,8 +257,6 @@ export default function RegisterPage() {
     </motion.div>
   );
 }
-
-// Sub-components
 
 function Field({ label, error, htmlFor, children }: {
   label: string;

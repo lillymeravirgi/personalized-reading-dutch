@@ -1,5 +1,3 @@
-# Reads the demo user id from the X-User-Id header.
-# This is enough for the current prototype; fuller auth can be added later.
 from fastapi import Header, HTTPException, status
 
 

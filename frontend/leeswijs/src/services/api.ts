@@ -1,4 +1,3 @@
-// API calls for the FastAPI backend.
 import axios, { AxiosError } from "axios";
 import type {
   ApiResponse,
@@ -11,8 +10,6 @@ import type {
   VocabTestAnswer,
   VocabTestQuestion,
 } from "../types";
-
-// axios client
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
@@ -34,7 +31,7 @@ apiClient.interceptors.request.use((config) => {
       const uid = parsed?.state?.user?.id;
       if (uid) config.headers["X-User-Id"] = uid;
     } catch {
-      /* ignore */
+      return config;
     }
   }
   return config;
@@ -52,8 +49,6 @@ function extractError(err: unknown): string {
   }
   return err instanceof Error ? err.message : "An unexpected error occurred.";
 }
-
-//  Auth
 
 interface BackendAuthResponse {
   user_id: string;
@@ -103,7 +98,6 @@ function mapAuthResponseToUser(data: BackendAuthResponse): User {
   };
 }
 
-// startCondition comes from ?start=ADAPTIVE|BASELINE in the URL (researcher sets it)
 export async function registerUser(
   studyId: string,
   password: string,
@@ -133,8 +127,6 @@ export async function login(studyId: string, password: string): Promise<User> {
     throw new Error(extractError(err));
   }
 }
-
-//  User / Profile
 
 export async function fetchMe(userId: string): Promise<User> {
   try {
@@ -205,8 +197,6 @@ export async function completeOnboarding(userId: string): Promise<void> {
     throw new Error(extractError(err));
   }
 }
-
-//  Onboarding
 
 export async function savePersonalInfo(
   userId: string,
@@ -284,9 +274,6 @@ export async function getOnboardingWordSetStatus(
   }
 }
 
-//  Assessment
-
-// batches 2 & 3 pass knownWords/allWords so Gemini targets the CEFR boundary
 export async function getAssessmentBatch(
   batchNumber: number,
   userId: string,
@@ -346,8 +333,6 @@ export async function submitAssessment(
     throw new Error(extractError(err));
   }
 }
-
-//  Reading sessions
 
 export type ConditionType = "ADAPTIVE" | "BASELINE";
 
@@ -477,9 +462,6 @@ export async function continueSession(
   }
 }
 
-//  Vocabulary
-
-// tries lexicon first, falls back to Gemini for unknown words
 export async function defineWord(word: string): Promise<LexiconEntry | null> {
   try {
     const { data } = await apiClient.get<LexiconEntry>(
@@ -513,8 +495,6 @@ export async function markKnown(
   });
 }
 
-//  Survey
-
 export async function submitSurvey(
   payload: SurveyResponse,
 ): Promise<ApiResponse<{ signal: Record<string, unknown> }>> {
@@ -539,8 +519,6 @@ export async function submitSurvey(
     return { success: false, error: extractError(err) };
   }
 }
-
-//  Flashcards
 
 import type { FlashcardItem } from "../types";
 
@@ -590,7 +568,6 @@ export async function getFlashcards(
   }
 }
 
-// non-blocking — reads from the DB buffer the backend already filled
 export async function discoverPrefetch(
   userId: string,
 ): Promise<{ words: DiscoverCard[]; remaining: number }> {
@@ -654,9 +631,6 @@ export async function discoverNewWords(
     throw new Error(extractError(err));
   }
 }
-
-
-//  Vocabulary Test
 
 export async function startVocabTest(
   userId: string,
@@ -760,9 +734,6 @@ export async function submitVocabTest(
   return data;
 }
 
-//  Telemetry (lightweight — fire and forget)
-
-// Telemetry (disabled non-existent endpoints)
 export function logWordLookup(): void {}
 export function logDwellTime(): void {}
 
@@ -776,8 +747,6 @@ export function logInteraction(interaction: WordInteraction): Promise<void> {
     engagement_weight: interaction.weight,
   }).then(() => {});
 }
-
-//  Activity (localStorage — client-side session tracking)
 
 export interface Activity {
   sessions: Array<{

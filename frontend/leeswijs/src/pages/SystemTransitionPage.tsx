@@ -19,7 +19,7 @@ export default function SystemTransitionPage() {
     setLoading(true);
     apiClient
       .post(`/onboarding/words/${user.id}?study_phase=${nextPhase}`)
-      .catch(() => {})
+      .catch(() => undefined)
       .finally(() => setLoading(false));
   }, [nextPhase, user]);
 

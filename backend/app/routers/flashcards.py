@@ -12,10 +12,6 @@ from app.schemas import LexiconEntry
 router = APIRouter(prefix="/flashcards", tags=["Flashcards"])
 
 
-# ─────────────────────────────────────────────
-#  Helpers
-# ─────────────────────────────────────────────
-
 def _map_examples(entry) -> list[dict]:
     examples = entry.examples or []
     if isinstance(examples, list):
@@ -42,16 +38,8 @@ def _row_to_card(row: UserVocabularyVector) -> dict:
     }
 
 
-# ─────────────────────────────────────────────
-#  GET /flashcards  — all LEARNING words
-# ─────────────────────────────────────────────
-
 @router.get("")
 def list_flashcards(user_id: str, db: Session = Depends(get_db)):
-    """
-    Return all LEARNING words, due-first ordering.
-    A word is 'due' if next_review_at <= now() (strict UTC).
-    """
     from sqlalchemy import or_
     now = datetime.datetime.utcnow()
 
@@ -70,7 +58,6 @@ def list_flashcards(user_id: str, db: Session = Depends(get_db)):
         .all()
     )
 
-    # Calculate reviewed_today (need all rows for this day)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     reviewed_today = (
         db.query(UserVocabularyVector)
@@ -84,28 +71,16 @@ def list_flashcards(user_id: str, db: Session = Depends(get_db)):
     return {
         "cards":          [_row_to_card(r) for r in due_rows],
         "due_count":      len(due_rows),
-        "not_due_count":  0,  # We don't fetch these anymore
+        "not_due_count":  0,
         "reviewed_today": reviewed_today,
         "total":          len(due_rows),
     }
 
 
-
-# ─────────────────────────────────────────────
-#  GET /flashcards/discover-prefetch  — 50-word reservoir, instant read
-# ─────────────────────────────────────────────
-
-
 @router.get("/discover-prefetch")
 def discover_prefetch(user_id: str, db: Session = Depends(get_db)):
-    """
-    FIX 1 — Non-blocking: returns instantly; pure database read.
-    FIX 3 — SQL anti-join: single query replaces two queries + Python filter.
-    """
     SERVE_LIMIT   = 50
 
-    # FIX 3: SQL left anti-join — only rows in RecommendedVocabulary that have
-    # NO matching row in UserVocabularyVector for this user.
     usable_recs = (
         db.query(RecommendedVocabulary)
         .outerjoin(
@@ -137,18 +112,8 @@ def discover_prefetch(user_id: str, db: Session = Depends(get_db)):
     return {"words": words, "remaining": usable_count}
 
 
-
-# ─────────────────────────────────────────────
-#  POST /flashcards/refill-check  — Trigger on exit
-# ─────────────────────────────────────────────
-
 @router.post("/refill-check")
 def refill_check(user_id: str, db: Session = Depends(get_db)):
-    """
-    Called by the frontend (via navigator.sendBeacon) when leaving Flashcards.
-    If the usable reservoir is under 25, it triggers a synchronous refill here,
-    which is fine since the user has already navigated away.
-    """
     LOW_WATERMARK = 25
     usable_count = (
         db.query(RecommendedVocabulary)
@@ -174,17 +139,12 @@ def refill_check(user_id: str, db: Session = Depends(get_db)):
     return {"status": "adequate"}
 
 
-# ─────────────────────────────────────────────
-#  POST /flashcards/discover  — trigger fresh KRS (still available as fallback)
-# ─────────────────────────────────────────────
-
 class DiscoverRequest(BaseModel):
     user_id: str
 
 
 @router.post("/discover")
 def discover_new_words(req: DiscoverRequest, db: Session = Depends(get_db)):
-    """Trigger a fresh KRS run and return up to 20 new words."""
     try:
         run_krs(user_id=req.user_id, db=db)
     except Exception as e:
@@ -220,15 +180,11 @@ def discover_new_words(req: DiscoverRequest, db: Session = Depends(get_db)):
     return {"words": words}
 
 
-# ─────────────────────────────────────────────
-#  POST /flashcards/review  — schedule / forgot
-# ─────────────────────────────────────────────
-
 class ReviewRequest(BaseModel):
     user_id: str
     word_id: int
     remembered: bool
-    interval_days: int | None = None   # 0=today, 1, 2, 4, 7, 30
+    interval_days: int | None = None
 
 
 @router.post("/review")
@@ -256,7 +212,6 @@ def review_flashcard(req: ReviewRequest, db: Session = Depends(get_db)):
         else:
             row.next_review_at = datetime.datetime.utcnow() + datetime.timedelta(days=days)
     else:
-        # "Forgot" — lower mastery but keep LEARNING; do NOT advance next_review_at far out
         row.mastery_score = max(0.0, row.mastery_score - 0.15)
         row.status = VocabStatus.LEARNING
         row.next_review_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
@@ -266,10 +221,6 @@ def review_flashcard(req: ReviewRequest, db: Session = Depends(get_db)):
     return {"success": True}
 
 
-# ─────────────────────────────────────────────
-#  POST /flashcards/mark-known  — LEARNING → MASTERED
-# ─────────────────────────────────────────────
-
 class MarkKnownRequest(BaseModel):
     user_id: str
     word_id: int
@@ -277,7 +228,6 @@ class MarkKnownRequest(BaseModel):
 
 @router.post("/mark-known")
 def mark_known_flashcard(req: MarkKnownRequest, db: Session = Depends(get_db)):
-    """Move a word from LEARNING to MASTERED and evict it from the reservoir."""
     row = (
         db.query(UserVocabularyVector)
         .filter(
@@ -302,7 +252,6 @@ def mark_known_flashcard(req: MarkKnownRequest, db: Session = Depends(get_db)):
             next_review_at=datetime.datetime.utcnow() + datetime.timedelta(days=30),
         ))
 
-    # FIX 2: Evict from reservoir so the low-watermark count stays accurate
     db.query(RecommendedVocabulary).filter(
         RecommendedVocabulary.user_id == req.user_id,
         RecommendedVocabulary.word_id == req.word_id,
@@ -312,10 +261,6 @@ def mark_known_flashcard(req: MarkKnownRequest, db: Session = Depends(get_db)):
     return {"success": True}
 
 
-# ─────────────────────────────────────────────
-#  POST /flashcards/add-to-learn  — move word from reservoir → UserVocabularyVector
-# ─────────────────────────────────────────────
-
 class AddToLearnRequest(BaseModel):
     user_id: str
     word_id: int
@@ -324,15 +269,10 @@ class AddToLearnRequest(BaseModel):
 
 @router.post("/add-to-learn")
 def add_to_learn(req: AddToLearnRequest, db: Session = Depends(get_db)):
-    """
-    Atomic transition: delete from RecommendedVocabulary, insert into
-    UserVocabularyVector with LEARNING status and chosen SRS interval.
-    """
     lex = db.query(Lexicon).filter(Lexicon.word_id == req.word_id).first()
     if not lex:
         raise HTTPException(status_code=404, detail="Word not found")
 
-    # Step 1: Remove from reservoir
     rec = db.query(RecommendedVocabulary).filter(
         RecommendedVocabulary.user_id == req.user_id,
         RecommendedVocabulary.word_id == req.word_id,
@@ -340,7 +280,6 @@ def add_to_learn(req: AddToLearnRequest, db: Session = Depends(get_db)):
     if rec:
         db.delete(rec)
 
-    # Step 2: Upsert into UserVocabularyVector
     now = datetime.datetime.utcnow()
     if req.interval_days == 0:
         next_review = now - datetime.timedelta(minutes=1)

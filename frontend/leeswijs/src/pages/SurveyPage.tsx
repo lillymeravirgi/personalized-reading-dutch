@@ -10,15 +10,14 @@ import LikertQuestion from "../components/survey/LikertQuestion";
 import TLXQuestion    from "../components/survey/TLXQuestion";
 import type { LikertScale, TLXScale, SurveyResponse } from "../types";
 
-// ── Question text ─────────────────────────────────────────────────────────────
-const Q_WORTH_MY_TIME      = "The reading felt worth my time and effort.";                            // RQ1-W3
-const Q_FOCUSED_ATTENTION  = "I was so involved in this text that I lost track of time.";              // UES-FA
-const Q_REWARD             = "I would want to read more texts similar to this one.";                   // UES-RW
-const Q_PERCEIVED_RELEVANCE= "The content of this text felt personally meaningful to me.";             // UES-PR
-const Q_MENTAL_EFFORT      = "How much mental effort did it take to read this text?";                  // TLX-MD
-const Q_MANIPULATION_CHECK = "This text felt specifically tailored to my interests and Dutch level.";  // MC-1
+const Q_WORTH_MY_TIME       = "The reading felt worth my time and effort.";
+const Q_FOCUSED_ATTENTION   = "I was so involved in this text that I lost track of time.";
+const Q_REWARD              = "I would want to read more texts similar to this one.";
+const Q_PERCEIVED_RELEVANCE = "The content of this text felt personally meaningful to me.";
+const Q_MENTAL_EFFORT       = "How much mental effort did it take to read this text?";
+const Q_MANIPULATION_CHECK  = "This text felt specifically tailored to my interests and Dutch level.";
 
-const TOTAL_QUESTIONS = 6; // only the questions shown to users
+const TOTAL_QUESTIONS = 6;
 
 export default function SurveyPage() {
   const { sessionId = "" } = useParams<{ sessionId: string }>();
@@ -26,7 +25,6 @@ export default function SurveyPage() {
   const { search } = useLocation();
   const durationSeconds = parseInt(new URLSearchParams(search).get("duration") || "0", 10);
 
-  // Shown to user
   const [worthMyTime,           setWorthMyTime]           = useState<LikertScale | null>(null);
   const [focusedAttention,      setFocusedAttention]      = useState<LikertScale | null>(null);
   const [reward,                setReward]                = useState<LikertScale | null>(null);
@@ -47,14 +45,11 @@ export default function SurveyPage() {
     setSubmitting(true);
     setError(null);
 
-    // appropriateChallenge and comprehension are NOT shown to the user.
-    // We send a neutral default of 3 so the schema is satisfied.
-    // The actual difficulty proxy used is TLX-MD only (spec §9).
     const payload: SurveyResponse = {
       sessionId,
       worthMyTime:              worthMyTime!,
-      appropriateChallenge:     3,   // neutral — not shown to user
-      comprehension:            3,   // neutral — not shown to user
+      appropriateChallenge:     3,
+      comprehension:            3,
       focusedAttention:         focusedAttention!,
       reward:                   reward!,
       perceivedRelevance:       perceivedRelevance!,
@@ -99,7 +94,6 @@ export default function SurveyPage() {
         </div>
       </div>
 
-      {/* Progress */}
       <div className="mt-6 mb-8">
         <div className="mb-1.5 flex items-center justify-between">
           <span className="text-xs font-body font-semibold text-text/60 uppercase tracking-wide">Progress</span>

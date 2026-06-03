@@ -16,7 +16,6 @@ export default function WordModal({ word, onClose, onWordStatusChange }: Props) 
   const user = useStore((s) => s.user);
   const [saving, setSaving] = useState(false);
 
-  // ESC to close
   useEffect(() => {
     if (!word) return;
     const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -64,7 +63,6 @@ export default function WordModal({ word, onClose, onWordStatusChange }: Props) 
           style={{ maxHeight: "calc(100vh - 32px)" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* ── Header ──────────────────────────────────────────── */}
           <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-4 shrink-0">
             <div className="min-w-0">
               <div className="mb-2 flex items-center gap-2">
@@ -124,7 +122,6 @@ export default function WordModal({ word, onClose, onWordStatusChange }: Props) 
             </div>
           )}
 
-          {/* ── Footer ──────────────────────────────────────────── */}
           <div className="px-5 py-4 shrink-0 bg-white">
             <button
               type="button"

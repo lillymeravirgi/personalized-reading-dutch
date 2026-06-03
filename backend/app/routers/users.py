@@ -1,7 +1,3 @@
-"""
-users.py — Full profile read / update.
-All onboarding fields are editable here after onboarding completes.
-"""
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -126,32 +122,26 @@ def get_dashboard_stats(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """
-    Returns all data needed for the Home analytics dashboard in a single call.
-    """
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     now = datetime.datetime.utcnow()
 
-    # ── Vocabulary stats ──────────────────────────────────────────────────────
     vectors = db.query(UserVocabularyVector).filter(
         UserVocabularyVector.user_id == user_id
     ).all()
 
     total_learning = sum(1 for v in vectors if v.status == VocabStatus.LEARNING)
     total_mastered = sum(1 for v in vectors if v.status == VocabStatus.MASTERED)
-    total_known    = total_mastered   # alias for clarity
+    total_known    = total_mastered
 
-    # Words Due Today
     to_review = sum(
         1 for v in vectors
         if v.status == VocabStatus.LEARNING
         and (v.next_review_at is None or v.next_review_at <= now)
     )
 
-    # Words Reviewed Today (Math for Daily Progress)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     reviewed_today = sum(
         1 for v in vectors
@@ -161,33 +151,37 @@ def get_dashboard_stats(
     total_daily_task = reviewed_today + to_review
     daily_progress   = (reviewed_today / total_daily_task * 100) if total_daily_task > 0 else 0
 
-    # ── Reading / session stats ───────────────────────────────────────────────
     sessions = db.query(ReadingSession).filter(
         ReadingSession.user_id == user_id
     ).all()
 
-    readings_completed = sum(1 for s in sessions if s.survey_completed)
+    completed_sessions_all = [s for s in sessions if s.survey_completed]
+    readings_completed = len(completed_sessions_all)
     readings_total     = len(sessions)
 
-    # ── Time spent (approximate via exposure_count as proxy) ──────────────────
-    # Each reading session ≈ 5–8 minutes; we use survey_completed as "done"
-    # For now, compute based on completed sessions × avg read time
     AVG_READING_MIN = 6
 
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start  = today_start - datetime.timedelta(days=today_start.weekday())
     month_start = today_start.replace(day=1)
 
-    # We don't have precise timestamps per session yet, so we proxy:
-    # time_today/week/month based on session creation if available
-    # ReadingSession has no created_at, so we use reading_number as ordering proxy
-    # We'll return static-safe zeros for time tracking (real tracking needs UserActivity)
-    # Frontend will show this gracefully
-    time_today_min = 0
-    time_week_min  = 0
-    time_month_min = 0
+    def session_minutes(session: ReadingSession) -> float:
+        if session.duration_seconds is not None:
+            return session.duration_seconds / 60
+        return AVG_READING_MIN
 
-    # ── Productivity Chart Data (Last 10 sessions) ───────────────────────────
+    time_today_min = sum(
+        session_minutes(s) for s in completed_sessions_all
+        if s.created_at and s.created_at >= today_start
+    )
+    time_week_min = sum(
+        session_minutes(s) for s in completed_sessions_all
+        if s.created_at and s.created_at >= week_start
+    )
+    time_month_min = sum(
+        session_minutes(s) for s in completed_sessions_all
+        if s.created_at and s.created_at >= month_start
+    )
+
     completed_sessions = db.query(ReadingSession).filter(
         ReadingSession.user_id == user_id,
         ReadingSession.survey_completed == True
@@ -203,34 +197,26 @@ def get_dashboard_stats(
     ]
     avg_duration_min = sum(d["duration_min"] for d in productivity_data) / len(productivity_data) if productivity_data else 0
 
-    # ── Acquisition score fix (Mastered / 1000 words goal) ───────────────────
-    # The user wants progress toward a lifetime goal of 1,000 words.
     ACQUISITION_GOAL = 1000
     acquisition_score = int((total_mastered / ACQUISITION_GOAL) * 100) if ACQUISITION_GOAL > 0 else 0
 
     return {
         "cefr_level":          user.estimated_cefr or "—",
         "acquisition_score":   acquisition_score,
-
-        # Vocabulary
         "total_known":         total_known,
         "total_learning":      total_learning,
         "total_mastered":      total_mastered,
         "to_review":           to_review,
         "reviewed_today":      reviewed_today,
         "daily_progress":      daily_progress,
-
-        # Reading engagement
         "readings_completed":  readings_completed,
         "readings_total":      readings_total,
 
-        # Productivity chart
         "productivity_data":   productivity_data,
         "avg_duration_min":    round(avg_duration_min, 1),
 
-        # Time spent (minutes)
-        "time_today_min":      time_today_min,
-        "time_week_min":       time_week_min,
-        "time_month_min":      time_month_min,
+        "time_today_min":      round(time_today_min, 1),
+        "time_week_min":       round(time_week_min, 1),
+        "time_month_min":      round(time_month_min, 1),
         "is_new":              readings_total == 0 and total_mastered == 0,
     }

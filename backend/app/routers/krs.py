@@ -11,14 +11,10 @@ from app.schemas import KRSRunResponse
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/krs", tags=["KRS"])
 
-BLUE_WORD_THRESHOLD = 25  # matches GATEKEEPER_FLOOR in krs_service.py
+BLUE_WORD_THRESHOLD = 25
 
 
 def _maybe_trigger_krs(user_id: str) -> None:
-    """
-    Background task: check Blue pool size; if under threshold, run KRS.
-    Opens its own DB session so it doesn't conflict with the request session.
-    """
     db = SessionLocal()
     try:
         count = (
@@ -38,10 +34,8 @@ def _maybe_trigger_krs(user_id: str) -> None:
         db.close()
 
 
-# ── Manual trigger ─────────────────────────────
 @router.post("/run/{user_id}", response_model=KRSRunResponse)
 def trigger_krs(user_id: str, db: Session = Depends(get_db)):
-    """Manually trigger the KRS for a user. Useful for demo/testing."""
     try:
         result = run_krs(user_id=user_id, db=db)
     except ValueError as e:
@@ -52,12 +46,7 @@ def trigger_krs(user_id: str, db: Session = Depends(get_db)):
     return KRSRunResponse(**result)
 
 
-# ── Auto-trigger check endpoint ───────────────
 @router.post("/check/{user_id}")
 def check_and_trigger(user_id: str, background_tasks: BackgroundTasks):
-    """
-    Lightweight endpoint called after user interactions.
-    If Blue pool < threshold, queues a background KRS run with zero latency for the user.
-    """
     background_tasks.add_task(_maybe_trigger_krs, user_id)
     return {"message": f"KRS check queued for {user_id}"}

@@ -1,4 +1,3 @@
-"""Onboarding endpoints for profile setup and vocabulary set selection."""
 import logging
 import random
 
@@ -34,7 +33,6 @@ def _phase_words(db: Session, user_id: str, study_phase: int):
 
 @router.post("/personal-info")
 def save_personal_info(payload: OnboardingPersonalInfoRequest, db: Session = Depends(get_db)):
-    """Save Step 1 personal info fields to the User table."""
     user = db.query(User).filter(User.user_id == payload.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -49,7 +47,6 @@ def save_personal_info(payload: OnboardingPersonalInfoRequest, db: Session = Dep
     if payload.other_languages    is not None: user.other_languages    = payload.other_languages
     if payload.purpose            is not None: user.purpose            = payload.purpose
     if payload.preferred_styles   is not None: user.preferred_styles   = payload.preferred_styles
-    # Self-reported CEFR is the starting point for the assessment
     if payload.self_reported_cefr is not None: user.estimated_cefr    = payload.self_reported_cefr
 
     db.commit()
@@ -63,7 +60,6 @@ def select_onboarding_words(
     study_phase: int = 1,
     db: Session = Depends(get_db),
 ):
-    """Pick the target words for one reading block."""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -148,7 +144,6 @@ def get_onboarding_words(
     study_phase: int = 1,
     db: Session = Depends(get_db),
 ):
-    """Retrieve the saved words for a reading block."""
     words = _phase_words(db, user_id, study_phase)
     if not words:
         raise HTTPException(status_code=404, detail="No words found for this vocabulary set.")
@@ -162,7 +157,6 @@ def get_onboarding_word_status(
     study_phase: int = 1,
     db: Session = Depends(get_db),
 ):
-    """Return whether the phase word set has enough learning words."""
     phase_word_ids = [
         row.word_id
         for row in db.query(OnboardingWords)

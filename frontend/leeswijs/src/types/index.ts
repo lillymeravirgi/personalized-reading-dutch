@@ -1,15 +1,13 @@
-// cefr
 export type CefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
 export const PURPOSES = ["work", "study", "integration", "travel", "other"] as const;
 export type Purpose = (typeof PURPOSES)[number];
 
-// user
 export interface User {
   id: string;
   user_id: string;
   email: string;
-  name: string;               // alias for display_name
+  name: string;
   display_name: string;
   interests: string[];
   cefrLevel: CefrLevel | null;
@@ -18,7 +16,6 @@ export interface User {
   onboarding_completed: boolean;
   preferred_styles?: string[];
 
-  // Personal profile fields
   age?: number | null;
   city?: string | null;
   gender?: string | null;
@@ -28,12 +25,10 @@ export interface User {
   other_languages?: string | null;
   purpose?: Purpose | null;
 
-  // Crossover study fields
-  current_condition?: string;        // "ADAPTIVE" | "BASELINE"
+  current_condition?: string;
   has_switched_conditions?: boolean;
 }
 
-// vocabulary
 export interface BilingualSentence {
   nl: string;
   en: string;
@@ -82,7 +77,6 @@ export interface TextToken {
   wordId?: string | null;
 }
 
-// reading session
 export interface ReadingSession {
   sessionId: string;
   text: string;
@@ -94,7 +88,7 @@ export interface ReadingSession {
   isAdaptive: boolean;
   readingNumber: number;
   surveyCompleted: boolean;
-  wordTranslations: Record<string, string>;  // { dutch: english }
+  wordTranslations: Record<string, string>;
 }
 
 export interface SessionSummary {
@@ -134,7 +128,6 @@ export interface DashboardStats {
   is_new: boolean;
 }
 
-// flashcards
 export type ReviewInterval = "today" | "1d" | "2d" | "4d" | "1w" | "1m" | "never" | null;
 
 export interface FlashcardItem {
@@ -142,15 +135,13 @@ export interface FlashcardItem {
   dutch: string;
   english: string;
   examples: BilingualSentence[];
-  exampleSentence: BilingualSentence;   // kept for compat — equals examples[0]
+  exampleSentence: BilingualSentence;
   difficulty: number;
   mode: "learning" | "review";
   nextReviewDate: string | null;
   reviewInterval: ReviewInterval;
 }
 
-// interactions
-// keep in sync with backend IntentTagType enum or telemetry will 422
 export type InteractionAction = "DEEP_PROCESSING" | "ACQUISITION_INTENT" | "WORD_AVOIDANCE";
 export type InteractionWeight = 5 | 2 | 1;
 
@@ -162,28 +153,22 @@ export interface WordInteraction {
   timestamp: string;
 }
 
-// survey
 export type LikertScale = 1 | 2 | 3 | 4 | 5;
 export type TLXScale = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export interface SurveyResponse {
   sessionId: string;
   worthMyTime: LikertScale;
-  // NOT shown to user — sent with neutral default (3)
   appropriateChallenge: LikertScale;
   comprehension: LikertScale;
-  // UES-SF (RQ2)
   focusedAttention: LikertScale;
   reward: LikertScale;
   perceivedRelevance: LikertScale;
-  // NASA-TLX
   mentalEffort: TLXScale;
-  // Manipulation check
   perceivedPersonalization: LikertScale;
   duration_seconds?: number;
 }
 
-// vocabulary test
 export interface VocabTestQuestion {
   questionId: string;
   wordId: string;
@@ -206,7 +191,6 @@ export interface VocabTestResult {
   total: number;
 }
 
-// assessment
 export interface AssessmentWord {
   wordId: string;
   dutch: string;
@@ -220,7 +204,6 @@ export interface AssessmentBatchData {
   words: AssessmentWord[];
 }
 
-// Backward-compat alias (AssessmentPage still uses this name)
 export type AssessmentBatch = AssessmentBatchData;
 
 export interface AssessmentResult {
@@ -230,7 +213,6 @@ export interface AssessmentResult {
   confidenceScore: number;
 }
 
-// api helpers
 export type ApiResponse<T> =
   | { success: true; data: T }
   | { success: false; error: string };

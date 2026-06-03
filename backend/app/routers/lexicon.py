@@ -1,7 +1,3 @@
-"""
-Lexicon router — includes the dynamic 'define' endpoint that calls Gemini
-to generate a definition for unknown words and persists them to the lexicon.
-"""
 import json
 import logging
 import re
@@ -22,7 +18,6 @@ router = APIRouter(prefix="/lexicon", tags=["Lexicon"])
 _client = genai.Client(api_key=GOOGLE_API_KEY)
 
 
-# ── Get word from lexicon ──────────────────────
 @router.get("/word/{word_id}", response_model=LexiconEntry)
 def get_word_by_id(word_id: int, db: Session = Depends(get_db)):
     entry = db.query(Lexicon).filter(Lexicon.word_id == word_id).first()
@@ -31,24 +26,15 @@ def get_word_by_id(word_id: int, db: Session = Depends(get_db)):
     return LexiconEntry.model_validate(entry)
 
 
-# ── Dynamic define endpoint ────────────────────
 @router.get("/define/{word}", response_model=LexiconEntry)
 def define_word(word: str, db: Session = Depends(get_db)):
-    """
-    1. Check if word is already in the lexicon → return it directly.
-    2. If not, call Gemini to generate translation + examples + use_cases for this Dutch word.
-    3. Save the new entry to the lexicon.
-    4. Return the entry.
-    """
-    # Step 1: check existing
     clean_word = word.lower().strip()
     existing = db.query(Lexicon).filter(Lexicon.word == clean_word).first()
     if existing:
         return LexiconEntry.model_validate(existing)
 
-    # Step 2: call Gemini
     prompt = f"""\
-You are a Dutch language expert. Provide a comprehensive lexicon entry for the Dutch word "{clean_word}".
+Provide a concise lexicon entry for the Dutch word "{clean_word}".
 Return ONLY a valid JSON object with this exact structure:
 {{
   "word": "{clean_word}",
@@ -77,7 +63,6 @@ Return ONLY a valid JSON object with this exact structure:
         logger.error(f"[Lexicon/define] Gemini failed for '{clean_word}': {e}")
         raise HTTPException(status_code=502, detail=f"Could not generate definition: {e}")
 
-    # Step 3: save to lexicon
     new_entry = Lexicon(
         word=data.get("word", clean_word),
         translation=data.get("translation", "—"),
@@ -91,7 +76,6 @@ Return ONLY a valid JSON object with this exact structure:
         db.refresh(new_entry)
     except Exception:
         db.rollback()
-        # Race condition: another request added it first
         existing = db.query(Lexicon).filter(Lexicon.word == clean_word).first()
         if existing:
             return LexiconEntry.model_validate(existing)

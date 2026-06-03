@@ -1,9 +1,4 @@
-"""
-seed.py — local data loader.
 
-By default this only creates tables and loads the lexicon. Team accounts are
-created only when SEED_TEST_ACCOUNTS=true.
-"""
 from __future__ import annotations
 
 import csv

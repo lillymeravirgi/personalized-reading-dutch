@@ -1,33 +1,10 @@
-# Web framework
+# Only the packages we import directly.
 fastapi>=0.115,<1.0
 uvicorn[standard]>=0.30,<1.0
-
-# Data validation
 pydantic>=2.10,<3.0
-pydantic-settings>=2.7,<3.0
-
-# Database
 SQLAlchemy>=2.0,<3.0
-PyMySQL>=1.1,<2.0
 psycopg[binary]>=3.2,<4.0
-
-# Authentication
 werkzeug>=3.0,<4.0
 python-jose[cryptography]>=3.3,<4.0
-email-validator>=2.2,<3.0
-
-# Google AI
 google-genai>=1.47,<3.0
-google-generativeai>=0.8,<1.0
-google-api-core>=2.20,<3.0
-google-api-python-client>=2.150,<3.0
-google-auth>=2.35,<3.0
-google-ai-generativelanguage>=0.6,<1.0
-googleapis-common-protos>=1.65,<2.0
-
-# HTTP / async
-anyio>=4.6,<5.0
-httpx>=0.28,<1.0
-
-# Environment
 python-dotenv>=1.0,<2.0
