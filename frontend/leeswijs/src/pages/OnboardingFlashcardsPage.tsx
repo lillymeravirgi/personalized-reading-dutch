@@ -9,6 +9,7 @@ import SpeakButton from "../components/SpeakButton";
 
 const TARGET_WORDS = 10;
 const READINGS_PER_PHASE = 3;
+const PREFETCH_THRESHOLD = 12;
 
 export default function OnboardingFlashcardsPage() {
   const navigate = useNavigate();
@@ -66,7 +67,7 @@ export default function OnboardingFlashcardsPage() {
   async function handleKnow() {
     if (!user || !word) return;
     setSaving(true);
-    await markKnown(user.id, word.word_id).catch(() => {});
+    await markKnown(user.id, word.word_id).catch(() => undefined);
     setSaving(false);
     advanceCard(false);
   }
@@ -74,7 +75,7 @@ export default function OnboardingFlashcardsPage() {
   async function handleAddToLearn() {
     if (!user || !word) return;
     setSaving(true);
-    await addToLearnList(user.id, word.word_id).catch(() => {});
+    await addToLearnList(user.id, word.word_id).catch(() => undefined);
     setSaving(false);
     advanceCard(true);
   }
@@ -93,17 +94,16 @@ export default function OnboardingFlashcardsPage() {
     const nextIndex = index + 1;
     setIndex(nextIndex);
     
-    if (words.length - nextIndex < 5 && !refilling && user) {
+    if (words.length - nextIndex <= PREFETCH_THRESHOLD && !refilling && user) {
       void refillWords();
     }
-  }
 
   async function handleFinish() {
     if (!user) return;
     window.localStorage.setItem(`leeswijs-word-set-ready-${user.id}-${studyPhase}`, "true");
 
     if (studyPhase === 1) {
-      await completeOnboarding(user.id).catch(() => {});
+      await completeOnboarding(user.id).catch(() => undefined);
       setUser({ ...user, onboarding_completed: true });
       navigate("/reading", { replace: true });
     } else {
@@ -150,7 +150,6 @@ export default function OnboardingFlashcardsPage() {
       initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
       className="max-w-md mx-auto"
     >
-      {/* Progress */}
       <div className="mb-4 flex items-center justify-between text-xs font-body text-text/50">
         <span>Phase {studyPhase} word set: select {TARGET_WORDS} words</span>
         <span>[{learningCount}/{TARGET_WORDS} completed]</span>
@@ -171,7 +170,6 @@ export default function OnboardingFlashcardsPage() {
         </p>
       )}
 
-      {/* Card */}
       <AnimatePresence mode="wait">
         <motion.div
           key={word?.word_id}
@@ -180,7 +178,6 @@ export default function OnboardingFlashcardsPage() {
           exit={{ opacity: 0, y: -20, scale: 0.97 }}
           className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-10"
         >
-          {/* Front: Dutch word */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 text-primary mb-4">
               <BookOpen size={22} />
@@ -200,7 +197,6 @@ export default function OnboardingFlashcardsPage() {
             </div>
           </div>
 
-          {/* Buttons */}
           <div className="flex gap-3 mt-2">
             <button
               type="button"
@@ -223,4 +219,4 @@ export default function OnboardingFlashcardsPage() {
       </AnimatePresence>
     </motion.div>
   );
-}
+}}

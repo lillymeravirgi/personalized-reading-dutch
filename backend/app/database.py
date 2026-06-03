@@ -3,7 +3,6 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from app.config import DATABASE_URL
 
-# MySQL requires pool_pre_ping to recover from dropped connections
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
@@ -17,7 +16,6 @@ class Base(DeclarativeBase):
     pass
 
 
-# FastAPI dependency
 def get_db():
     db = SessionLocal()
     try:

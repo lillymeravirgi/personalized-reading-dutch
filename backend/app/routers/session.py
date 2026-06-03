@@ -1,13 +1,4 @@
-"""
-session.py — Reading session endpoints.
-
-Reading flow:
-  - /generate:  Create a new session. Enforces that the previous session's survey
-                must be completed before generating the next study reading.
-  - /continue:  Extend from a previous session (same topic/condition).
-  - /list:      List all sessions for a user.
-  - /{id}:      Fetch full session with word_translations.
-"""
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import (
-    Lexicon,
     OnboardingWords,
     ReadingSession,
     RecommendedVocabulary,
@@ -24,7 +14,7 @@ from app.models import (
     VocabularyTestResult,
     VocabStatus,
 )
-from app.schemas import GenerateSessionRequest, GenerateSessionResponse, SessionDetailResponse, WordInfo
+from app.schemas import GenerateSessionRequest, GenerateSessionResponse, WordInfo
 from app.session_generator import (
     GenerationFailedError,
     GenerationRateLimitError,
@@ -38,8 +28,6 @@ READINGS_PER_PHASE = 3
 FINAL_STUDY_PHASE = 2
 TARGET_WORDS_PER_PHASE = 10
 
-
-import re
 
 def _build_word_list(rows) -> list[dict]:
     return [
@@ -81,17 +69,12 @@ def _phase_word_set_ready(db: Session, user_id: str, study_phase: int) -> bool:
     return learned_count >= TARGET_WORDS_PER_PHASE
 
 def _tokenize_content(content: str, blue_words: list, yellow_words: list) -> list[dict]:
-    """
-    Tokenizes content into words, spaces, and punctuation.
-    Assigns status (new, learning, known) and word_id where applicable.
-    """
     word_map = {}
     for w in blue_words:
         word_map[w["word"].lower()] = {"word_id": w["word_id"], "status": "new"}
     for w in yellow_words:
         word_map[w["word"].lower()] = {"word_id": w["word_id"], "status": "learning"}
 
-    # Pattern splits by [[word]], keeping the delimiters
     parts = re.split(r"(\[\[[^\]]+\]\])", content or "")
     tokens = []
 
@@ -109,8 +92,6 @@ def _tokenize_content(content: str, blue_words: list, yellow_words: list) -> lis
                 "word_id": match["word_id"] if match else None
             })
         else:
-            # Plain text: split by non-word characters while preserving them
-            # Including Dutch characters: \u00C0-\u017F
             sub_parts = re.split(r"([^\w\u00C0-\u017F]+)", part)
             for sp in sub_parts:
                 if not sp:
@@ -132,10 +113,6 @@ def _tokenize_content(content: str, blue_words: list, yellow_words: list) -> lis
 
 @router.post("/generate", response_model=GenerateSessionResponse)
 def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
-    """
-    Generate a new reading.
-    Blocks if the latest reading in the current phase still needs its survey.
-    """
     req_user = db.query(User).filter(User.user_id == req.user_id).first()
     current_phase = 2 if (req_user and req_user.has_switched_conditions) else 1
 
@@ -284,7 +261,6 @@ def list_sessions(
         q = q.filter(ReadingSession.user_id == user_id)
     if study_phase is not None:
         q = q.filter(ReadingSession.study_phase == study_phase)
-    # Sort by newest first
     sessions = q.order_by(ReadingSession.created_at.desc()).all()
     return [
         {

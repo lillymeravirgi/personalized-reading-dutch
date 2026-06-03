@@ -1,6 +1,3 @@
-# post-reading survey — challenge direction comes from TLX-MD only (spec §9).
-# appropriateChallenge is never shown to users; frontend always sends 3 as a filler.
-
 import datetime
 import logging
 
@@ -16,8 +13,7 @@ router = APIRouter(prefix="/surveys", tags=["Surveys"])
 
 
 def _compute_survey_signal(payload: SurveyResponse) -> dict:
-    # TLX-MD is the only difficulty proxy we use (spec §9)
-    tlx_md = payload.mental_effort   # 1–7
+    tlx_md = payload.mental_effort
 
     if tlx_md >= 5:
         challenge_direction = "easier"
@@ -26,7 +22,6 @@ def _compute_survey_signal(payload: SurveyResponse) -> dict:
     else:
         challenge_direction = "same"
 
-    # Engagement boost (UES composite < 3)
     ues_composite = (
         payload.focused_attention + payload.reward + payload.perceived_relevance
     ) / 3
@@ -56,7 +51,6 @@ def submit_survey(payload: SurveyResponse, db: Session = Depends(get_db)):
             detail=f"session_id={payload.session_id} not found",
         )
 
-    # Upsert SurveyResult
     existing = db.query(SurveyResult).filter(
         SurveyResult.session_id == payload.session_id
     ).first()
@@ -80,10 +74,9 @@ def submit_survey(payload: SurveyResponse, db: Session = Depends(get_db)):
         delta = datetime.datetime.utcnow() - session.created_at
         session.duration_seconds = max(1, int(delta.total_seconds()))
 
-    # Compute and persist signal
     signal = _compute_survey_signal(payload)
     session.survey_signal    = signal
-    session.survey_completed = True   # ← unlock next reading generation
+    session.survey_completed = True
 
     logger.info("[Survey] session=%d signal=%s", payload.session_id, signal)
 

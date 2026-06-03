@@ -26,10 +26,25 @@ yarn-debug.log*
 .env.local
 .env.*.local
 
+# Local agent/tool state
+.codex/
+.claude/
+.agents/
+
 # Local databases
 *.db
 *.sqlite
 *.sqlite3
+
+# Downloaded study exports
+exports/
+
+# Local report drafts
+report/
+
+# Local validation files
+tests/
+backend/tests/
 
 # Editors
 .idea/

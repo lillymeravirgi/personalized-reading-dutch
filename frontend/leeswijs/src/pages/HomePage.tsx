@@ -99,13 +99,11 @@ function Dashboard({
     <div className="space-y-5">
       <NextActionBanner stats={stats} onNavigate={onNavigate} />
 
-      {/* Row 1: CEFR gauge + Acquisition ring */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <CefrCard level={stats.cefr_level} />
         <AcquisitionCard score={stats.acquisition_score} />
       </div>
 
-      {/* Row 2: Vocab stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard
           icon={<Trophy size={18} />}
@@ -131,7 +129,6 @@ function Dashboard({
         <DailyGoalCard stats={stats} onClick={() => onNavigate("/flashcards")} />
       </div>
 
-      {/* Row 3: Reading Productivity Chart */}
       <ProductivityChart stats={stats} />
     </div>
   );
@@ -181,8 +178,6 @@ function NextActionBanner({
   );
 }
 
-// CEFR card
-
 const CEFR_META: Record<string, { color: string; label: string }> = {
   A1: { color: "#94A3B8", label: "Beginner" },
   A2: { color: "#60A5FA", label: "Elementary" },
@@ -223,8 +218,6 @@ function CefrCard({ level }: { level: string }) {
     </Card>
   );
 }
-
-// Vocabulary progress
 
 function AcquisitionCard({ score }: { score: number }) {
   const pct = Math.min(100, Math.max(0, Math.round(score)));
@@ -278,16 +271,13 @@ function AcquisitionCard({ score }: { score: number }) {
   );
 }
 
-// Daily review card
-
 function DailyGoalCard({ stats, onClick }: { stats: DashboardStats; onClick: () => void }) {
   const isDone = stats.to_review === 0 && stats.reviewed_today > 0;
   const isNew = stats.to_review === 0 && stats.reviewed_today === 0;
   
-  // Color follows the review state.
-  let accent = "#6B7280"; // Gray if no words yet
-  if (isDone) accent = "#10B981"; // Green if completed
-  else if (stats.to_review > 0) accent = "#F59E0B"; // Amber if pending
+  let accent = "#6B7280";
+  if (isDone) accent = "#10B981";
+  else if (stats.to_review > 0) accent = "#F59E0B";
 
   const pct = isNew ? 0 : isDone ? 100 : Math.round(stats.daily_progress);
 
@@ -331,8 +321,6 @@ function DailyGoalCard({ stats, onClick }: { stats: DashboardStats; onClick: () 
   );
 }
 
-// Stat card
-
 function StatCard({
   icon, label, value, accent, onClick, highlight,
 }: {
@@ -366,7 +354,6 @@ function StatCard({
   );
 }
 
-// Reading chart
 function ProductivityChart({ stats }: { stats: DashboardStats }) {
   const data = stats.productivity_data || [];
   const avg  = stats.avg_duration_min || 0;

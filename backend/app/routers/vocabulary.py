@@ -1,4 +1,6 @@
 from pydantic import BaseModel
+import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -21,10 +23,6 @@ def get_word(word_id: int, db: Session = Depends(get_db)):
     if not entry:
         raise HTTPException(status_code=404, detail=f"word_id={word_id} not found in lexicon")
     return LexiconEntry.model_validate(entry)
-
-
-import datetime
-
 def _add_vector(user_id: str, word_id: int, db: Session, interval_days: int | None = None) -> None:
     existing = (
         db.query(UserVocabularyVector)
@@ -52,12 +50,10 @@ def _add_vector(user_id: str, word_id: int, db: Session, interval_days: int | No
     if interval_days is not None:
         vector.review_interval_days = interval_days
         if interval_days == 0:
-            # Set to 1 minute ago so it is definitely "Due" immediately
             vector.next_review_at = datetime.datetime.utcnow() - datetime.timedelta(minutes=1)
         else:
             vector.next_review_at = datetime.datetime.utcnow() + datetime.timedelta(days=interval_days)
 
-    # FIX 2: Evict from reservoir — keeps the low-watermark count accurate
     db.query(RecommendedVocabulary).filter(
         RecommendedVocabulary.user_id == user_id,
         RecommendedVocabulary.word_id == word_id,
@@ -86,7 +82,6 @@ class MarkKnownRequest(BaseModel):
 
 @router.patch("/mark-known")
 def mark_known(req: MarkKnownRequest, db: Session = Depends(get_db)):
-    # Add or update to MASTERED
     existing = db.query(UserVocabularyVector).filter(
         UserVocabularyVector.user_id == req.user_id,
         UserVocabularyVector.word_id == req.word_id,
@@ -106,7 +101,6 @@ def mark_known(req: MarkKnownRequest, db: Session = Depends(get_db)):
             )
         )
 
-    # FIX 2: Evict from reservoir
     db.query(RecommendedVocabulary).filter(
         RecommendedVocabulary.user_id == req.user_id,
         RecommendedVocabulary.word_id == req.word_id,

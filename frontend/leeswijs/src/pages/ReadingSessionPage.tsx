@@ -1,4 +1,3 @@
-// /read/:sessionId — word-click goes tooltip first, then one-click learn/review
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -62,15 +61,11 @@ export default function ReadingSessionPage() {
   const [continuing,    setContinuing]    = useState(false);
   const [continueError, setContinueError] = useState<string | null>(null);
 
-  // tooltip = first contact for every word click
   const [tooltip,      setTooltip]      = useState<TooltipWord | null>(null);
   const [markingKnown, setMarkingKnown] = useState(false);
-  // Local override: word IDs the user marked "known" this session (turn white immediately)
   const [knownOverride, setKnownOverride] = useState<Set<string>>(new Set());
 
-  // big modal — only opens after "Learn it" / "Review it"
   const [modalWordId, setModalWordId] = useState<string | null>(null);
-  // Store LexiconEntries for white words defined on-the-fly
   const [definedEntries, setDefinedEntries] = useState<Record<string, LexiconEntry>>({});
   const [showReadingGuide, setShowReadingGuide] = useState(
     () => window.localStorage.getItem("leeswijs-reading-guide-seen") !== "true",
@@ -206,7 +201,6 @@ export default function ReadingSessionPage() {
     if (!canLookUpWord(word)) return;
     const rect = el.getBoundingClientRect();
 
-    // Try to find if this word has a status/id in tokens
     const key = wordKey(word);
     const token = currentSession?.tokens.find(t => wordKey(t.text) === key && t.type === "word");
     const localEntry = findLocalEntry(word, token?.wordId);
@@ -236,11 +230,11 @@ export default function ReadingSessionPage() {
           action:    "WORD_AVOIDANCE",
           weight:    1,
           timestamp: new Date().toISOString(),
-        }).catch(() => {});
+        }).catch(() => undefined);
       }
       setTooltip(null);
     } catch {
-      // silently fail — not critical
+      setError("Could not update this word yet.");
     } finally {
       setMarkingKnown(false);
     }
@@ -255,7 +249,7 @@ export default function ReadingSessionPage() {
         action:    "DEEP_PROCESSING",
         weight:    5,
         timestamp: new Date().toISOString(),
-      }).catch(() => {});
+      }).catch(() => undefined);
     }
     setModalWordId(tooltip.wordId);
     setTooltip(null);
@@ -271,7 +265,7 @@ export default function ReadingSessionPage() {
         action:    "ACQUISITION_INTENT",
         weight:    2,
         timestamp: new Date().toISOString(),
-      }).catch(() => {});
+      }).catch(() => undefined);
       setCurrentSession({
         ...currentSession,
         tokens: currentSession.tokens.map(t =>
@@ -281,7 +275,6 @@ export default function ReadingSessionPage() {
     }
   }
 
-  // load session on mount
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
@@ -303,11 +296,9 @@ export default function ReadingSessionPage() {
 
   useEffect(() => { return () => { clearSession(); }; }, [clearSession]);
 
-  // derived
   const activeWord: HighlightedWord | null = (() => {
     if (!currentSession || !modalWordId) return null;
 
-    // 1. Try finding in current session highlights
     const hw = currentSession.highlights.find((h) => h.wordId === modalWordId);
     if (hw) {
       const localEntry = findLocalEntry(hw.dutch, hw.wordId);
@@ -323,7 +314,6 @@ export default function ReadingSessionPage() {
       };
     }
 
-    // 2. Try finding in on-the-fly defined entries
     const de = Object.values(definedEntries).find(e => String(e.word_id) === modalWordId);
     if (de) {
       return {
@@ -343,7 +333,6 @@ export default function ReadingSessionPage() {
     return null;
   })();
 
-  // strip highlight from words the user just marked known
   const effectiveTokens = useMemo(() => {
     if (!currentSession) return [];
     return currentSession.tokens.map(token => {
@@ -374,7 +363,6 @@ export default function ReadingSessionPage() {
     try {
       const nextSession = await continueSession(user.id, sessionId);
       setCurrentSession(nextSession);
-      // Wait for React to render the new text, then scroll down
       setTimeout(() => {
         window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
       }, 100);
@@ -534,7 +522,6 @@ export default function ReadingSessionPage() {
         )}
       </div>
 
-      {/* tooltip */}
       <WordTooltip
         lookup={tooltip}
         onClose={() => setTooltip(null)}
@@ -543,7 +530,6 @@ export default function ReadingSessionPage() {
         markingKnown={markingKnown}
       />
 
-      {/* word detail modal */}
       <WordModal
         word={activeWord}
         onClose={() => setModalWordId(null)}

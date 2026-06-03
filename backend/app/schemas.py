@@ -6,14 +6,11 @@ from app.models import ConditionType, IntentTagType, VocabStatus
 LikertScale = Literal[1, 2, 3, 4, 5]
 TLXScale    = Literal[1, 2, 3, 4, 5, 6, 7]
 
-# ── Auth ──────────────────────────────────────
-
 class RegisterRequest(BaseModel):
     email: str
     password: str
     display_name: Optional[str] = None
     study_code: Optional[str] = None
-    # Optional: researcher sets ?start=ADAPTIVE or ?start=BASELINE in URL
     start_condition: Optional[str] = None
 
 class LoginRequest(BaseModel):
@@ -29,39 +26,24 @@ class AuthResponse(BaseModel):
     current_condition: str = "ADAPTIVE"
     has_switched_conditions: bool = False
 
-# ── Survey ────────────────────────────────────
-
 class SurveyResponse(BaseModel):
     session_id: int = Field(alias="sessionId")
 
-    # Section 1 — RQ1
     worth_my_time: LikertScale = Field(alias="worthMyTime")
-
-    # Section 2 — NOT shown to user; defaults supplied by frontend
     appropriate_challenge: LikertScale = Field(alias="appropriateChallenge", default=3)
     comprehension:         LikertScale = Field(alias="comprehension",         default=3)
-
-    # Section 3 — UES-SF (RQ2)
     focused_attention:   LikertScale = Field(alias="focusedAttention")
     reward:              LikertScale = Field(alias="reward")
     perceived_relevance: LikertScale = Field(alias="perceivedRelevance")
-
-    # Section 4 — NASA-TLX  ← difficulty proxy
     mental_effort: TLXScale = Field(alias="mentalEffort")
-
-    # Section 5 — Manipulation check
     perceived_personalization: LikertScale = Field(alias="perceivedPersonalization")
     duration_seconds: Optional[int] = None
 
     model_config = {"populate_by_name": True}
 
-# ── Session generation ────────────────────────
-
 class GenerateSessionRequest(BaseModel):
     user_id: str
     K: float = 0.7
-    # narrative_style is accepted for backward-compatibility but ignored — the backend
-    # always uses the fixed "Informative Educational Semi-Narrative Article" style.
     narrative_style: str = "Informative Educational Semi-Narrative Article"
     word_count_range: str = "150-200"
     condition: ConditionType = ConditionType.ADAPTIVE
@@ -95,7 +77,7 @@ class GenerateSessionResponse(BaseModel):
     topic_used: Optional[str] = None
     blue_words: list[WordInfo]
     yellow_words: list[WordInfo]
-    word_translations: dict[str, str]   # {dutch_word: english_translation}
+    word_translations: dict[str, str]
     metadata: dict[str, Any]
     reading_number: int
     condition: str
@@ -114,8 +96,6 @@ class SessionDetailResponse(BaseModel):
     yellow_words: list[WordInfo]
     word_translations: dict[str, str]
 
-# ── Telemetry ─────────────────────────────────
-
 class LogTelemetryRequest(BaseModel):
     session_id: int
     word_id: int
@@ -125,8 +105,6 @@ class LogTelemetryRequest(BaseModel):
 class LogTelemetryResponse(BaseModel):
     log_id: int
     message: str
-
-# ── Vocabulary ────────────────────────────────
 
 class AddToLearnRequest(BaseModel):
     user_id: str
@@ -143,20 +121,16 @@ class LexiconEntry(BaseModel):
 
     model_config = {"from_attributes": True}
 
-# ── KRS ───────────────────────────────────────
-
 class KRSRunResponse(BaseModel):
     user_id: str
     words_recommended: int
     words_matched_in_lexicon: int
     new_entries_saved: int
 
-# ── Assessment ────────────────────────────────
-
 class AssessmentBatchResponse(BaseModel):
     batch_number: int
     total_batches: int
-    words: list[dict]   # [{word_id, dutch, english, is_pseudo}]
+    words: list[dict]
 
 class AssessmentSubmitRequest(BaseModel):
     user_id: str
@@ -166,8 +140,6 @@ class AssessmentSubmitRequest(BaseModel):
     estimated_level: str
     confidence_score: float
     is_final: bool = False
-
-# ── Onboarding ────────────────────────────────
 
 class OnboardingPersonalInfoRequest(BaseModel):
     user_id: str
@@ -186,8 +158,6 @@ class OnboardingPersonalInfoRequest(BaseModel):
 class OnboardingWordsResponse(BaseModel):
     words: list[LexiconEntry]
 
-# ── Profile update ────────────────────────────
-
 class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     age: Optional[int] = None
@@ -203,12 +173,10 @@ class ProfileUpdateRequest(BaseModel):
     estimated_cefr: Optional[str] = None
     assessed_at: Optional[str] = None
 
-# ── Vocabulary Test ───────────────────────────
-
 class VocabTestSubmitRequest(BaseModel):
     user_id: str
     session_group_id: int
-    answers: list[dict]   # [{word_id, chosen_answer, is_correct}]
+    answers: list[dict]
     score: int
     submitted_at: str
     study_phase: int = 1

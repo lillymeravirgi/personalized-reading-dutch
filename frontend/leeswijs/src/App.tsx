@@ -23,7 +23,6 @@ export default function App() {
     <BrowserRouter>
       <DelayedVocabReminder />
       <Routes>
-        {/* ── Auth / Onboarding (no sidebar) ── */}
         <Route element={<AuthLayout />}>
           <Route path="/login"    element={<LoginPage />} />
           <Route path="/register" element={<Navigate to="/login" replace />} />
@@ -34,7 +33,6 @@ export default function App() {
         <Route path="/thank-you" element={<ThankYouPage />} />
         <Route path="/system-transition" element={<SystemTransitionPage />} />
 
-        {/* ── Main app (with sidebar/nav) ── */}
         <Route element={<MainLayout />}>
           <Route path="/home"                       element={<HomePage />} />
           <Route path="/reading"                    element={<ReadingPage />} />

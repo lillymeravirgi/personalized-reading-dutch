@@ -69,7 +69,7 @@ export default function FlashcardsPage() {
     if (!discoverFetched && user) {
       discoverPrefetch(user.id)
         .then(({ words }) => { setDiscoverCards(words); setDiscoverFetched(true); })
-        .catch(() => {});
+        .catch(() => undefined);
     }
   }
 
@@ -184,17 +184,17 @@ function ReviewMode({
   const progress = totalDailyTask === 0 ? 1 : Math.min(1, totalReviewed / totalDailyTask);
   const barPct   = Math.round(progress * 100);
   const barColor = totalDailyTask === 0 || barPct === 100
-    ? "#10b981"   // green — all done
+    ? "#10b981"
     : barPct <= 10
-    ? "#ef4444"   // red — just started
-    : "#f59e0b";  // amber — in progress
+    ? "#ef4444"
+    : "#f59e0b";
 
   const card = stack[0] ?? null;
 
   async function handleRemember() {
     if (!card) return;
     setSaving(true);
-    await submitFlashcardReview(userId, card.wordId, true, DEFAULT_REVIEW_DAYS).catch(() => {});
+    await submitFlashcardReview(userId, card.wordId, true, DEFAULT_REVIEW_DAYS).catch(() => undefined);
     setSaving(false);
     setReviewed((n) => n + 1);
     setStack((prev) => prev.slice(1));
@@ -205,7 +205,7 @@ function ReviewMode({
   function handleForgot() {
     if (!card) return;
     setFlipped(true);
-    void submitFlashcardReview(userId, card.wordId, false).catch(() => {});
+    void submitFlashcardReview(userId, card.wordId, false).catch(() => undefined);
   }
 
   function continueAfterForgot() {
@@ -375,7 +375,7 @@ function DiscoverMode({
   async function handleKnown() {
     if (!card) return;
     setSaving(true);
-    await markKnownFlashcard(userId, card.wordId).catch(() => {});
+    await markKnownFlashcard(userId, card.wordId).catch(() => undefined);
     setSaving(false);
     onCardConsumed(card.wordId);
   }
@@ -383,7 +383,7 @@ function DiscoverMode({
   async function handleAddToLearn() {
     if (!card) return;
     setSaving(true);
-    await addDiscoveredToLearn(userId, card.wordId, DEFAULT_REVIEW_DAYS).catch(() => {});
+    await addDiscoveredToLearn(userId, card.wordId, DEFAULT_REVIEW_DAYS).catch(() => undefined);
     setSaving(false);
     onCardConsumed(card.wordId);
     onRefreshReview();

@@ -2,13 +2,12 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env from backend/ root (one level up from app/)
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
-    "sqlite:///./dev.db"  # fallback for local dev without MySQL
+    "sqlite:///./dev.db"
 )
 
 FRONTEND_ORIGINS: list[str] = [
@@ -20,34 +19,15 @@ FRONTEND_ORIGINS: list[str] = [
     if origin.strip()
 ]
 
-# No hardcoded fallback — the key must come from .env. Never commit API keys.
 GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
 
-# Default model for local development.
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
-# K-probability default: 70% chance of picking an INTERESTED topic
 DEFAULT_K: float = 0.7
-
-REQUIRE_STUDY_CODE: bool = os.getenv("REQUIRE_STUDY_CODE", "false").lower() in {
-    "1",
-    "true",
-    "yes",
-}
-
-ALLOW_SELF_REGISTRATION: bool = os.getenv("ALLOW_SELF_REGISTRATION", "false").lower() in {
-    "1",
-    "true",
-    "yes",
-}
-
-STUDY_INVITE_CODES: set[str] = {
-    code.strip().upper()
-    for code in os.getenv("STUDY_INVITE_CODES", "").split(",")
-    if code.strip()
-}
 
 try:
     DELAYED_VOCAB_TEST_MINUTES: int = int(os.getenv("DELAYED_VOCAB_TEST_MINUTES", "1440"))
 except ValueError:
     DELAYED_VOCAB_TEST_MINUTES = 1440
+
+EXPORT_TOKEN: str = os.getenv("EXPORT_TOKEN", "")

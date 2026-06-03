@@ -26,11 +26,6 @@ export default function PlainWordTooltip({ lookup, onClose }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [lookup, onClose]);
-
-  useEffect(() => {
-    // idle logic removed
-  }, [lookup?.word]);
-
   return (
     <AnimatePresence>
       {lookup && (

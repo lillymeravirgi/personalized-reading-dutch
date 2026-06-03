@@ -1,4 +1,3 @@
-"""Vocabulary tests for the reading study."""
 import datetime
 import random
 
@@ -37,7 +36,6 @@ def start_vocab_test(
     study_phase: int = 1,
     db: Session = Depends(get_db),
 ):
-    """Generate the vocab test from the user's saved words for this phase."""
     try:
         rows = (
             db.query(OnboardingWords)
@@ -131,10 +129,6 @@ def start_vocab_test(
 
 @router.post("/submit")
 def submit_vocab_test(payload: VocabTestSubmitRequest, db: Session = Depends(get_db)):
-    """
-    Persist per-word results and total score.
-    Phase 1 switches the user into the other reading condition.
-    """
     test_type = payload.test_type.lower()
     if test_type not in {"immediate", "delayed"}:
         raise HTTPException(status_code=400, detail="Unknown vocabulary test type.")
@@ -269,7 +263,6 @@ def delayed_vocab_status(user_id: str, db: Session = Depends(get_db)):
 
 
 def _get_distractors(correct_translation: str, cefr_level: str, db: Session, count: int = 3) -> list[str]:
-    """Pick distractor translations from the lexicon at a similar CEFR level."""
     candidates = (
         db.query(Lexicon)
         .filter(Lexicon.cefr_level == cefr_level, Lexicon.translation != correct_translation)
@@ -283,7 +276,6 @@ def _get_distractors(correct_translation: str, cefr_level: str, db: Session, cou
             distractors.append(c.translation)
         if len(distractors) == count:
             break
-    # Fallback if not enough
     fallback = ["development", "choice", "environment", "question", "system", "example"]
     for fb in fallback:
         if len(distractors) < count and fb != correct_translation and fb not in distractors:

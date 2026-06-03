@@ -1,21 +1,11 @@
-/**
- * WordTooltip — Universal "first contact" popup for ALL words.
- *
- * Plain (white) words: show translation + "I know it" / "Learn it"
- * Blue (new/unknown) words: show translation + "I know it" / "Learn it"
- * Yellow (learning) words: show translation + "Review it"
- *
- * "I know it"    → instant API call, closes tooltip
- * "Learn it" / "Review it" → parent escalates to big WordModal
- */
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BookOpen, Check, Loader2, RotateCcw, X } from "lucide-react";
 import SpeakButton from "../SpeakButton";
 
 export type TooltipWord = {
-  word: string;               // Dutch surface form
-  english: string | null;     // Translation (may still be loading)
+  word: string;
+  english: string | null;
   loading: boolean;
   message?: string;
   anchor: { top: number; left: number; width: number; height: number };
@@ -27,11 +17,8 @@ export type TooltipWord = {
 type Props = {
   lookup: TooltipWord | null;
   onClose: () => void;
-  /** Called when user clicks "Learn it" or "Review it" — triggers big modal */
   onOpenDetail: () => void;
-  /** Called when user clicks "I know it" */
   onMarkKnown: () => void;
-  /** True while the mark-known API call is in flight */
   markingKnown?: boolean;
 };
 
@@ -50,14 +37,12 @@ export default function WordTooltip({
   }, [lookup, onClose]);
 
   const isYellow = lookup?.status === "learning";
-  // The user wants actions for both highlighted AND plain white words
   const showActions = !!lookup && !lookup.loading;
 
   return (
     <AnimatePresence>
       {lookup && (
         <>
-          {/* Backdrop — click anywhere to close */}
           <div className="fixed inset-0 z-40" onClick={onClose} />
 
           <motion.div
@@ -75,7 +60,6 @@ export default function WordTooltip({
             className="z-50 w-72 rounded-xl bg-white shadow-2xl shadow-black/20 border border-black/8 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="flex items-start justify-between gap-2 px-4 pt-3.5 pb-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 mb-0.5">
@@ -102,7 +86,6 @@ export default function WordTooltip({
               </button>
             </div>
 
-            {/* Translation */}
             <div className="px-4 pb-3">
               <p className="text-[10px] font-heading font-semibold uppercase tracking-wide text-text/40 mb-0.5">English</p>
               {lookup.loading ? (
@@ -116,10 +99,8 @@ export default function WordTooltip({
               )}
             </div>
 
-            {/* Action buttons */}
             {showActions && (
               <div className="border-t border-black/6 px-3 py-2.5 flex gap-2">
-                {/* "I know it" always available for blue + plain clicks */}
                 {!isYellow && (
                   <button
                     type="button"
@@ -131,7 +112,6 @@ export default function WordTooltip({
                   </button>
                 )}
 
-                {/* "Learn it" for blue/white, "Review it" for yellow */}
                 <button
                   type="button"
                   onClick={onOpenDetail}

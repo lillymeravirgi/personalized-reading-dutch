@@ -93,7 +93,6 @@ export default function VocabTestPage() {
       return;
     }
 
-    // Submit
     const allAnswers: VocabTestAnswer[] = Object.values(answers).map((a) => ({
       word_id:       a.wordId,
       chosen_answer: a.chosenAnswer,
@@ -195,7 +194,6 @@ export default function VocabTestPage() {
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
       className="mx-auto max-w-2xl"
     >
-      {/* Header */}
       <div className="mb-5 rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -214,7 +212,6 @@ export default function VocabTestPage() {
         </div>
       </div>
 
-      {/* Question card */}
       <div className="rounded-lg border border-black/8 bg-white px-6 py-7 shadow-sm shadow-black/5 space-y-7">
         <AnimatePresence mode="wait">
           <motion.div

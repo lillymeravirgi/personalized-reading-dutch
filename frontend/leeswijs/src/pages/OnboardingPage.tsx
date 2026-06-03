@@ -29,7 +29,6 @@ export default function OnboardingPage() {
 
   const [step, setStep] = useState<Step>(retakeAssessment ? "assessment" : "personal");
 
-  // Step state
   const [age,        setAge]        = useState<number | "">(user?.age ?? "");
   const [city,       setCity]       = useState(user?.city ?? "");
   const [job,        setJob]        = useState(user?.job ?? "");
@@ -78,8 +77,6 @@ export default function OnboardingPage() {
     };
   }, [retakeAssessment, selfCefr, user?.id]);
 
-  // Step handlers
-
   async function handlePersonalNext() {
     if (!user) return;
     await savePersonalInfo(user.id, {
@@ -116,7 +113,6 @@ export default function OnboardingPage() {
     if (!user || selectedInterests.size < 1) return;
     await saveProfile({ ...user, interests: [...selectedInterests] });
     setUser({ ...user, interests: [...selectedInterests] });
-    // Start the first word-check batch.
     setStep("assessment");
     setLoadingBatch(true);
     setAssessmentError(null);
@@ -167,7 +163,6 @@ export default function OnboardingPage() {
       return;
     }
 
-    // Final batch: estimate CEFR and initial word knowledge.
     setCalculatingResults(true);
     const secondPitchWords = words.filter((w) => !w.isPseudo);
     const secondPitchKnown = secondPitchWords.filter((w) => knownIds.has(w.wordId));
@@ -191,8 +186,8 @@ export default function OnboardingPage() {
     );
 
     if (!retakeAssessment) {
-      await selectOnboardingWords(user.id).catch(() => {});
-      await completeOnboarding(user.id).catch(() => {});
+      await selectOnboardingWords(user.id).catch(() => undefined);
+      await completeOnboarding(user.id).catch(() => undefined);
     }
 
     setUser({
@@ -314,7 +309,6 @@ export default function OnboardingPage() {
   );
 }
 
-// Step indicator
 function StepIndicator({ step }: { step: Step }) {
   const steps: { key: Step; label: string }[] = [
     { key: "personal",   label: "About you" },
@@ -351,7 +345,6 @@ function StepIndicator({ step }: { step: Step }) {
   );
 }
 
-// Personal info
 function PersonalStep(props: {
   age: number | ""; setAge: (v: number | "") => void;
   city: string; setCity: (v: string) => void;
@@ -405,7 +398,6 @@ function PersonalStep(props: {
   );
 }
 
-// Interests
 function InterestsStep({ selected, onToggle, onNext }: {
   selected: Set<InterestId>;
   onToggle: (id: InterestId) => void;
@@ -452,7 +444,6 @@ function InterestsStep({ selected, onToggle, onNext }: {
   );
 }
 
-// Word check
 function AssessmentStep({ batch, batchNum, knownIds, loading, error, onToggle, onNext, onRetry }: {
   batch: Awaited<ReturnType<typeof getAssessmentBatch>> | null;
   batchNum: number; knownIds: Set<string>; loading: boolean;
@@ -540,7 +531,6 @@ function assessmentBatchError(res: Awaited<ReturnType<typeof getAssessmentBatch>
     : res.error;
 }
 
-// Helpers
 const inputCls =
   "w-full rounded-xl border border-black/12 bg-black/[0.02] px-3.5 py-2.5 text-sm font-body text-text placeholder:text-text/30 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-colors";
 
