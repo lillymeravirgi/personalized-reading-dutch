@@ -174,12 +174,16 @@ def generate_session(
     else:
         neutral_unused = [t for t in _NEUTRAL_POOL if t not in used_topics]
         selected_topic = random.choice(neutral_unused or _NEUTRAL_POOL)
-        blue_words  = []
-        yellow_words = []
+        blue_entries   = _fetch_blue_words(user_id, db)
+        yellow_entries = _fetch_yellow_words(user_id, db)
+        blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
+        yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
         story_json = _generate_baseline_content(
             cefr_level=user.estimated_cefr or "B1",
             topic=selected_topic,
             word_count_range=word_count_range,
+            blue_words=[w["word"] for w in blue_words],
+            yellow_words=[w["word"] for w in yellow_words],
             recent_titles=recent_titles,
         )
 
@@ -431,8 +435,13 @@ def _generate_baseline_content(
     cefr_level: str,
     topic: str,
     word_count_range: str,
+    blue_words: list[str],
+    yellow_words: list[str],
     recent_titles: list[str] | None = None,
 ) -> dict:
+    blue_str   = ", ".join(blue_words)   if blue_words   else "(none)"
+    yellow_str = ", ".join(yellow_words) if yellow_words else "(none)"
+
     titles_section = ""
     if recent_titles:
         avoid_list = "\n".join(f"- {t}" for t in recent_titles)
@@ -446,17 +455,21 @@ Write a Dutch reading text for a language learner at CEFR level {cefr_level}.
 - Topic: {topic}
 - Style: Informative Educational Semi-Narrative Article
 {titles_section}
+### MANDATORY VOCABULARY INJECTION
+1. BLUE WORDS (New — must appear at least once, wrapped in [[word]]): {blue_str}
+2. YELLOW WORDS (Review — reinforce naturally, wrapped in [[word]]): {yellow_str}
+
 ### INSTRUCTIONS
 Write a cohesive Dutch text of approximately {word_count_range} words.
+- Ensure ALL Blue and Yellow words appear at least once, bracketed as [[word]].
 - Ensure difficulty does not exceed CEFR {cefr_level}.
 - Write for a general adult learner. Do NOT personalise with names, cities, or jobs.
-- Do NOT wrap any words in double brackets.
 
 ### OUTPUT SPECIFICATION
 Return ONLY a valid JSON object:
 {{
   "title": "A Dutch headline",
-  "content": "The full Dutch text",
+  "content": "The full Dutch text with [[target_words]] bracketed",
   "metadata": {{
     "topic_used": "{topic}",
     "cefr_actual": "{cefr_level}",
@@ -466,7 +479,8 @@ Return ONLY a valid JSON object:
   }}
 }}
 """
-    logger.info("[SessionGen] BASELINE generating topic=%s level=%s", topic, cefr_level)
+    logger.info("[SessionGen] BASELINE generating topic=%s level=%s blue=%d yellow=%d",
+                topic, cefr_level, len(blue_words), len(yellow_words))
     last_error = None
     for attempt in range(1, 4):
         try:
