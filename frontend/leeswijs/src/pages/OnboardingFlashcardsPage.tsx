@@ -96,9 +96,7 @@ export default function OnboardingFlashcardsPage() {
     
     if (words.length - nextIndex <= PREFETCH_THRESHOLD && !refilling && user) {
       void refillWords();
-    }
-  }
-
+}}
   async function handleFinish() {
     if (!user) return;
     window.localStorage.setItem(`leeswijs-word-set-ready-${user.id}-${studyPhase}`, "true");
@@ -220,4 +218,5 @@ export default function OnboardingFlashcardsPage() {
       </AnimatePresence>
     </motion.div>
   );
+
 }
