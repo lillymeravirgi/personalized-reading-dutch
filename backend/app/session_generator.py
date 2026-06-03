@@ -177,28 +177,38 @@ def generate_session(
     )
     survey_block = _survey_signal_prompt_block(prev_session)
 
-    # 3. Topic Roll
-    selected_topic = _topic_roll(user_id, K, db)
+    # 3. Topic Roll + Word Injection (ADAPTIVE only)
+    if condition == ConditionType.BASELINE:
+        selected_topic = random.choice(_NEUTRAL_POOL)
+        blue_entries   = _fetch_blue_words(user_id, db)
+        yellow_entries = _fetch_yellow_words(user_id, db)
+        blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
+        yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
+        story_json     = _generate_baseline_content(
+            cefr_level=user.estimated_cefr or "B1",
+            selected_topic=selected_topic,
+            narrative_style=narrative_style,
+            word_count_range=word_count_range,
+            blue_words=[w["word"] for w in blue_words],
+            yellow_words=[w["word"] for w in yellow_words],
+        )
+    else:
+        selected_topic = _topic_roll(user_id, K, db)
+        blue_entries   = _fetch_blue_words(user_id, db)
+        yellow_entries = _fetch_yellow_words(user_id, db)
+        blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
+        yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
+        story_json     = _generate_story_content(
+            user=user,
+            selected_topic=selected_topic,
+            narrative_style=narrative_style,
+            word_count_range=word_count_range,
+            blue_words=[w["word"] for w in blue_words],
+            yellow_words=[w["word"] for w in yellow_words],
+            survey_block=survey_block,
+        )
 
-    # 4. Word Injection
-    blue_entries   = _fetch_blue_words(user_id, db)
-    yellow_entries = _fetch_yellow_words(user_id, db)
-
-    blue_words   = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
-    yellow_words = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
-
-    # 5. Generate reading text
-    story_json = _generate_story_content(
-        user=user,
-        selected_topic=selected_topic,
-        narrative_style=narrative_style,
-        word_count_range=word_count_range,
-        blue_words=[w["word"] for w in blue_words],
-        yellow_words=[w["word"] for w in yellow_words],
-        survey_block=survey_block,
-    )
-
-    # 6. Build word_translations dict (all highlighted words → translation)
+    # 6. Build word_translations dict (ADAPTIVE only — baseline has no injected words)
     word_translations: dict[str, str] = {}
     for w in blue_words + yellow_words:
         word_translations[w["word"].lower()] = w["translation"]
@@ -426,6 +436,88 @@ Return ONLY a valid JSON object with these exact keys:
     ) from last_error
 
 
+def _generate_baseline_content(
+    cefr_level: str,
+    selected_topic: str,
+    narrative_style: str,
+    word_count_range: str,
+    blue_words: list[str],
+    yellow_words: list[str],
+) -> dict:
+    blue_str   = ", ".join(blue_words)   if blue_words   else "(none)"
+    yellow_str = ", ".join(yellow_words) if yellow_words else "(none)"
+
+    prompt = f"""\
+### TASK
+Write a Dutch reading text for a language learner at CEFR level {cefr_level}.
+
+### CONTENT CONFIGURATION
+- Topic: {selected_topic}
+- Narrative Style: {narrative_style}
+- Length: approximately {word_count_range} words
+
+### MANDATORY VOCABULARY INJECTION
+1. BLUE WORDS (New — must appear at least once, wrapped in [[word]]): {blue_str}
+2. YELLOW WORDS (Review — reinforce naturally, wrapped in [[word]]): {yellow_str}
+
+### INSTRUCTIONS
+- Write a coherent, self-contained Dutch text on the given topic.
+- Ensure ALL Blue and Yellow words appear at least once, bracketed as [[word]].
+- Ensure vocabulary and grammar stay within CEFR {cefr_level}.
+- Do not personalise the text — it should be suitable for any learner at this level.
+
+### OUTPUT SPECIFICATION
+Return ONLY a valid JSON object with these exact keys:
+{{
+  "title": "A short Dutch headline",
+  "content": "The full Dutch text with [[target_words]] bracketed",
+  "metadata": {{
+    "topic_used": "{selected_topic}",
+    "cefr_actual": "{cefr_level}",
+    "narrative_style": "{narrative_style}",
+    "injected_blue_count": 0,
+    "injected_yellow_count": 0
+  }}
+}}
+"""
+
+    logger.info(
+        "[SessionGen] generating BASELINE text topic=%s level=%s blue=%d yellow=%d",
+        selected_topic, cefr_level, len(blue_words), len(yellow_words),
+    )
+
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            response = _client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config={"system_instruction": (
+                    "You are an expert Dutch language teacher. "
+                    "Write clear, natural Dutch reading texts appropriate for the specified CEFR level."
+                )},
+            )
+            text = response.text.strip()
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+            result = json.loads(text)
+            logger.info("[SessionGen] baseline title=%r", result.get("title"))
+            return result
+        except Exception as e:
+            last_error = e
+            if _is_rate_limit_error(e):
+                raise GenerationRateLimitError(
+                    "The text generator is temporarily rate limited. Please wait a moment and try again."
+                ) from e
+            logger.warning(f"[SessionGen] Baseline attempt {attempt} failed: {e}")
+            if attempt < 3:
+                time.sleep(2)
+
+    raise GenerationFailedError(
+        "The text generator could not create a reading right now. Please try again."
+    ) from last_error
+
+
 # ─────────────────────────────────────────────
 #  Continuation generator (Continue button)
 # ─────────────────────────────────────────────
@@ -446,24 +538,69 @@ def generate_continuation(
 
     reading_number = _next_reading_number(user_id, db)
 
-    blue_entries   = _fetch_blue_words(user_id, db)
-    yellow_entries = _fetch_yellow_words(user_id, db)
-    blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
-    yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
+    prev_content = (previous_session.content or "")[:800]
+    prev_topic   = previous_session.topic_used or "Dutch everyday life"
+    cefr_level   = user.estimated_cefr or "B1"
 
-    word_translations: dict[str, str] = {}
-    for w in blue_words + yellow_words:
-        word_translations[w["word"].lower()] = w["translation"]
+    if condition == ConditionType.BASELINE:
+        blue_entries   = _fetch_blue_words(user_id, db)
+        yellow_entries = _fetch_yellow_words(user_id, db)
+        blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
+        yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
 
-    blue_str   = ", ".join(w["word"] for w in blue_words)   or "(none)"
-    yellow_str = ", ".join(w["word"] for w in yellow_words) or "(none)"
+        word_translations = {}
+        for w in blue_words + yellow_words:
+            word_translations[w["word"].lower()] = w["translation"]
 
-    # Trim previous content for the prompt (first 800 chars is enough context)
-    prev_content  = (previous_session.content or "")[:800]
-    prev_topic    = previous_session.topic_used or "Dutch everyday life"
-    cefr_level    = user.estimated_cefr or "B1"
+        blue_str   = ", ".join(w["word"] for w in blue_words)   or "(none)"
+        yellow_str = ", ".join(w["word"] for w in yellow_words) or "(none)"
 
-    continuation_prompt = f"""\
+        continuation_prompt = f"""\
+### CONTINUATION TASK
+Continue the Dutch text below for a learner at CEFR {cefr_level}.
+
+### PREVIOUS EXCERPT (do NOT repeat this)
+\"\"\"{prev_content}...\"\"\"
+
+### VOCABULARY TO WEAVE IN
+1. NEW WORDS (wrap in [[word]]): {blue_str}
+2. REVIEW WORDS (wrap in [[word]]): {yellow_str}
+
+### INSTRUCTIONS
+- Continue the narrative naturally for approximately 180–220 Dutch words.
+- Write EXACTLY two (2) paragraphs.
+- Maintain the same characters, setting and tone as the excerpt above.
+- Wrap every Blue/Yellow word in [[double brackets]] when it appears.
+- Ensure the Dutch is natural and grammatically correct for CEFR {cefr_level}.
+
+### OUTPUT SPECIFICATION
+Return ONLY valid JSON:
+{{
+  "title": "A short continuation headline in Dutch",
+  "content": "The continuation text with [[target_words]] bracketed",
+  "metadata": {{
+    "topic_used": "{prev_topic}",
+    "cefr_actual": "{cefr_level}",
+    "narrative_style": "Continuation",
+    "injected_blue_count": 0,
+    "injected_yellow_count": 0
+  }}
+}}
+"""
+    else:
+        blue_entries   = _fetch_blue_words(user_id, db)
+        yellow_entries = _fetch_yellow_words(user_id, db)
+        blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
+        yellow_words   = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
+
+        word_translations = {}
+        for w in blue_words + yellow_words:
+            word_translations[w["word"].lower()] = w["translation"]
+
+        blue_str   = ", ".join(w["word"] for w in blue_words)   or "(none)"
+        yellow_str = ", ".join(w["word"] for w in yellow_words) or "(none)"
+
+        continuation_prompt = f"""\
 ### CONTINUATION TASK
 You are continuing the Dutch story that was started below. The learner is at CEFR {cefr_level}.
 
