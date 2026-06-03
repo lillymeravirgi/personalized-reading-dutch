@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Check, BookOpen } from "lucide-react";
+import { ArrowRight, Check, BookOpen, Eye } from "lucide-react";
 import { getOnboardingWords, addToLearnList, completeOnboarding, markKnown, selectOnboardingWords } from "../services/api";
 import { useStore } from "../store";
 import type { LexiconEntry } from "../types";
@@ -21,13 +21,14 @@ export default function OnboardingFlashcardsPage() {
   const firstReading = (studyPhase - 1) * READINGS_PER_PHASE + 1;
   const readingRange = `${firstReading}-${firstReading + READINGS_PER_PHASE - 1}`;
 
-  const [words,      setWords]      = useState<LexiconEntry[]>([]);
-  const [index,      setIndex]      = useState(0);
-  const [done,       setDone]       = useState(false);
-  const [loading,    setLoading]    = useState(true);
-  const [saving,     setSaving]     = useState(false);
+  const [words,        setWords]        = useState<LexiconEntry[]>([]);
+  const [index,        setIndex]        = useState(0);
+  const [done,         setDone]         = useState(false);
+  const [loading,      setLoading]      = useState(true);
+  const [saving,       setSaving]       = useState(false);
   const [learningCount, setLearningCount] = useState(0);
-  const [refilling,  setRefilling]  = useState(false);
+  const [refilling,    setRefilling]    = useState(false);
+  const [showMeaning,  setShowMeaning]  = useState(false);
 
   function mergeUnique(current: LexiconEntry[], incoming: LexiconEntry[]) {
     const seen = new Set(current.map((w) => w.word_id));
@@ -93,6 +94,7 @@ export default function OnboardingFlashcardsPage() {
     
     const nextIndex = index + 1;
     setIndex(nextIndex);
+    setShowMeaning(false);
     
     if (words.length - nextIndex <= PREFETCH_THRESHOLD && !refilling && user) {
       void refillWords();
@@ -197,6 +199,38 @@ export default function OnboardingFlashcardsPage() {
               )}
             </div>
           </div>
+
+          <AnimatePresence>
+            {showMeaning && word && (
+              <motion.div
+                key="meaning"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden mb-6"
+              >
+                <div className="rounded-xl bg-primary/6 border border-primary/15 px-4 py-3 text-center">
+                  <p className="text-xs font-body font-semibold text-primary/60 uppercase tracking-widest mb-1">Meaning</p>
+                  <p className="font-heading text-lg font-semibold text-text">{word.translation}</p>
+                  {word.examples && word.examples.length > 0 && (
+                    <p className="mt-2 text-xs font-body text-text/50 italic">
+                      "{word.examples[0].dutch}"
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!showMeaning && (
+            <button
+              type="button"
+              onClick={() => setShowMeaning(true)}
+              className="w-full mb-3 flex items-center justify-center gap-1.5 text-xs font-body text-text/40 hover:text-text/60 transition-colors"
+            >
+              <Eye size={13} /> Show meaning
+            </button>
+          )}
 
           <div className="flex gap-3 mt-2">
             <button
