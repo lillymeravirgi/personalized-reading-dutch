@@ -79,12 +79,7 @@ export default function DelayedVocabReminder() {
 }
 
 function shouldSkipReminder(pathname: string): boolean {
-  return pathname.startsWith("/vocab-test")
-    || pathname.startsWith("/login")
-    || pathname.startsWith("/register")
-    || pathname.startsWith("/onboarding")
-    || pathname.startsWith("/read/")
-    || pathname.startsWith("/survey/");
+  return pathname !== "/home";
 }
 
 function isDelayedCheckSnoozed(key: string): boolean {
