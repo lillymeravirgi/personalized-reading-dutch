@@ -59,16 +59,10 @@ class User(Base):
     mother_language:   Mapped[Optional[str]]  = mapped_column(String(100), nullable=True)
     other_languages:   Mapped[Optional[str]]  = mapped_column(String(255), nullable=True)
     purpose:           Mapped[Optional[str]]  = mapped_column(String(100), nullable=True)
-
     current_condition:       Mapped[ConditionType] = mapped_column(
         SAEnum(ConditionType), nullable=False, default=ConditionType.ADAPTIVE
     )
     has_switched_conditions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
-    location:          Mapped[Optional[str]]  = mapped_column(String(255), nullable=True)
-    education_level:   Mapped[Optional[str]]  = mapped_column(String(100), nullable=True)
-    learning_purpose:  Mapped[Optional[str]]  = mapped_column(String(255), nullable=True)
-    native_language:   Mapped[Optional[str]]  = mapped_column(String(100), nullable=True)
 
     estimated_cefr:    Mapped[Optional[str]]  = mapped_column(String(10),  nullable=True)
 

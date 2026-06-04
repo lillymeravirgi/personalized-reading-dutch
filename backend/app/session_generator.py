@@ -385,11 +385,13 @@ def _generate_story_content(
 
     recent_str = ", ".join(recent_topics) if recent_topics else "(none)"
 
-    purpose = user.purpose or user.learning_purpose or "general Dutch learning"
+    purpose = user.purpose or getattr(user, "learning_purpose", None) or "general Dutch learning"
     cefr = user.estimated_cefr or "B1"
-    city = user.city or user.location or ""
+    city = user.city or getattr(user, "location", None) or ""
     job = user.job or ""
-    mother_l = user.mother_language or user.native_language or "not specified"
+    academic = user.academic_background or "not specified"
+    languages = user.other_languages or "none specified"
+    mother_l = user.mother_language or getattr(user, "native_language", None) or "not specified"
 
     prompt = f"""\
 ### GENERATION TASK
@@ -400,6 +402,8 @@ NOT a generic health-tip listicle. NOT a personal diary. NOT vague Wikipedia pro
 ### LEARNER PROFILE (pick a concrete sub-angle that resonates — do NOT write about the learner)
 - CEFR Level: {cefr}
 - Mother Language: {mother_l}
+- Other Languages: {languages}
+- Academic Background: {academic}
 - Learning Purpose: {purpose}
 - Location: {city or "(not specified)"}
 - Occupation: {job or "(not specified)"}
