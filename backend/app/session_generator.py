@@ -193,43 +193,19 @@ def generate_session(
     )
     survey_block = _survey_signal_prompt_block(prev_session)
 
-    # 3. Collect recently used topics for diversity enforcement
-    recent_topics = [
-        s.topic_used for s in
+    recent_sessions = (
         db.query(ReadingSession)
         .filter(ReadingSession.user_id == user_id)
         .order_by(ReadingSession.session_id.desc())
         .limit(5)
         .all()
-        if s.topic_used
-    ]
-
-    # 4. Topic Roll — avoid recently used topics
-    selected_topic = _topic_roll(user_id, K, db, exclude_topics=set(recent_topics))
-
-    # 5. Word Injection
-    blue_entries   = _fetch_blue_words(user_id, db)
-    yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
-
-    blue_words   = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
-    yellow_words = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
-
-    # 6. Generate reading text
-    story_json = _generate_story_content(
-        user=user,
-        selected_topic=selected_topic,
-        word_count_range=word_count_range,
-        blue_words=[w["word"] for w in blue_words],
-        yellow_words=[w["word"] for w in yellow_words],
-        survey_block=survey_block,
-        recent_topics=recent_topics,
     )
-<<<<<<< HEAD
-    used_topics = {s.topic_used for s in recent_sessions if s.topic_used}
+    recent_topics = [s.topic_used for s in recent_sessions if s.topic_used]
     recent_titles = [s.title for s in recent_sessions if s.title]
+    used_topics = set(recent_topics)
 
     if condition == ConditionType.ADAPTIVE:
-        selected_topic = _topic_roll(user_id, K, db, used_topics=used_topics)
+        selected_topic = _topic_roll(user_id, K, db, exclude_topics=used_topics)
         blue_entries   = _fetch_blue_words(user_id, db)
         yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
         blue_words     = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
@@ -237,12 +213,11 @@ def generate_session(
         story_json = _generate_story_content(
             user=user,
             selected_topic=selected_topic,
-            narrative_style=narrative_style,
             word_count_range=word_count_range,
             blue_words=[w["word"] for w in blue_words],
             yellow_words=[w["word"] for w in yellow_words],
             survey_block=survey_block,
-            recent_titles=recent_titles,
+            recent_topics=recent_topics,
         )
     else:
         neutral_unused = [t for t in _NEUTRAL_POOL if t not in used_topics]
@@ -259,8 +234,6 @@ def generate_session(
             yellow_words=[w["word"] for w in yellow_words],
             recent_titles=recent_titles,
         )
-=======
->>>>>>> 9a9b231 ( Fixing the adaptive prompt again)
 
     # 6. Build word_translations dict (all highlighted words → translation)
     word_translations: dict[str, str] = {}
@@ -389,7 +362,19 @@ def _fetch_blue_words(user_id: str, db: Session) -> list[RecommendedVocabulary]:
 
 
 def _fetch_yellow_words(user_id: str, study_phase: int, db: Session) -> list[UserVocabularyVector]:
-<<<<<<< HEAD
+    phase_word_ids = {
+        row.word_id
+        for row in db.query(OnboardingWords)
+        .filter(
+            OnboardingWords.user_id == user_id,
+            OnboardingWords.study_phase == study_phase,
+        )
+        .all()
+    }
+
+    if not phase_word_ids:
+        return []
+
     phase_learning = (
         db.query(UserVocabularyVector)
         .join(Lexicon)
@@ -402,6 +387,7 @@ def _fetch_yellow_words(user_id: str, study_phase: int, db: Session) -> list[Use
             UserVocabularyVector.user_id == user_id,
             UserVocabularyVector.status == VocabStatus.LEARNING,
             OnboardingWords.study_phase == study_phase,
+            UserVocabularyVector.word_id.in_(phase_word_ids),
         )
         .order_by(OnboardingWords.id.asc())
         .all()
@@ -409,39 +395,7 @@ def _fetch_yellow_words(user_id: str, study_phase: int, db: Session) -> list[Use
 
     if phase_learning:
         return phase_learning[:5]
-=======
-    """
-    Fetch active-learning (yellow) words for the current study phase only.
-    Words assigned in a different phase are excluded so there is no cross-phase
-    contamination in the reading text highlights.
-    """
-    # Only consider words that are in OnboardingWords for this specific study_phase
-    phase_word_ids = {
-        row.word_id
-        for row in db.query(OnboardingWords)
-        .filter(
-            OnboardingWords.user_id    == user_id,
-            OnboardingWords.study_phase == study_phase,
-        )
-        .all()
-    }
-
-    if not phase_word_ids:
-        return []
->>>>>>> 9a9b231 ( Fixing the adaptive prompt again)
-
-    all_learning = (
-        db.query(UserVocabularyVector)
-        .filter(
-            UserVocabularyVector.user_id == user_id,
-            UserVocabularyVector.status  == VocabStatus.LEARNING,
-            UserVocabularyVector.word_id.in_(phase_word_ids),
-        )
-        .join(Lexicon)
-        .all()
-    )
-    k = max(1, min(5, math.ceil(len(all_learning) * 0.05))) if all_learning else 0
-    return random.sample(all_learning, min(k, len(all_learning)))
+    return []
 
 
 def _lex_to_dict(entry: Lexicon) -> dict:
@@ -764,13 +718,8 @@ def generate_continuation(
     if not user:
         raise ValueError(f"User '{user_id}' not found.")
 
-<<<<<<< HEAD
     reading_number = previous_session.reading_number
     study_phase = previous_session.study_phase
-=======
-    study_phase    = 2 if user.has_switched_conditions else 1
-    reading_number = _next_reading_number(user_id, study_phase, db)
->>>>>>> 9a9b231 ( Fixing the adaptive prompt again)
 
     blue_entries   = _fetch_blue_words(user_id, db)
     yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
