@@ -37,10 +37,7 @@ export default function HomePage() {
 
   const [stats,   setStats]   = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showReadingIntro, setShowReadingIntro] = useState(() => {
-    if (!user?.id) return false;
-    return window.localStorage.getItem(readingIntroKey(user.id)) !== "true";
-  });
+  const [showReadingIntro, setShowReadingIntro] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -56,8 +53,12 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!user?.id) return;
-    setShowReadingIntro(window.localStorage.getItem(readingIntroKey(user.id)) !== "true");
-  }, [user?.id]);
+    if (loading) return;
+
+    const hasStartedReading = (stats?.readings_completed ?? 0) > 0;
+    const seenThisSession = window.sessionStorage.getItem(readingIntroKey(user.id)) === "true";
+    setShowReadingIntro(!hasStartedReading && !seenThisSession);
+  }, [user?.id, loading, stats?.readings_completed]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("leeswijs-reading-intro-visibility", {
@@ -76,7 +77,7 @@ export default function HomePage() {
 
   function closeReadingIntro() {
     if (!user) return;
-    window.localStorage.setItem(readingIntroKey(user.id), "true");
+    window.sessionStorage.setItem(readingIntroKey(user.id), "true");
     setShowReadingIntro(false);
   }
 
