@@ -15,6 +15,7 @@ from app.config import EXPORT_TOKEN
 from app.database import get_db
 from app.models import (
     AssessmentBatch,
+    ConditionType,
     InteractionTelemetry,
     Lexicon,
     OnboardingWords,
@@ -28,6 +29,15 @@ from app.models import (
 )
 
 router = APIRouter(prefix="/experiment", tags=["Experiment"])
+
+TEAM_ACCOUNTS = (
+    ("KIM", "Kim", ConditionType.ADAPTIVE),
+    ("KIKI", "Kiki", ConditionType.BASELINE),
+    ("JULIAN", "Julian", ConditionType.ADAPTIVE),
+    ("TJ", "TJ", ConditionType.BASELINE),
+    ("EVIE", "Evie", ConditionType.ADAPTIVE),
+    ("JY", "Jy", ConditionType.BASELINE),
+)
 
 
 EXPORT_TABLES = (
@@ -299,6 +309,76 @@ def build_export_archive(db: Session) -> bytes:
                 _csv_for_model(db, model, excluded_fields),
             )
     return archive.getvalue()
+
+
+def _reset_team_user(db: Session, user: User, condition: ConditionType, display_name: str) -> None:
+    session_ids = [
+        row.session_id
+        for row in db.query(ReadingSession.session_id)
+        .filter(ReadingSession.user_id == user.user_id)
+        .all()
+    ]
+
+    if session_ids:
+        db.query(SurveyResult).filter(SurveyResult.session_id.in_(session_ids)).delete(synchronize_session=False)
+        db.query(InteractionTelemetry).filter(InteractionTelemetry.session_id.in_(session_ids)).delete(synchronize_session=False)
+        db.query(ReadingSession).filter(ReadingSession.user_id == user.user_id).delete(synchronize_session=False)
+
+    db.query(VocabularyTestResult).filter(VocabularyTestResult.user_id == user.user_id).delete(synchronize_session=False)
+    db.query(OnboardingWords).filter(OnboardingWords.user_id == user.user_id).delete(synchronize_session=False)
+    db.query(RecommendedVocabulary).filter(RecommendedVocabulary.user_id == user.user_id).delete(synchronize_session=False)
+    db.query(UserVocabularyVector).filter(UserVocabularyVector.user_id == user.user_id).delete(synchronize_session=False)
+    db.query(AssessmentBatch).filter(AssessmentBatch.user_id == user.user_id).delete(synchronize_session=False)
+    db.query(UserTopic).filter(UserTopic.user_id == user.user_id).delete(synchronize_session=False)
+
+    user.display_name = display_name
+    user.estimated_cefr = "B1"
+    user.onboarding_completed = False
+    user.current_condition = condition
+    user.has_switched_conditions = False
+    user.age = None
+    user.city = None
+    user.gender = None
+    user.job = None
+    user.academic_background = None
+    user.mother_language = None
+    user.other_languages = None
+    user.purpose = None
+
+
+@router.post("/reset-team-accounts")
+def reset_team_accounts(
+    x_export_token: str | None = Header(default=None, alias="X-Export-Token"),
+    db: Session = Depends(get_db),
+):
+    verify_export_token(x_export_token, EXPORT_TOKEN)
+
+    reset_ids: list[str] = []
+    missing_ids: list[str] = []
+
+    for study_id, display_name, condition in TEAM_ACCOUNTS:
+        user = (
+            db.query(User)
+            .filter(
+                (User.study_code == study_id)
+                | (User.username == study_id)
+                | (User.user_id == f"team_{study_id.lower()}")
+            )
+            .first()
+        )
+        if not user:
+            missing_ids.append(study_id)
+            continue
+        _reset_team_user(db, user, condition, display_name)
+        reset_ids.append(study_id)
+
+    db.commit()
+    return {
+        "status": "ok",
+        "reset_count": len(reset_ids),
+        "reset_ids": reset_ids,
+        "missing_ids": missing_ids,
+    }
 
 
 @router.get("/export")
