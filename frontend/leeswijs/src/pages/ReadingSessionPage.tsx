@@ -67,9 +67,6 @@ export default function ReadingSessionPage() {
 
   const [modalWordId, setModalWordId] = useState<string | null>(null);
   const [definedEntries, setDefinedEntries] = useState<Record<string, LexiconEntry>>({});
-  const [showReadingGuide, setShowReadingGuide] = useState(
-    () => window.localStorage.getItem("leeswijs-reading-guide-seen") !== "true",
-  );
 
   const { elapsedMs } = useReadingTimer(!!currentSession && !error);
   const elapsedRef = useRef(0);
@@ -351,11 +348,6 @@ export default function ReadingSessionPage() {
     navigate(`/survey/${sessionId}?duration=${dur}`);
   }
 
-  function dismissReadingGuide() {
-    window.localStorage.setItem("leeswijs-reading-guide-seen", "true");
-    setShowReadingGuide(false);
-  }
-
   async function handleContinue() {
     if (!sessionId || !user || continuing) return;
     setContinuing(true);
@@ -449,24 +441,6 @@ export default function ReadingSessionPage() {
           Learning words
         </span>
       </div>
-
-      {showReadingGuide && (
-        <div className="mb-4 rounded-lg border border-primary/15 bg-primary/[0.035] px-3.5 py-2.5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <p className="text-xs font-body leading-5 text-text/60">
-              Blue words are new target words. Yellow words are words you are reviewing.
-              Select any word for help, then finish the reading when you are ready.
-            </p>
-            <button
-              type="button"
-              onClick={dismissReadingGuide}
-              className="self-start rounded-lg border border-primary/20 bg-white px-2.5 py-1 text-xs font-heading font-semibold text-primary hover:bg-primary/[0.06]"
-            >
-              Understood
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="mb-6 rounded-lg border border-black/8 bg-white px-6 py-7 shadow-sm shadow-black/5 sm:px-8 sm:py-9">
         <HighlightedText
