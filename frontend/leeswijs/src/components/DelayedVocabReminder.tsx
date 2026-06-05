@@ -3,20 +3,31 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ClipboardCheck } from "lucide-react";
 
-import { getDelayedVocabTestStatus, type DelayedVocabTestStatus } from "../services/api";
+import { getDelayedVocabTestStatus, getVocabTestProgress, type DelayedVocabTestStatus } from "../services/api";
 import { useStore } from "../store";
 
 const DELAYED_CHECK_POLL_MS = 10_000;
 const DELAYED_CHECK_SNOOZE_MS = 60 * 60 * 1000;
+const FINAL_STUDY_PHASE = 2;
 
 export default function DelayedVocabReminder() {
   const user = useStore((s) => s.user);
   const location = useLocation();
   const navigate = useNavigate();
   const [delayedCheck, setDelayedCheck] = useState<DelayedVocabTestStatus | null>(null);
+  const [homeIntroOpen, setHomeIntroOpen] = useState(false);
 
   useEffect(() => {
-    if (!user?.id || !user.onboarding_completed || shouldSkipReminder(location.pathname)) {
+    function onIntroVisibility(event: Event) {
+      const detail = (event as CustomEvent<{ open?: boolean }>).detail;
+      setHomeIntroOpen(Boolean(detail?.open));
+    }
+    window.addEventListener("leeswijs-reading-intro-visibility", onIntroVisibility);
+    return () => window.removeEventListener("leeswijs-reading-intro-visibility", onIntroVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id || !user.onboarding_completed || homeIntroOpen || shouldSkipReminder(location.pathname)) {
       setDelayedCheck(null);
       return;
     }
@@ -26,14 +37,18 @@ export default function DelayedVocabReminder() {
 
     async function checkDelayedTest() {
       try {
-        const status = await getDelayedVocabTestStatus(userId);
+        const [status, progress] = await Promise.all([
+          getDelayedVocabTestStatus(userId),
+          getVocabTestProgress(userId),
+        ]);
         if (cancelled) return;
         const key = status.sessionGroupId && status.studyPhase
           ? `${status.sessionGroupId}-${status.studyPhase}`
           : null;
-        if (status.due && key && !isDelayedCheckSnoozed(key)) {
+        const readingFlowComplete = progress.immediateCompleted.includes(FINAL_STUDY_PHASE);
+        if (status.due && key && readingFlowComplete && !isDelayedCheckSnoozed(key)) {
           setDelayedCheck(status);
-        } else if (!status.due) {
+        } else {
           setDelayedCheck(null);
         }
       } catch {
@@ -50,7 +65,7 @@ export default function DelayedVocabReminder() {
       window.clearInterval(timer);
       window.removeEventListener("focus", checkDelayedTest);
     };
-  }, [user?.id, user?.onboarding_completed, location.pathname]);
+  }, [user?.id, user?.onboarding_completed, location.pathname, homeIntroOpen]);
 
   function startDelayedCheck() {
     if (!delayedCheck?.sessionGroupId || !delayedCheck.studyPhase) return;
@@ -79,7 +94,7 @@ export default function DelayedVocabReminder() {
 }
 
 function shouldSkipReminder(pathname: string): boolean {
-  return pathname !== "/home";
+  return !["/home", "/flashcards", "/profile", "/settings"].some((path) => pathname.startsWith(path));
 }
 
 function isDelayedCheckSnoozed(key: string): boolean {

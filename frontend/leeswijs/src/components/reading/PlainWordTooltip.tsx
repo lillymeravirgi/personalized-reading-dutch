@@ -26,6 +26,8 @@ export default function PlainWordTooltip({ lookup, onClose }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [lookup, onClose]);
+  const tooltipPosition = lookup ? tooltipStyle(lookup.anchor, 150) : undefined;
+
   return (
     <AnimatePresence>
       {lookup && (
@@ -42,11 +44,11 @@ export default function PlainWordTooltip({ lookup, onClose }: Props) {
             transition={{ duration: 0.15 }}
             style={{
               position: "fixed",
-              top: lookup.anchor.top + lookup.anchor.height + 8,
-              left: Math.max(12, lookup.anchor.left - 8),
+              ...tooltipPosition,
               maxWidth: "calc(100vw - 24px)",
+              maxHeight: "calc(100vh - 24px)",
             }}
-            className="z-50 w-72 rounded-xl bg-white shadow-2xl shadow-black/20 border border-black/8 overflow-hidden"
+            className="z-50 w-72 overflow-y-auto rounded-xl bg-white shadow-2xl shadow-black/20 border border-black/8"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-2">
@@ -103,4 +105,19 @@ export default function PlainWordTooltip({ lookup, onClose }: Props) {
       )}
     </AnimatePresence>
   );
+}
+
+function tooltipStyle(
+  anchor: PlainLookup["anchor"],
+  estimatedHeight: number,
+): { top: number; left: number } {
+  const margin = 12;
+  const width = Math.min(288, window.innerWidth - margin * 2);
+  const below = anchor.top + anchor.height + 8;
+  const above = anchor.top - estimatedHeight - 8;
+  const top = below + estimatedHeight <= window.innerHeight - margin
+    ? below
+    : Math.max(margin, above);
+  const left = Math.max(margin, Math.min(anchor.left - 8, window.innerWidth - width - margin));
+  return { top, left };
 }

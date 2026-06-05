@@ -60,7 +60,7 @@ Return ONLY a valid JSON object with this exact structure:
         text = re.sub(r"\s*```$", "", text)
         data = json.loads(text)
     except Exception as e:
-        logger.error(f"[Lexicon/define] Gemini failed for '{clean_word}': {e}")
+        logger.error("[Lexicon/define] Gemini failed for %r: %s", clean_word, e)
         raise HTTPException(status_code=502, detail=f"Could not generate definition: {e}")
 
     new_entry = Lexicon(
@@ -81,5 +81,5 @@ Return ONLY a valid JSON object with this exact structure:
             return LexiconEntry.model_validate(existing)
         raise
 
-    logger.info(f"[Lexicon/define] New word added: '{clean_word}' ({new_entry.cefr_level})")
+    logger.info("[Lexicon/define] New word added: %r (%s)", clean_word, new_entry.cefr_level)
     return LexiconEntry.model_validate(new_entry)

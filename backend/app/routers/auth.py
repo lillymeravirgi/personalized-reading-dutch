@@ -44,7 +44,6 @@ def _user_to_auth_response(user: User) -> AuthResponse:
         display_name=user.display_name,
         estimated_cefr=user.estimated_cefr,
         onboarding_completed=user.onboarding_completed,
-        current_condition=user.current_condition.value,
         has_switched_conditions=user.has_switched_conditions,
     )
 

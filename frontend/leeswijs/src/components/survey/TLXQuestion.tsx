@@ -32,7 +32,7 @@ export default function TLXQuestion({
               whileTap={{ scale: 0.9 }}
               whileHover={!selected ? { y: -1 } : {}}
               className={[
-                "flex-1 h-10 rounded-xl border text-sm font-heading font-semibold transition-colors",
+                "min-h-11 flex-1 rounded-xl border text-sm font-heading font-semibold transition-colors",
                 selected
                   ? "bg-secondary text-white border-secondary"
                   : "bg-white text-text/70 border-black/12 hover:border-black/25 hover:bg-black/[0.02]",

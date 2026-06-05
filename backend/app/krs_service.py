@@ -22,6 +22,29 @@ RESERVOIR_TARGET = 50
 GATEKEEPER_FLOOR = 25
 LOW_WATERMARK = 25
 
+FUNCTION_WORDS = {
+    "de", "het", "een", "en", "maar", "of", "want", "dus", "omdat",
+    "ik", "jij", "je", "hij", "zij", "ze", "wij", "we", "u", "jullie",
+    "mij", "me", "jou", "hem", "haar", "ons", "hun", "hen",
+    "dit", "dat", "deze", "die", "wie", "wat", "waar", "wanneer",
+    "in", "op", "aan", "van", "voor", "met", "naar", "uit", "bij",
+    "door", "over", "onder", "boven", "tussen", "achter", "naast",
+    "niet", "geen", "wel", "al", "nog", "ook", "er", "hier", "daar",
+    "is", "zijn", "was", "waren", "ben", "bent", "worden", "hebben",
+    "heb", "hebt", "heeft", "had", "hadden",
+}
+
+
+def _is_target_candidate(lex: Lexicon) -> bool:
+    word = (lex.word or "").strip().lower()
+    if not word or word in FUNCTION_WORDS:
+        return False
+    if word.startswith("'") or any(char.isdigit() for char in word):
+        return False
+    if len(word) < 3 or len(word) > 36:
+        return False
+    return True
+
 def run_krs(user_id: str, db: Session, is_refill: bool = False) -> dict:
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -158,7 +181,7 @@ def _call_gemini_krs(
         if isinstance(words, list):
             return [w.lower().strip() for w in words if isinstance(w, str)]
     except Exception as e:
-        logger.error(f"[KRS] Gemini call failed: {e}")
+        logger.error("[KRS] Gemini call failed: %s", e)
 
     return []
 
@@ -221,7 +244,10 @@ def run_baseline_krs(user_id: str, db: Session, target_count: int = 10) -> list[
         .filter(Lexicon.cefr_level == cefr)
         .all()
     )
-    candidates = [lex for lex in pool if lex.word_id not in exclude_ids]
+    candidates = [
+        lex for lex in pool
+        if lex.word_id not in exclude_ids and _is_target_candidate(lex)
+    ]
 
     if len(candidates) < target_count:
         cefr_order = ["A1", "A2", "B1", "B2", "C1", "C2"]
@@ -233,7 +259,10 @@ def run_baseline_krs(user_id: str, db: Session, target_count: int = 10) -> list[
             adjacent.append(cefr_order[idx + 1])
         for lvl in adjacent:
             extra = db.query(Lexicon).filter(Lexicon.cefr_level == lvl).all()
-            candidates += [lex for lex in extra if lex.word_id not in exclude_ids]
+            candidates += [
+                lex for lex in extra
+                if lex.word_id not in exclude_ids and _is_target_candidate(lex)
+            ]
 
     _random.shuffle(candidates)
     selected = candidates[:target_count]

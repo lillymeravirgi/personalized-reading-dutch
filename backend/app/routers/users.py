@@ -34,7 +34,6 @@ def _display_user(user: User, db: Session) -> dict:
         "mother_language":      user.mother_language,
         "other_languages":      user.other_languages,
         "purpose":              user.purpose,
-        "preferred_styles":     user.preferred_styles or [],
         "assessedAt":           None,
         "createdAt":            user.created_at.isoformat() if user.created_at else None,
     }
@@ -86,7 +85,6 @@ def update_profile(
     if payload.mother_language     is not None: user.mother_language     = payload.mother_language
     if payload.other_languages     is not None: user.other_languages     = payload.other_languages
     if payload.purpose             is not None: user.purpose             = payload.purpose
-    if payload.preferred_styles    is not None: user.preferred_styles    = payload.preferred_styles
     if payload.estimated_cefr      is not None: user.estimated_cefr      = payload.estimated_cefr
 
     if payload.interests is not None:

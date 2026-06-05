@@ -34,6 +34,7 @@ export default function OnboardingPage() {
   const [job,        setJob]        = useState(user?.job ?? "");
   const [academic,   setAcademic]   = useState(user?.academic_background ?? "");
   const [motherLang, setMotherLang] = useState(user?.mother_language ?? "");
+  const [otherLangs, setOtherLangs] = useState(user?.other_languages ?? "");
   const [purpose,    setPurpose]    = useState<Purpose | "">(user?.purpose ?? "");
   const [selfCefr,   setSelfCefr]   = useState<string>(user?.cefrLevel ?? "B1");
 
@@ -85,6 +86,7 @@ export default function OnboardingPage() {
       job,
       academic_background: academic,
       mother_language:     motherLang,
+      other_languages:     otherLangs || undefined,
       purpose:             purpose || undefined,
       self_reported_cefr:  selfCefr,
     });
@@ -94,6 +96,7 @@ export default function OnboardingPage() {
       city, job,
       academic_background: academic,
       mother_language: motherLang,
+      other_languages: otherLangs || null,
       purpose: (purpose as Purpose) || null,
       cefrLevel: selfCefr as typeof user.cefrLevel,
     });
@@ -262,6 +265,7 @@ export default function OnboardingPage() {
             job={job} setJob={setJob}
             academic={academic} setAcademic={setAcademic}
             motherLang={motherLang} setMotherLang={setMotherLang}
+            otherLangs={otherLangs} setOtherLangs={setOtherLangs}
             purpose={purpose} setPurpose={setPurpose}
             selfCefr={selfCefr} setSelfCefr={setSelfCefr}
             onNext={handlePersonalNext}
@@ -316,31 +320,37 @@ function StepIndicator({ step }: { step: Step }) {
     { key: "assessment", label: "Word check" },
   ];
   const idx = steps.findIndex((s) => s.key === step);
+  const currentLabel = steps[idx]?.label ?? "";
   return (
-    <div className="flex items-center gap-3 mb-7">
-      {steps.map((s, i) => {
-        const done   = i < idx;
-        const active = i === idx;
-        return (
-          <div key={s.key} className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <motion.div
-                animate={{ backgroundColor: active ? "#0D7377" : done ? "#0D737740" : "#e7e5e4", scale: active ? 1.1 : 1 }}
-                className="w-6 h-6 rounded-full flex items-center justify-center"
-              >
-                {done
-                  ? <Check size={11} strokeWidth={3} className="text-primary" />
-                  : <span className="text-xs font-heading font-bold" style={{ color: active ? "#fff" : "#a8a29e" }}>{i + 1}</span>
-                }
-              </motion.div>
-              <span className="text-xs font-body font-semibold" style={{ color: active ? "#0D7377" : "#a8a29e" }}>
-                {s.label}
-              </span>
+    <div className="mb-7">
+      <div className="flex items-center gap-2 sm:gap-3">
+        {steps.map((s, i) => {
+          const done   = i < idx;
+          const active = i === idx;
+          return (
+            <div key={s.key} className="flex min-w-0 flex-1 items-center gap-2 last:flex-none sm:gap-3">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <motion.div
+                  animate={{ backgroundColor: active ? "#0D7377" : done ? "#0D737740" : "#e7e5e4", scale: active ? 1.1 : 1 }}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                >
+                  {done
+                    ? <Check size={11} strokeWidth={3} className="text-primary" />
+                    : <span className="text-xs font-heading font-bold" style={{ color: active ? "#fff" : "#a8a29e" }}>{i + 1}</span>
+                  }
+                </motion.div>
+                <span className="hidden truncate text-xs font-body font-semibold sm:inline" style={{ color: active ? "#0D7377" : "#a8a29e" }}>
+                  {s.label}
+                </span>
+              </div>
+              {i < steps.length - 1 && <div className="h-px min-w-4 flex-1 bg-black/10" />}
             </div>
-            {i < steps.length - 1 && <div className="h-px w-6 bg-black/10" />}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      <p className="mt-2 text-xs font-body font-semibold text-primary sm:hidden">
+        Step {idx + 1}: {currentLabel}
+      </p>
     </div>
   );
 }
@@ -351,6 +361,7 @@ function PersonalStep(props: {
   job: string; setJob: (v: string) => void;
   academic: string; setAcademic: (v: string) => void;
   motherLang: string; setMotherLang: (v: string) => void;
+  otherLangs: string; setOtherLangs: (v: string) => void;
   purpose: Purpose | ""; setPurpose: (v: Purpose | "") => void;
   selfCefr: string; setSelfCefr: (v: string) => void;
   onNext: () => void;
@@ -376,6 +387,7 @@ function PersonalStep(props: {
         <Field label="Job / occupation *"><input value={props.job} onChange={(e) => props.setJob(e.target.value)} placeholder="e.g. Software engineer" className={inputCls} /></Field>
         <Field label="Academic background *"><input value={props.academic} onChange={(e) => props.setAcademic(e.target.value)} placeholder="e.g. BSc Computer Science" className={inputCls} /></Field>
         <Field label="Mother language *"><input value={props.motherLang} onChange={(e) => props.setMotherLang(e.target.value)} placeholder="e.g. Arabic" className={inputCls} /></Field>
+        <Field label="Other languages"><input value={props.otherLangs} onChange={(e) => props.setOtherLangs(e.target.value)} placeholder="e.g. English, Spanish" className={inputCls} /></Field>
         <Field label="Purpose of learning Dutch *">
           <select value={props.purpose} onChange={(e) => props.setPurpose(e.target.value as Purpose | "")} className={inputCls}>
             <option value="">Select…</option>

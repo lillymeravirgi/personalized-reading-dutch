@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any, Literal, Optional, List
 from pydantic import BaseModel, Field
-from app.models import ConditionType, IntentTagType, VocabStatus
+from app.models import IntentTagType
 
 LikertScale = Literal[1, 2, 3, 4, 5]
 TLXScale    = Literal[1, 2, 3, 4, 5, 6, 7]
@@ -23,7 +23,6 @@ class AuthResponse(BaseModel):
     display_name: Optional[str] = None
     estimated_cefr: Optional[str] = None
     onboarding_completed: bool = False
-    current_condition: str = "ADAPTIVE"
     has_switched_conditions: bool = False
 
 class SurveyResponse(BaseModel):
@@ -46,7 +45,6 @@ class GenerateSessionRequest(BaseModel):
     K: float = 0.7
     narrative_style: str = "Informative Educational Semi-Narrative Article"
     word_count_range: str = "150-200"
-    condition: ConditionType = ConditionType.ADAPTIVE
 
 class WordInfo(BaseModel):
     word_id: int
@@ -59,7 +57,6 @@ class SessionSummary(BaseModel):
     user_id: str
     title: str
     topic_used: Optional[str] = None
-    condition: str
     reading_number: int
     survey_completed: bool
 
@@ -80,7 +77,6 @@ class GenerateSessionResponse(BaseModel):
     word_translations: dict[str, str]
     metadata: dict[str, Any]
     reading_number: int
-    condition: str
     cefr_level: Optional[str] = None
 
 class SessionDetailResponse(BaseModel):
@@ -89,7 +85,6 @@ class SessionDetailResponse(BaseModel):
     content: str
     tokens: list[TextToken] = []
     topic_used: Optional[str] = None
-    condition: str
     reading_number: int
     survey_completed: bool
     blue_words: list[WordInfo]
@@ -152,7 +147,6 @@ class OnboardingPersonalInfoRequest(BaseModel):
     mother_language: Optional[str] = None
     other_languages: Optional[str] = None
     purpose: Optional[str] = None
-    preferred_styles: Optional[list[str]] = None
     self_reported_cefr: Optional[str] = None
 
 class OnboardingWordsResponse(BaseModel):
@@ -168,7 +162,6 @@ class ProfileUpdateRequest(BaseModel):
     mother_language: Optional[str] = None
     other_languages: Optional[str] = None
     purpose: Optional[str] = None
-    preferred_styles: Optional[list[str]] = None
     interests: Optional[list[str]] = None
     estimated_cefr: Optional[str] = None
     assessed_at: Optional[str] = None

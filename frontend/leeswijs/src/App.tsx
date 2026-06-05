@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import AuthLayout from "./layouts/AuthLayout";
 import MainLayout from "./layouts/MainLayout";
-import DelayedVocabReminder from "./components/DelayedVocabReminder";
 
 import LoginPage                from "./pages/LoginPage";
 import OnboardingPage           from "./pages/OnboardingPage";
@@ -21,7 +20,6 @@ import ThankYouPage             from "./pages/ThankYouPage";
 export default function App() {
   return (
     <BrowserRouter>
-      <DelayedVocabReminder />
       <Routes>
         <Route element={<AuthLayout />}>
           <Route path="/login"    element={<LoginPage />} />

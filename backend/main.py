@@ -45,6 +45,7 @@ def _ensure_database_columns() -> None:
         ("reading_sessions", "reading_number"): "1",
         ("reading_sessions", "survey_completed"): "0",
         ("reading_sessions", "study_phase"): "1",
+        ("reading_sessions", "continuation_count"): "0",
         ("vocabulary_test_results", "study_phase"): "1",
         ("vocabulary_test_results", "test_type"): "'immediate'",
     }
@@ -110,6 +111,30 @@ def _ensure_database_columns() -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE reading_sessions "
                 "ADD COLUMN IF NOT EXISTS study_phase INTEGER NOT NULL DEFAULT 1"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE reading_sessions "
+                "ADD COLUMN IF NOT EXISTS continuation_count INTEGER NOT NULL DEFAULT 0"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE reading_sessions "
+                "ADD COLUMN IF NOT EXISTS last_continued_at TIMESTAMP"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE reading_sessions "
+                "ADD COLUMN IF NOT EXISTS word_translations JSONB"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE reading_sessions "
+                "ADD COLUMN IF NOT EXISTS survey_signal JSONB"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE reading_sessions "
+                "ADD COLUMN IF NOT EXISTS narrative_memory JSONB"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE interaction_telemetry "
+                "ADD COLUMN IF NOT EXISTS telemetry_at TIMESTAMP"
             )
             conn.exec_driver_sql(
                 "ALTER TABLE vocabulary_test_results "

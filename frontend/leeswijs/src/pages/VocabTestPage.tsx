@@ -26,6 +26,7 @@ export default function VocabTestPage() {
   const navigate = useNavigate();
   const user    = useStore((s) => s.user);
   const setUser = useStore((s) => s.setUser);
+  const userId = user?.id;
 
   const sgId = parseInt(sessionGroupId, 10);
   const studyPhase = parseInt(searchParams.get("phase") ?? "1", 10);
@@ -43,10 +44,10 @@ export default function VocabTestPage() {
   const [score,      setScore]      = useState(0);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     setLoading(true);
     setError(null);
-    startVocabTest(user.id, sgId, studyPhase)
+    startVocabTest(userId, sgId, studyPhase)
       .then((res) => {
         if (res.success) {
           setQuestions(res.data.questions.slice(0, VOCAB_TEST_WORD_COUNT));
@@ -58,8 +59,7 @@ export default function VocabTestPage() {
         setError(err instanceof Error ? err.message : "Could not load vocabulary check."),
       )
       .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, sessionGroupId, studyPhase]);
+  }, [userId, sgId, studyPhase]);
 
   const currentQuestion = questions[index] ?? null;
   const selectedIndex   = currentQuestion ? answers[currentQuestion.questionId]?.selectedIndex ?? null : null;
@@ -106,8 +106,8 @@ export default function VocabTestPage() {
       setScore(correct);
       setDone(true);
 
-      if (result.new_condition && user) {
-        setUser({ ...user, current_condition: result.new_condition, has_switched_conditions: true });
+      if (result.phase_switched && user) {
+        setUser({ ...user, has_switched_conditions: true });
       }
 
       if (isDelayed) {

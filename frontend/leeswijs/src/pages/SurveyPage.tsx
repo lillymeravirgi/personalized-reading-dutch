@@ -11,13 +11,15 @@ import TLXQuestion    from "../components/survey/TLXQuestion";
 import type { LikertScale, TLXScale, SurveyResponse } from "../types";
 
 const Q_WORTH_MY_TIME       = "The reading felt worth my time and effort.";
+const Q_APPROPRIATE_CHALLENGE = "The reading difficulty felt appropriate for my Dutch level.";
+const Q_COMPREHENSION = "I understood the main idea of the reading.";
 const Q_FOCUSED_ATTENTION   = "I was so involved in this text that I lost track of time.";
 const Q_REWARD              = "I would want to read more texts similar to this one.";
 const Q_PERCEIVED_RELEVANCE = "The content of this text felt personally meaningful to me.";
 const Q_MENTAL_EFFORT       = "How much mental effort did it take to read this text?";
 const Q_MANIPULATION_CHECK  = "This text felt specifically tailored to my interests and Dutch level.";
 
-const TOTAL_QUESTIONS = 6;
+const TOTAL_QUESTIONS = 8;
 
 export default function SurveyPage() {
   const { sessionId = "" } = useParams<{ sessionId: string }>();
@@ -26,6 +28,8 @@ export default function SurveyPage() {
   const durationSeconds = parseInt(new URLSearchParams(search).get("duration") || "0", 10);
 
   const [worthMyTime,           setWorthMyTime]           = useState<LikertScale | null>(null);
+  const [appropriateChallenge,  setAppropriateChallenge]  = useState<LikertScale | null>(null);
+  const [comprehension,         setComprehension]         = useState<LikertScale | null>(null);
   const [focusedAttention,      setFocusedAttention]      = useState<LikertScale | null>(null);
   const [reward,                setReward]                = useState<LikertScale | null>(null);
   const [perceivedRelevance,    setPerceivedRelevance]    = useState<LikertScale | null>(null);
@@ -36,7 +40,16 @@ export default function SurveyPage() {
   const [error,      setError]      = useState<string | null>(null);
   const [done,       setDone]       = useState(false);
 
-  const answers = [worthMyTime, focusedAttention, reward, perceivedRelevance, mentalEffort, perceivedPersonalization];
+  const answers = [
+    worthMyTime,
+    appropriateChallenge,
+    comprehension,
+    focusedAttention,
+    reward,
+    perceivedRelevance,
+    mentalEffort,
+    perceivedPersonalization,
+  ];
   const answered      = answers.every((v) => v !== null);
   const answeredCount = answers.filter((v) => v !== null).length;
 
@@ -48,8 +61,8 @@ export default function SurveyPage() {
     const payload: SurveyResponse = {
       sessionId,
       worthMyTime:              worthMyTime!,
-      appropriateChallenge:     3,
-      comprehension:            3,
+      appropriateChallenge:     appropriateChallenge!,
+      comprehension:            comprehension!,
       focusedAttention:         focusedAttention!,
       reward:                   reward!,
       perceivedRelevance:       perceivedRelevance!,
@@ -124,6 +137,10 @@ export default function SurveyPage() {
       <div className="space-y-7 rounded-2xl bg-white px-7 py-8 shadow-xl shadow-black/8">
         <LikertQuestion question={Q_WORTH_MY_TIME} value={worthMyTime} onChange={setWorthMyTime} />
 
+        <Divider />
+        <LikertQuestion question={Q_APPROPRIATE_CHALLENGE} value={appropriateChallenge} onChange={setAppropriateChallenge} />
+        <Divider />
+        <LikertQuestion question={Q_COMPREHENSION} value={comprehension} onChange={setComprehension} />
         <Divider />
 
         <LikertQuestion question={Q_FOCUSED_ATTENTION} value={focusedAttention} onChange={setFocusedAttention} />

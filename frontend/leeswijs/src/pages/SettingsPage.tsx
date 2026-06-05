@@ -220,7 +220,7 @@ export default function SettingsPage() {
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-black/8 pt-4">
           <p className="text-xs font-body text-text/45">
-            Topic choices affect the next generated reading where the assigned condition allows it.
+            Topic choices may help shape future readings during the study.
           </p>
           <motion.button
             type="button"

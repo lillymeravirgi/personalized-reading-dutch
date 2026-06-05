@@ -56,7 +56,6 @@ interface BackendAuthResponse {
   display_name?: string;
   estimated_cefr?: string;
   onboarding_completed: boolean;
-  current_condition?: string;
   has_switched_conditions?: boolean;
 }
 
@@ -82,19 +81,17 @@ interface BackendTextToken {
 
 function mapAuthResponseToUser(data: BackendAuthResponse): User {
   return {
-    id:                       data.user_id,
-    user_id:                  data.user_id,
-    email:                    data.email,
-    name:                     data.display_name || data.email.split("@")[0],
-    display_name:             data.display_name || "",
-    interests:                [],
-    cefrLevel:                (data.estimated_cefr as User["cefrLevel"]) ?? null,
-    assessedAt:               null,
-    createdAt:                new Date().toISOString(),
-    onboarding_completed:     data.onboarding_completed,
-    preferred_styles:         [],
-    current_condition:        data.current_condition ?? "ADAPTIVE",
-    has_switched_conditions:  data.has_switched_conditions ?? false,
+    id: data.user_id,
+    user_id: data.user_id,
+    email: data.email,
+    name: data.display_name || data.email.split("@")[0],
+    display_name: data.display_name || "",
+    interests: [],
+    cefrLevel: (data.estimated_cefr as User["cefrLevel"]) ?? null,
+    assessedAt: null,
+    createdAt: new Date().toISOString(),
+    onboarding_completed: data.onboarding_completed,
+    has_switched_conditions: data.has_switched_conditions ?? false,
   };
 }
 
@@ -136,25 +133,24 @@ export async function fetchMe(userId: string): Promise<User> {
     );
     const d = data.data;
     return {
-      id:                   String(d.id ?? d.user_id ?? ""),
-      user_id:              String(d.user_id ?? ""),
-      email:                String(d.email ?? ""),
-      name:                 String(d.display_name || d.name || ""),
-      display_name:         String(d.display_name ?? ""),
-      interests:            Array.isArray(d.interests) ? (d.interests as string[]) : [],
-      cefrLevel:            (d.cefrLevel as User["cefrLevel"]) ?? null,
-      assessedAt:           null,
-      createdAt:            String(d.createdAt ?? ""),
+      id: String(d.id ?? d.user_id ?? ""),
+      user_id: String(d.user_id ?? ""),
+      email: String(d.email ?? ""),
+      name: String(d.display_name || d.name || ""),
+      display_name: String(d.display_name ?? ""),
+      interests: Array.isArray(d.interests) ? (d.interests as string[]) : [],
+      cefrLevel: (d.cefrLevel as User["cefrLevel"]) ?? null,
+      assessedAt: null,
+      createdAt: String(d.createdAt ?? ""),
       onboarding_completed: Boolean(d.onboarding_completed),
-      age:                  typeof d.age === "number" ? d.age : null,
-      city:                 typeof d.city === "string" ? d.city : null,
-      gender:               typeof d.gender === "string" ? d.gender : null,
-      job:                  typeof d.job === "string" ? d.job : null,
-      academic_background:  typeof d.academic_background === "string" ? d.academic_background : null,
-      mother_language:      typeof d.mother_language === "string" ? d.mother_language : null,
-      other_languages:      typeof d.other_languages === "string" ? d.other_languages : null,
-      purpose:              typeof d.purpose === "string" ? (d.purpose as User["purpose"]) : null,
-      preferred_styles:     Array.isArray(d.preferred_styles) ? (d.preferred_styles as User["preferred_styles"]) : [],
+      age: typeof d.age === "number" ? d.age : null,
+      city: typeof d.city === "string" ? d.city : null,
+      gender: typeof d.gender === "string" ? d.gender : null,
+      job: typeof d.job === "string" ? d.job : null,
+      academic_background: typeof d.academic_background === "string" ? d.academic_background : null,
+      mother_language: typeof d.mother_language === "string" ? d.mother_language : null,
+      other_languages: typeof d.other_languages === "string" ? d.other_languages : null,
+      purpose: typeof d.purpose === "string" ? (d.purpose as User["purpose"]) : null,
     };
   } catch (err) {
     throw new Error(extractError(err));
@@ -166,18 +162,17 @@ export async function saveProfile(user: Partial<User> & { id: string }): Promise
     await apiClient.put(
       "/users/me/profile",
       {
-        display_name:        user.display_name,
-        age:                 user.age,
-        city:                user.city,
-        gender:              user.gender,
-        job:                 user.job,
+        display_name: user.display_name,
+        age: user.age,
+        city: user.city,
+        gender: user.gender,
+        job: user.job,
         academic_background: user.academic_background,
-        mother_language:     user.mother_language,
-        other_languages:     user.other_languages,
-        purpose:             user.purpose,
-        preferred_styles:    user.preferred_styles,
-        interests:           user.interests,
-        estimated_cefr:      user.cefrLevel,
+        mother_language: user.mother_language,
+        other_languages: user.other_languages,
+        purpose: user.purpose,
+        interests: user.interests,
+        estimated_cefr: user.cefrLevel,
       },
       { headers: { "X-User-Id": user.id } },
     );
@@ -210,7 +205,6 @@ export async function savePersonalInfo(
     mother_language?: string;
     other_languages?: string;
     purpose?: string;
-    preferred_styles?: string[];
     self_reported_cefr?: string;
   },
 ): Promise<void> {
@@ -285,22 +279,22 @@ export async function getAssessmentBatch(
     const { data } = await apiClient.post<BackendAssessmentBatch>(
       "/assessment/batch/generate",
       {
-        user_id:           userId,
-        batch_number:      batchNumber,
+        user_id: userId,
+        batch_number: batchNumber,
         self_reported_cefr: selfReportedCefr,
-        known_words:       knownWords ?? [],
-        all_words:         allWords ?? [],
+        known_words: knownWords ?? [],
+        all_words: allWords ?? [],
       },
     );
     return {
       success: true,
       data: {
-        batchNumber:  Number(data.batch_number ?? batchNumber),
+        batchNumber: Number(data.batch_number ?? batchNumber),
         totalBatches: Number(data.total_batches ?? 1),
-        words:        (data.words || []).map((w) => ({
-          wordId:   String(w.word_id),
-          dutch:    String(w.dutch),
-          english:  typeof w.english === "string" ? w.english : undefined,
+        words: (data.words || []).map((w) => ({
+          wordId: String(w.word_id),
+          dutch: String(w.dutch),
+          english: typeof w.english === "string" ? w.english : undefined,
           isPseudo: Boolean(w.is_pseudo),
         })),
       },
@@ -321,24 +315,22 @@ export async function submitAssessment(
 ): Promise<void> {
   try {
     await apiClient.post("/assessment/submit", {
-      user_id:        userId,
-      batch_number:   batchNumber,
+      user_id: userId,
+      batch_number: batchNumber,
       known_word_ids: knownWordIds,
-      all_word_ids:   allWordIds,
+      all_word_ids: allWordIds,
       estimated_level: estimatedLevel,
       confidence_score: confidenceScore,
-      is_final:       isFinal,
+      is_final: isFinal,
     });
   } catch (err) {
     throw new Error(extractError(err));
   }
 }
 
-export type ConditionType = "ADAPTIVE" | "BASELINE";
-
 function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
   const content = String(data.content ?? "");
-  const rawBlue   = (data.blue_words   as Array<Record<string, unknown>>) ?? [];
+  const rawBlue = (data.blue_words as Array<Record<string, unknown>>) ?? [];
   const rawYellow = (data.yellow_words as Array<Record<string, unknown>>) ?? [];
   const wordTranslations = (data.word_translations as Record<string, string>) ?? {};
 
@@ -353,11 +345,11 @@ function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
       let m: RegExpExecArray | null;
       while ((m = rx.exec(content)) !== null) {
         out.push({
-          wordId:        String(row.word_id ?? ""),
-          dutch:         word,
-          english:       String(row.translation ?? ""),
-          startIndex:    m.index,
-          endIndex:      m.index + m[0].length,
+          wordId: String(row.word_id ?? ""),
+          dutch: word,
+          english: String(row.translation ?? ""),
+          startIndex: m.index,
+          endIndex: m.index + m[0].length,
           highlightType: type,
           exampleSentences: Array.isArray(row.examples)
             ? (row.examples as Array<{ nl: string; en: string }>)
@@ -370,38 +362,33 @@ function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
   }
 
   return {
-    sessionId:        String(data.session_id ?? ""),
-    title:            String(data.title ?? ""),
-    text:             content.replace(/\[\[([^\]]+)\]\]/g, "$1"),
-    tokens:           ((data.tokens ?? []) as BackendTextToken[]).map(t => ({
-      text:   String(t.text),
-      type:   t.type,
+    sessionId: String(data.session_id ?? ""),
+    title: String(data.title ?? ""),
+    text: content.replace(/\[\[([^\]]+)\]\]/g, "$1"),
+    tokens: ((data.tokens ?? []) as BackendTextToken[]).map(t => ({
+      text: String(t.text),
+      type: t.type,
       status: t.status,
       wordId: t.word_id ? String(t.word_id) : null,
     })),
-    topic:            String(data.topic_used ?? ""),
-    cefrLevel:        String(data.cefr_level ?? data.cefr ?? "B1"),
-    highlights:       [
-      ...buildHighlights(rawBlue,   "unknown"),
+    topic: String(data.topic_used ?? ""),
+    cefrLevel: String(data.cefr_level ?? data.cefr ?? "B1"),
+    highlights: [
+      ...buildHighlights(rawBlue, "unknown"),
       ...buildHighlights(rawYellow, "learning"),
     ],
-    isAdaptive:       String(data.condition) === "ADAPTIVE",
-    readingNumber:    Number(data.reading_number ?? 1),
-    surveyCompleted:  Boolean(data.survey_completed),
+    readingNumber: Number(data.reading_number ?? 1),
+    surveyCompleted: Boolean(data.survey_completed),
     wordTranslations,
   };
 }
 
-export async function generateSession(
-  userId: string,
-  condition: ConditionType,
-): Promise<{ sessionId: string; readingNumber: number }> {
+export async function generateSession(userId: string): Promise<{ sessionId: string; readingNumber: number }> {
   try {
     const { data } = await apiClient.post<Record<string, unknown>>(
       "/session/generate",
       {
-        user_id:   userId,
-        condition,
+        user_id: userId,
       },
       { timeout: READING_GENERATION_TIMEOUT_MS },
     );
@@ -655,7 +642,7 @@ export interface VocabTestSubmitResult {
   score: number;
   total: number;
   next_action: "transition" | "finish";
-  new_condition?: string;
+  phase_switched?: boolean;
 }
 
 export type VocabTestType = "immediate" | "delayed";
@@ -703,12 +690,12 @@ export async function getDelayedVocabTestStatus(userId: string): Promise<Delayed
     params: { user_id: userId },
   });
   return {
-    due:              data.due,
-    sessionGroupId:   data.session_group_id,
-    studyPhase:       data.study_phase,
-    dueAt:            data.due_at,
+    due: data.due,
+    sessionGroupId: data.session_group_id,
+    studyPhase: data.study_phase,
+    dueAt: data.due_at,
     minutesRemaining: data.minutes_remaining,
-    delayMinutes:     data.delay_minutes ?? null,
+    delayMinutes: data.delay_minutes ?? null,
   };
 }
 
@@ -722,14 +709,14 @@ export async function submitVocabTest(
   testType: VocabTestType = "immediate",
 ): Promise<VocabTestSubmitResult> {
   const { data } = await apiClient.post<VocabTestSubmitResult>("/vocab-test/submit", {
-    user_id:          userId,
+    user_id: userId,
     session_group_id: sessionGroupId,
     answers,
     score,
-    submitted_at:     new Date().toISOString(),
-    study_phase:      studyPhase,
-    test_type:        testType,
-    is_final:         isFinal,
+    submitted_at: new Date().toISOString(),
+    study_phase: studyPhase,
+    test_type: testType,
+    is_final: isFinal,
   });
   return data;
 }
@@ -754,7 +741,6 @@ export interface Activity {
     title: string;
     topic: string;
     cefrLevel: string;
-    isAdaptive: boolean;
     createdAt: string;
   }>;
 }

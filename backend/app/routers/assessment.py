@@ -55,7 +55,7 @@ Formatting: Return ONLY a JSON array: [{{"word": "Dutch", "translation": "Englis
         if isinstance(words, list):
             return words
     except Exception as e:
-        logger.error(f"[Assessment] Gemini second pitch generation failed: {e}")
+        logger.error("[Assessment] Gemini second pitch generation failed: %s", e)
     return []
 
 

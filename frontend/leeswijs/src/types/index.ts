@@ -14,7 +14,6 @@ export interface User {
   assessedAt: string | null;
   createdAt: string | null;
   onboarding_completed: boolean;
-  preferred_styles?: string[];
 
   age?: number | null;
   city?: string | null;
@@ -25,7 +24,6 @@ export interface User {
   other_languages?: string | null;
   purpose?: Purpose | null;
 
-  current_condition?: string;
   has_switched_conditions?: boolean;
 }
 
@@ -85,7 +83,6 @@ export interface ReadingSession {
   topic: string;
   cefrLevel: string;
   highlights: HighlightedWord[];
-  isAdaptive: boolean;
   readingNumber: number;
   surveyCompleted: boolean;
   wordTranslations: Record<string, string>;
@@ -96,7 +93,6 @@ export interface SessionSummary {
   user_id: string;
   title: string;
   topic_used: string | null;
-  condition: string;
   reading_number: number;
   study_phase: number;
   survey_completed: boolean;

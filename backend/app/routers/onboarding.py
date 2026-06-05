@@ -5,8 +5,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
-from app.krs_service import run_krs
-from app.models import Lexicon, OnboardingWords, RecommendedVocabulary, User, UserVocabularyVector, VocabStatus
+from app.krs_service import run_baseline_krs, run_krs
+from app.models import ConditionType, Lexicon, OnboardingWords, RecommendedVocabulary, User, UserVocabularyVector, VocabStatus
 from app.schemas import LexiconEntry, OnboardingPersonalInfoRequest
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ def _run_krs_background(user_id: str, is_refill: bool):
     try:
         run_krs(user_id=user_id, db=db, is_refill=is_refill)
     except Exception as e:
-        logger.warning(f"[Onboarding] Background KRS failed for {user_id}: {e}")
+        logger.warning("[Onboarding] Background KRS failed for %s: %s", user_id, e)
     finally:
         db.close()
 
@@ -42,6 +42,10 @@ def _phase_words(db: Session, user_id: str, study_phase: int):
     return [LexiconEntry.model_validate(row.lexicon_entry).model_dump() for row in rows]
 
 
+def _entry_from_row(row):
+    return getattr(row, "lexicon_entry", row)
+
+
 @router.post("/personal-info")
 def save_personal_info(payload: OnboardingPersonalInfoRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.user_id == payload.user_id).first()
@@ -57,7 +61,6 @@ def save_personal_info(payload: OnboardingPersonalInfoRequest, db: Session = Dep
     if payload.mother_language    is not None: user.mother_language    = payload.mother_language
     if payload.other_languages    is not None: user.other_languages    = payload.other_languages
     if payload.purpose            is not None: user.purpose            = payload.purpose
-    if payload.preferred_styles   is not None: user.preferred_styles   = payload.preferred_styles
     if payload.self_reported_cefr is not None: user.estimated_cefr    = payload.self_reported_cefr
 
     db.commit()
@@ -76,42 +79,6 @@ def select_onboarding_words(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    background_tasks.add_task(_run_krs_background, user_id, is_refill)
-
-    recs = (
-        db.query(RecommendedVocabulary)
-        .filter(RecommendedVocabulary.user_id == user_id)
-        .join(RecommendedVocabulary.lexicon_entry)
-        .all()
-    )
-
-    if len(recs) < ONBOARDING_WORD_COUNT:
-        level = user.estimated_cefr or "B1"
-        extra = (
-            db.query(Lexicon)
-            .filter(Lexicon.cefr_level == level)
-            .limit(ONBOARDING_WORD_COUNT * 3)
-            .all()
-        )
-        rec_word_ids = {r.word_id for r in recs}
-
-        used_ids = {
-            ow.word_id for ow in
-            db.query(OnboardingWords)
-            .filter(OnboardingWords.user_id == user_id)
-            .all()
-        }
-        rec_word_ids |= used_ids
-
-        for lex in extra:
-            if lex.word_id not in rec_word_ids and len(recs) < ONBOARDING_WORD_COUNT:
-                class _FakRec:
-                    lexicon_entry = lex
-                recs.append(_FakRec())
-
-    selected = recs[:ONBOARDING_WORD_COUNT]
-    random.shuffle(selected)
-
     used_ids = {
         ow.word_id for ow in
         db.query(OnboardingWords)
@@ -119,11 +86,47 @@ def select_onboarding_words(
         .all()
     }
 
+    if user.current_condition == ConditionType.BASELINE:
+        selected_word_ids = run_baseline_krs(user_id, db, target_count=ONBOARDING_WORD_COUNT)
+        entries = (
+            db.query(Lexicon)
+            .filter(Lexicon.word_id.in_(selected_word_ids))
+            .all()
+        )
+        by_id = {entry.word_id: entry for entry in entries}
+        selected = [by_id[word_id] for word_id in selected_word_ids if word_id in by_id]
+    else:
+        background_tasks.add_task(_run_krs_background, user_id, is_refill)
+        recs = (
+            db.query(RecommendedVocabulary)
+            .filter(RecommendedVocabulary.user_id == user_id)
+            .join(RecommendedVocabulary.lexicon_entry)
+            .all()
+        )
+
+        if len(recs) < ONBOARDING_WORD_COUNT:
+            level = user.estimated_cefr or "B1"
+            extra = (
+                db.query(Lexicon)
+                .filter(Lexicon.cefr_level == level)
+                .limit(ONBOARDING_WORD_COUNT * 3)
+                .all()
+            )
+            rec_word_ids = {r.word_id for r in recs} | used_ids
+
+            for lex in extra:
+                if lex.word_id not in rec_word_ids and len(recs) < ONBOARDING_WORD_COUNT:
+                    recs.append(lex)
+                    rec_word_ids.add(lex.word_id)
+
+        selected = [_entry_from_row(rec) for rec in recs[:ONBOARDING_WORD_COUNT]]
+        random.shuffle(selected)
+
     saved_count = 0
-    for rec in selected:
+    for entry in selected:
         if saved_count >= PHASE_BUFFER_WORD_COUNT:
             break
-        word_id = rec.lexicon_entry.word_id
+        word_id = entry.word_id
         if word_id in used_ids:
             continue
         already = (
@@ -143,7 +146,7 @@ def select_onboarding_words(
     except Exception:
         db.rollback()
 
-    words_out = [LexiconEntry.model_validate(rec.lexicon_entry) for rec in selected]
+    words_out = [LexiconEntry.model_validate(entry) for entry in selected]
     return {"words": [w.model_dump() for w in words_out]}
 
 

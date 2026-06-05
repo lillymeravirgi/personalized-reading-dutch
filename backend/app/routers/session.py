@@ -6,9 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import (
+    ConditionType,
+    Lexicon,
     OnboardingWords,
     ReadingSession,
-    RecommendedVocabulary,
     User,
     UserVocabularyVector,
     VocabularyTestResult,
@@ -31,12 +32,29 @@ TARGET_WORDS_PER_PHASE = 10
 
 def _build_word_list(rows) -> list[dict]:
     return [
+        _word_info(row.lexicon_entry)
+        for row in rows
+    ]
+
+
+def _word_info(entry) -> dict:
+    return {
+        "word_id":    entry.word_id,
+        "word":       entry.word,
+        "translation":entry.translation,
+        "cefr_level": entry.cefr_level,
+        "examples":   entry.examples or [],
+    }
+
+
+def _build_lexicon_word_list(rows) -> list[dict]:
+    return [
         {
-            "word_id":    row.lexicon_entry.word_id,
-            "word":       row.lexicon_entry.word,
-            "translation":row.lexicon_entry.translation,
-            "cefr_level": row.lexicon_entry.cefr_level,
-            "examples":   row.lexicon_entry.examples or [],
+            "word_id":    row.word_id,
+            "word":       row.word,
+            "translation":row.translation,
+            "cefr_level": row.cefr_level,
+            "examples":   row.examples or [],
         }
         for row in rows
     ]
@@ -88,7 +106,7 @@ def _tokenize_content(content: str, blue_words: list, yellow_words: list) -> lis
             tokens.append({
                 "text": raw_word,
                 "type": "word",
-                "status": match["status"] if match else "new",
+                "status": match["status"] if match else None,
                 "word_id": match["word_id"] if match else None
             })
         else:
@@ -114,7 +132,11 @@ def _tokenize_content(content: str, blue_words: list, yellow_words: list) -> lis
 @router.post("/generate", response_model=GenerateSessionResponse)
 def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
     req_user = db.query(User).filter(User.user_id == req.user_id).first()
-    current_phase = 2 if (req_user and req_user.has_switched_conditions) else 1
+    if not req_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    current_phase = 2 if req_user.has_switched_conditions else 1
+    server_condition = req_user.current_condition
 
     latest = (
         db.query(ReadingSession)
@@ -170,7 +192,7 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
             K=req.K,
             narrative_style=req.narrative_style,
             word_count_range=req.word_count_range,
-            condition=req.condition,
+            condition=server_condition,
             db=db,
         )
     except ValueError as e:
@@ -196,7 +218,6 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
         word_translations=result["word_translations"],
         metadata=result["metadata"],
         reading_number=result["reading_number"],
-        condition=result["condition"],
     )
 
 
@@ -213,6 +234,8 @@ def continue_reading(payload: dict, db: Session = Depends(get_db)):
         .first()
     )
     if not previous:
+        raise HTTPException(status_code=404, detail="Previous session not found")
+    if previous.user_id != user_id:
         raise HTTPException(status_code=404, detail="Previous session not found")
 
     try:
@@ -245,7 +268,6 @@ def continue_reading(payload: dict, db: Session = Depends(get_db)):
         word_translations=result["word_translations"],
         metadata=result["metadata"],
         reading_number=result["reading_number"],
-        condition=result["condition"],
         cefr_level=user.estimated_cefr if user else None,
     )
 
@@ -268,7 +290,6 @@ def list_sessions(
             "user_id":          s.user_id,
             "title":            s.title or f"Reading #{s.reading_number}",
             "topic_used":       s.topic_used,
-            "condition":        s.condition.value,
             "reading_number":   s.reading_number,
             "study_phase":      s.study_phase,
             "survey_completed": s.survey_completed,
@@ -283,22 +304,47 @@ def get_session(session_id: int, user_id: str, db: Session = Depends(get_db)):
     session = db.query(ReadingSession).filter(ReadingSession.session_id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    if session.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
 
-    blue = (
-        db.query(RecommendedVocabulary)
-        .filter(RecommendedVocabulary.user_id == user_id)
-        .join(RecommendedVocabulary.lexicon_entry)
+    phase_word_ids = [
+        row.word_id
+        for row in db.query(OnboardingWords)
+        .filter(
+            OnboardingWords.user_id == user_id,
+            OnboardingWords.study_phase == session.study_phase,
+        )
         .all()
-    )
+    ]
     yellow = (
         db.query(UserVocabularyVector)
-        .filter(UserVocabularyVector.user_id == user_id)
+        .filter(
+            UserVocabularyVector.user_id == user_id,
+            UserVocabularyVector.word_id.in_(phase_word_ids),
+        )
         .join(UserVocabularyVector.lexicon_entry)
         .all()
-    )
+    ) if phase_word_ids else []
 
-    blue_list = _build_word_list(blue)
     yellow_list = _build_word_list(yellow)
+
+    yellow_words = {item["word"].lower() for item in yellow_list}
+    session_words = set()
+    session_words.update(
+        str(word).lower()
+        for word in (session.word_translations or {}).keys()
+    )
+    session_words.update(
+        word.lower()
+        for word in re.findall(r"\[\[([^\]]+)\]\]", session.content or "")
+    )
+    blue_keys = sorted(session_words - yellow_words)
+    blue_entries = (
+        db.query(Lexicon)
+        .filter(Lexicon.word.in_(blue_keys))
+        .all()
+    ) if blue_keys and session.condition == ConditionType.ADAPTIVE else []
+    blue_list = _build_lexicon_word_list(blue_entries)
 
     user = db.query(User).filter(User.user_id == session.user_id).first()
 
@@ -308,7 +354,6 @@ def get_session(session_id: int, user_id: str, db: Session = Depends(get_db)):
         "content":           session.content,
         "tokens":            _tokenize_content(session.content, blue_list, yellow_list),
         "topic_used":        session.topic_used,
-        "condition":         session.condition.value,
         "reading_number":    session.reading_number,
         "survey_completed":  session.survey_completed,
         "word_translations": session.word_translations or {},

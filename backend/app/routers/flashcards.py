@@ -90,7 +90,7 @@ def discover_prefetch(user_id: str, db: Session = Depends(get_db)):
         )
         .filter(
             RecommendedVocabulary.user_id == user_id,
-            UserVocabularyVector.word_id == None,  # noqa: E711
+            UserVocabularyVector.word_id.is_(None),
         )
         .join(RecommendedVocabulary.lexicon_entry)
         .order_by(RecommendedVocabulary.recommended_at.desc())
@@ -124,7 +124,7 @@ def refill_check(user_id: str, db: Session = Depends(get_db)):
         )
         .filter(
             RecommendedVocabulary.user_id == user_id,
-            UserVocabularyVector.word_id == None,  # noqa: E711
+            UserVocabularyVector.word_id.is_(None),
         )
         .count()
     )

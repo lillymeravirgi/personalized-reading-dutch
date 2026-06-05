@@ -59,7 +59,6 @@ class User(Base):
     mother_language:   Mapped[Optional[str]]  = mapped_column(String(100), nullable=True)
     other_languages:   Mapped[Optional[str]]  = mapped_column(String(255), nullable=True)
     purpose:           Mapped[Optional[str]]  = mapped_column(String(100), nullable=True)
-    preferred_styles:  Mapped[Optional[Any]]  = mapped_column(JSON,        nullable=True)
 
     current_condition:       Mapped[ConditionType] = mapped_column(
         SAEnum(ConditionType), nullable=False, default=ConditionType.ADAPTIVE
@@ -122,7 +121,6 @@ class Lexicon(Base):
 
 
 class UserVocabularyVector(Base):
-    """Tracks words the learner is studying or has mastered."""
     __tablename__ = "user_vocabulary_vector"
     __table_args__ = (UniqueConstraint("user_id", "word_id", name="uq_user_word"),)
 
@@ -142,7 +140,6 @@ class UserVocabularyVector(Base):
 
 
 class RecommendedVocabulary(Base):
-    """Recommended words waiting to be learned."""
     __tablename__ = "recommended_vocabulary"
     __table_args__ = (UniqueConstraint("user_id", "word_id", name="uq_user_rec_word"),)
 
@@ -173,6 +170,8 @@ class ReadingSession(Base):
     word_translations: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     survey_signal: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     narrative_memory: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    continuation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_continued_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
 
     user:          Mapped["User"]                     = relationship("User", back_populates="sessions")
     telemetry_logs: Mapped[list["InteractionTelemetry"]] = relationship("InteractionTelemetry", back_populates="session", cascade="all, delete-orphan")
@@ -187,13 +186,13 @@ class InteractionTelemetry(Base):
     word_id:          Mapped[int]           = mapped_column(Integer, ForeignKey("lexicon.word_id"), nullable=False)
     intent_tag:       Mapped[IntentTagType] = mapped_column(SAEnum(IntentTagType), nullable=False)
     engagement_weight:Mapped[int]           = mapped_column(Integer, nullable=False)
+    telemetry_at:     Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True, default=func.now())
 
     session:       Mapped["ReadingSession"] = relationship("ReadingSession", back_populates="telemetry_logs")
     lexicon_entry: Mapped["Lexicon"]        = relationship("Lexicon",        back_populates="telemetry_logs")
 
 
 class SurveyResult(Base):
-    """Stores post-reading survey answers. One row per reading session."""
     __tablename__ = "survey_results"
 
     survey_id:  Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -216,7 +215,6 @@ class SurveyResult(Base):
 
 
 class AssessmentBatch(Base):
-    """Records each vocabulary batch shown during onboarding."""
     __tablename__ = "assessment_batches"
 
     id:            Mapped[int]        = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -230,7 +228,6 @@ class AssessmentBatch(Base):
 
 
 class OnboardingWords(Base):
-    """KRS-selected words shown as flashcards before each reading block."""
     __tablename__ = "onboarding_words"
     __table_args__ = (UniqueConstraint("user_id", "word_id", name="uq_onboarding_word"),)
 
@@ -245,7 +242,6 @@ class OnboardingWords(Base):
 
 
 class VocabularyTestResult(Base):
-    """Stores per-word vocab test answers."""
     __tablename__ = "vocabulary_test_results"
 
     id:               Mapped[int]  = mapped_column(Integer, primary_key=True, autoincrement=True)

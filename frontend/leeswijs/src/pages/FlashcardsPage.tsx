@@ -21,6 +21,7 @@ const DEFAULT_REVIEW_DAYS = 1;
 export default function FlashcardsPage() {
   const navigate = useNavigate();
   const user = useStore((s) => s.user);
+  const userId = user?.id;
 
   const [mode, setMode] = useState<Mode>("review");
 
@@ -33,24 +34,24 @@ export default function FlashcardsPage() {
   const [discoverFetched, setDiscoverFetched] = useState(false);
 
   const fetchReview = useCallback(() => {
-    if (!user) return;
+    if (!userId) return;
     setReviewLoading(true);
-    getFlashcards(null, user.id)
+    getFlashcards(null, userId)
       .then((res) => {
         if (res.success) setReviewData(res.data);
         else setReviewError(res.error ?? "Could not load word review.");
       })
       .catch(() => setReviewError("Unexpected error."))
       .finally(() => setReviewLoading(false));
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     fetchReview();
   }, [fetchReview]);
 
   useEffect(() => {
-    if (!user) return;
-    discoverPrefetch(user.id)
+    if (!userId) return;
+    discoverPrefetch(userId)
       .then(({ words }) => {
         setDiscoverCards(words);
         setDiscoverFetched(true);
@@ -59,10 +60,9 @@ export default function FlashcardsPage() {
 
     return () => {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
-      navigator.sendBeacon(`${baseUrl}/flashcards/refill-check?user_id=${user.id}`);
+      navigator.sendBeacon(`${baseUrl}/flashcards/refill-check?user_id=${userId}`);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [userId]);
 
   function openDiscover() {
     setMode("discover");

@@ -5,10 +5,10 @@ export default function AuthLayout() {
   const isOnboarding = location.pathname.startsWith("/onboarding");
 
   return (
-    <div className="relative min-h-screen bg-background flex flex-col items-center justify-center px-4 overflow-hidden">
+    <div className="relative min-h-dvh bg-background flex flex-col items-center justify-start sm:justify-center px-4 py-6 sm:py-8 overflow-x-hidden overflow-y-auto">
       <DecorativeBackground />
 
-      <div className="relative z-10 mb-8 text-center select-none">
+      <div className="relative z-10 mb-5 sm:mb-8 text-center select-none">
         <div className="flex items-center justify-center gap-2 mb-1">
           <svg
             width="36"

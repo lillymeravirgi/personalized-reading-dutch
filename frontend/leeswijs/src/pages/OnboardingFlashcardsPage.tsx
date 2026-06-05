@@ -26,9 +26,10 @@ export default function OnboardingFlashcardsPage() {
   const [done,         setDone]         = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [saving,       setSaving]       = useState(false);
-  const [learningCount, setLearningCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
   const [refilling,    setRefilling]    = useState(false);
   const [showMeaning,  setShowMeaning]  = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
 
   function mergeUnique(current: LexiconEntry[], incoming: LexiconEntry[]) {
     const seen = new Set(current.map((w) => w.word_id));
@@ -68,24 +69,34 @@ export default function OnboardingFlashcardsPage() {
   async function handleKnow() {
     if (!user || !word) return;
     setSaving(true);
-    await markKnown(user.id, word.word_id).catch(() => undefined);
-    setSaving(false);
-    advanceCard(false);
+    setError(null);
+    try {
+      await markKnown(user.id, word.word_id);
+      advanceCard();
+    } catch {
+      setError("Could not save this word. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleAddToLearn() {
     if (!user || !word) return;
     setSaving(true);
-    await addToLearnList(user.id, word.word_id).catch(() => undefined);
-    setSaving(false);
-    advanceCard(true);
+    setError(null);
+    try {
+      await addToLearnList(user.id, word.word_id);
+      advanceCard();
+    } catch {
+      setError("Could not save this word. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function advanceCard(isLearning: boolean) {
-    const newCount = isLearning ? learningCount + 1 : learningCount;
-    if (isLearning) {
-      setLearningCount(newCount);
-    }
+  function advanceCard() {
+    const newCount = completedCount + 1;
+    setCompletedCount(newCount);
 
     if (newCount >= TARGET_WORDS) {
       setDone(true);
@@ -153,7 +164,7 @@ export default function OnboardingFlashcardsPage() {
     >
       <div className="mb-4 flex items-center justify-between text-xs font-body text-text/50">
         <span>Phase {studyPhase} word set: select {TARGET_WORDS} words</span>
-        <span>[{learningCount}/{TARGET_WORDS} completed]</span>
+        <span>[{completedCount}/{TARGET_WORDS} completed]</span>
       </div>
       <p className="mb-3 text-xs font-body text-text/45">
         Select {TARGET_WORDS} target words to unlock readings {readingRange}.
@@ -161,13 +172,18 @@ export default function OnboardingFlashcardsPage() {
       <div className="h-1.5 rounded-full bg-black/8 overflow-hidden mb-6">
         <motion.div
           className="h-full rounded-full bg-primary"
-          animate={{ width: `${(learningCount / TARGET_WORDS) * 100}%` }}
+          animate={{ width: `${(completedCount / TARGET_WORDS) * 100}%` }}
           transition={{ duration: 0.3 }}
         />
       </div>
       {refilling && (
         <p className="mb-3 text-center text-xs font-body text-text/45">
           Finding another word...
+        </p>
+      )}
+      {error && (
+        <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-center text-xs font-body text-red-700">
+          {error}
         </p>
       )}
 
@@ -184,8 +200,8 @@ export default function OnboardingFlashcardsPage() {
               <BookOpen size={22} />
             </div>
             <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Dutch word</p>
-            <div className="flex items-center justify-center gap-2">
-              <h2 className="font-heading text-3xl font-bold text-text">
+            <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
+              <h2 className="min-w-0 break-words text-center font-heading text-3xl font-bold text-text">
                 {word?.word ?? "Finding another word..."}
               </h2>
               {word?.word && (
@@ -230,7 +246,7 @@ export default function OnboardingFlashcardsPage() {
             </button>
           )}
 
-          <div className="flex gap-3 mt-2">
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
               onClick={() => void handleKnow()}

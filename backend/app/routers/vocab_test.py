@@ -6,12 +6,85 @@ from sqlalchemy.orm import Session
 
 from app.config import DELAYED_VOCAB_TEST_MINUTES
 from app.database import get_db
-from app.models import ConditionType, Lexicon, OnboardingWords, User, UserVocabularyVector, VocabularyTestResult, VocabStatus
+from app.models import (
+    ConditionType,
+    Lexicon,
+    OnboardingWords,
+    ReadingSession,
+    User,
+    VocabularyTestResult,
+)
 from app.schemas import VocabTestSubmitRequest
 
 router = APIRouter(prefix="/vocab-test", tags=["VocabTest"])
 
 VOCAB_TEST_WORD_COUNT = 10
+READINGS_PER_PHASE = 3
+FINAL_STUDY_PHASE = 2
+
+
+def _phase_word_rows(db: Session, user_id: str, study_phase: int) -> list[OnboardingWords]:
+    return (
+        db.query(OnboardingWords)
+        .join(OnboardingWords.lexicon_entry)
+        .filter(
+            OnboardingWords.user_id == user_id,
+            OnboardingWords.study_phase == study_phase,
+        )
+        .order_by(OnboardingWords.id.asc())
+        .limit(VOCAB_TEST_WORD_COUNT)
+        .all()
+    )
+
+
+def _require_session_group(db: Session, user_id: str, session_group_id: int, study_phase: int) -> None:
+    session = (
+        db.query(ReadingSession.session_id)
+        .filter(
+            ReadingSession.session_id == session_group_id,
+            ReadingSession.user_id == user_id,
+            ReadingSession.study_phase == study_phase,
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Reading block not found")
+
+
+def _completed_readings(db: Session, user_id: str, study_phase: int) -> int:
+    return (
+        db.query(ReadingSession)
+        .filter(
+            ReadingSession.user_id == user_id,
+            ReadingSession.study_phase == study_phase,
+            ReadingSession.survey_completed.is_(True),
+        )
+        .count()
+    )
+
+
+def _normalise_answers(answers: list[dict], expected_word_ids: list[int]) -> list[dict]:
+    expected = set(expected_word_ids)
+    by_word: dict[int, dict] = {}
+
+    for answer in answers:
+        raw_word_id = answer.get("word_id", answer.get("wordId"))
+        if not str(raw_word_id).isdigit():
+            raise HTTPException(status_code=400, detail="Invalid vocabulary answer")
+        word_id = int(raw_word_id)
+        if word_id not in expected:
+            raise HTTPException(status_code=400, detail="Answer does not belong to this vocabulary check")
+        by_word[word_id] = {
+            "word_id": word_id,
+            "chosen_answer": str(answer.get("chosen_answer", answer.get("chosenAnswer", ""))),
+            "is_correct": bool(answer.get("is_correct", answer.get("isCorrect", False))),
+        }
+
+    missing = [word_id for word_id in expected_word_ids if word_id not in by_word]
+    if missing:
+        raise HTTPException(status_code=400, detail="Please answer all vocabulary questions")
+
+    return [by_word[word_id] for word_id in expected_word_ids]
 
 
 @router.get("/progress")
@@ -37,66 +110,13 @@ def start_vocab_test(
     db: Session = Depends(get_db),
 ):
     try:
-        rows = (
-                db.query(OnboardingWords)
-                .join(OnboardingWords.lexicon_entry)
-                .join(
-            UserVocabularyVector,
-            (UserVocabularyVector.user_id == OnboardingWords.user_id)
-            & (UserVocabularyVector.word_id == OnboardingWords.word_id),
-    )
-            .filter(
-                OnboardingWords.user_id == user_id,
-                OnboardingWords.study_phase == study_phase,
-                UserVocabularyVector.status == VocabStatus.LEARNING,
-    )
-            .order_by(OnboardingWords.id.asc())
-            .limit(VOCAB_TEST_WORD_COUNT)
-            .all()
-)
-
-        if not rows:
-            user = db.query(User).filter(User.user_id == user_id).first()
-            level = user.estimated_cefr if user and user.estimated_cefr else "B1"
-            lex_rows = (
-                db.query(Lexicon)
-                .filter(Lexicon.cefr_level == level)
-                .limit(50)
-                .all()
+        _require_session_group(db, user_id, session_group_id, study_phase)
+        rows = _phase_word_rows(db, user_id, study_phase)
+        if len(rows) < VOCAB_TEST_WORD_COUNT:
+            raise HTTPException(
+                status_code=409,
+                detail="Please complete the phase word set before starting the vocabulary check.",
             )
-            random.shuffle(lex_rows)
-            lex_rows = lex_rows[:VOCAB_TEST_WORD_COUNT]
-
-            if not lex_rows:
-                raise HTTPException(
-                    status_code=404,
-                    detail="No vocabulary words available for this user. Please complete onboarding first.",
-                )
-
-            for lex in lex_rows:
-                exists = (
-                    db.query(OnboardingWords)
-                    .filter(
-                        OnboardingWords.user_id == user_id,
-                        OnboardingWords.word_id == lex.word_id,
-                    )
-                    .first()
-                )
-                if not exists:
-                    db.add(OnboardingWords(
-                        user_id=user_id,
-                        word_id=lex.word_id,
-                        study_phase=study_phase,
-                    ))
-            try:
-                db.commit()
-            except Exception:
-                db.rollback()
-
-            class _MockRow:
-                def __init__(self, lex):
-                    self.lexicon_entry = lex
-            rows = [_MockRow(lex) for lex in lex_rows]
 
         questions = []
         for row in rows:
@@ -139,22 +159,65 @@ def submit_vocab_test(payload: VocabTestSubmitRequest, db: Session = Depends(get
     if test_type not in {"immediate", "delayed"}:
         raise HTTPException(status_code=400, detail="Unknown vocabulary test type.")
 
-    last_index = len(payload.answers) - 1
-    for index, answer in enumerate(payload.answers):
-        word_id_raw = answer.get("word_id", "")
-        if not str(word_id_raw).isdigit():
-            continue
-        word_id = int(word_id_raw)
+    user = db.query(User).filter(User.user_id == payload.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if payload.study_phase < 1 or payload.study_phase > FINAL_STUDY_PHASE:
+        raise HTTPException(status_code=400, detail="Unknown study phase.")
+
+    _require_session_group(db, payload.user_id, payload.session_group_id, payload.study_phase)
+
+    rows = _phase_word_rows(db, payload.user_id, payload.study_phase)
+    if len(rows) < VOCAB_TEST_WORD_COUNT:
+        raise HTTPException(status_code=409, detail="Vocabulary check is not ready yet.")
+    expected_word_ids = [row.word_id for row in rows]
+    answers = _normalise_answers(payload.answers, expected_word_ids)
+    score = sum(1 for answer in answers if answer["is_correct"])
+
+    if test_type == "immediate":
+        current_phase = 2 if user.has_switched_conditions else 1
+        if payload.study_phase != current_phase:
+            raise HTTPException(status_code=409, detail="This vocabulary check is not active.")
+        if _completed_readings(db, payload.user_id, payload.study_phase) < READINGS_PER_PHASE:
+            raise HTTPException(status_code=409, detail="Please complete the readings before the vocabulary check.")
+    else:
+        immediate_exists = (
+            db.query(VocabularyTestResult.id)
+            .filter(
+                VocabularyTestResult.user_id == payload.user_id,
+                VocabularyTestResult.session_group_id == payload.session_group_id,
+                VocabularyTestResult.study_phase == payload.study_phase,
+                VocabularyTestResult.test_type == "immediate",
+            )
+            .first()
+        )
+        if not immediate_exists:
+            raise HTTPException(status_code=409, detail="Immediate vocabulary check must be completed first.")
+
+    last_index = len(answers) - 1
+    for index, answer in enumerate(answers):
         db.add(VocabularyTestResult(
             user_id=payload.user_id,
             session_group_id=payload.session_group_id,
             study_phase=payload.study_phase,
             test_type=test_type,
-            word_id=word_id,
-            chosen_answer=str(answer.get("chosen_answer", "")),
-            is_correct=bool(answer.get("is_correct", False)),
-            score=payload.score if index == last_index else None,
+            word_id=answer["word_id"],
+            chosen_answer=answer["chosen_answer"],
+            is_correct=answer["is_correct"],
+            score=score if index == last_index else None,
         ))
+
+    next_action = "finish"
+    phase_switched = False
+    if test_type == "immediate" and payload.study_phase < FINAL_STUDY_PHASE:
+        user.current_condition = (
+            ConditionType.BASELINE
+            if user.current_condition == ConditionType.ADAPTIVE
+            else ConditionType.ADAPTIVE
+        )
+        user.has_switched_conditions = True
+        next_action = "transition"
+        phase_switched = True
 
     try:
         db.commit()
@@ -165,38 +228,24 @@ def submit_vocab_test(payload: VocabTestSubmitRequest, db: Session = Depends(get
     if test_type == "delayed":
         return {
             "success":     True,
-            "score":       payload.score,
-            "total":       len(payload.answers),
+            "score":       score,
+            "total":       len(answers),
             "next_action": "finish",
         }
 
-    if not payload.is_final:
-        user = db.query(User).filter(User.user_id == payload.user_id).first()
-        if user and not user.has_switched_conditions:
-            user.current_condition = (
-                ConditionType.BASELINE
-                if user.current_condition == ConditionType.ADAPTIVE
-                else ConditionType.ADAPTIVE
-            )
-            user.has_switched_conditions = True
-            try:
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                raise HTTPException(status_code=500, detail=str(e))
-
+    if next_action == "transition":
         return {
             "success":       True,
-            "score":         payload.score,
-            "total":         len(payload.answers),
+            "score":         score,
+            "total":         len(answers),
             "next_action":   "transition",
-            "new_condition": user.current_condition.value if user else None,
+            "phase_switched": phase_switched,
         }
 
     return {
         "success":     True,
-        "score":       payload.score,
-        "total":       len(payload.answers),
+        "score":       score,
+        "total":       len(answers),
         "next_action": "finish",
     }
 

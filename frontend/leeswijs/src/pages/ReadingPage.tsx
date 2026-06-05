@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -10,11 +10,9 @@ import {
   Lock,
   Loader2,
   Search,
-  X,
 } from "lucide-react";
 
 import { generateSession, getOnboardingWordSetStatus, getVocabTestProgress, listSessions } from "../services/api";
-import type { ConditionType } from "../services/api";
 import type { SessionSummary } from "../types";
 import ReadingGenerationStatus from "../components/ReadingGenerationStatus";
 import { useStore } from "../store";
@@ -25,6 +23,8 @@ const TARGET_WORDS_PER_PHASE = 10;
 export default function ReadingPage() {
   const navigate = useNavigate();
   const user = useStore((s) => s.user);
+  const userId = user?.id;
+  const hasSwitchedConditions = user?.has_switched_conditions ?? false;
 
   const [sessions,     setSessions]     = useState<SessionSummary[]>([]);
   const [loading,      setLoading]      = useState(false);
@@ -34,18 +34,15 @@ export default function ReadingPage() {
   const [query,        setQuery]        = useState("");
   const [immediateDone, setImmediateDone] = useState<number[]>([]);
   const [readyWordSets, setReadyWordSets] = useState<number[]>([]);
-  const [introDismissed, setIntroDismissed] = useState(() =>
-    user ? window.localStorage.getItem(readingIntroKey(user.id)) === "true" : false,
-  );
 
-  const refreshSessions = async () => {
-    if (!user) return;
-    const phase = user.has_switched_conditions ? 2 : 1;
+  const refreshSessions = useCallback(async () => {
+    if (!userId) return;
+    const phase = hasSwitchedConditions ? 2 : 1;
     try {
       const [data, progress, phaseWords] = await Promise.all([
-        listSessions(user.id),
-        getVocabTestProgress(user.id).catch(() => ({ immediateCompleted: [], delayedCompleted: [] })),
-        getOnboardingWordSetStatus(user.id, phase).catch(() => ({ ready: false })),
+        listSessions(userId),
+        getVocabTestProgress(userId).catch(() => ({ immediateCompleted: [], delayedCompleted: [] })),
+        getOnboardingWordSetStatus(userId, phase).catch(() => ({ ready: false })),
       ]);
       setSessions(data);
       setImmediateDone(progress.immediateCompleted);
@@ -53,24 +50,19 @@ export default function ReadingPage() {
     } finally {
       setLoadingList(false);
     }
-  };
+  }, [hasSwitchedConditions, userId]);
 
   useEffect(() => {
-    if (!user) return;
-    setIntroDismissed(window.localStorage.getItem(readingIntroKey(user.id)) === "true");
     void refreshSessions();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [refreshSessions]);
 
   useEffect(() => {
-    if (!user) return;
     function refreshOnFocus() {
       void refreshSessions();
     }
     window.addEventListener("focus", refreshOnFocus);
     return () => window.removeEventListener("focus", refreshOnFocus);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [refreshSessions]);
 
   if (!user) return null;
 
@@ -100,11 +92,6 @@ export default function ReadingPage() {
     !nextTestSet &&
     nextLocalReadingNumber <= READINGS_PER_PHASE;
   const allStudyComplete = currentPhase === 2 && currentPhaseDone;
-  const showReadingIntro =
-    currentPhase === 1 &&
-    phaseSessions.length === 0 &&
-    !allStudyComplete &&
-    !introDismissed;
   const phaseInstruction =
     currentPhase === 1
       ? `Complete ${READINGS_PER_PHASE} readings in Phase 1, then do the vocabulary check.`
@@ -132,8 +119,7 @@ export default function ReadingPage() {
     setLoading(true);
     setError(null);
     try {
-      const condition = (user.current_condition ?? "ADAPTIVE") as ConditionType;
-      const { sessionId } = await generateSession(user.id, condition);
+      const { sessionId } = await generateSession(user.id);
       await refreshSessions();
       navigate(`/read/${sessionId}`);
     } catch (err) {
@@ -183,62 +169,6 @@ export default function ReadingPage() {
           </p>
         </div>
       </div>
-
-      <AnimatePresence>
-        {showReadingIntro && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="reading-intro-title"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full max-w-md rounded-2xl bg-white px-6 py-6 shadow-2xl shadow-black/20"
-            >
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <BookOpen size={22} />
-                </div>
-                <button
-                  type="button"
-                  aria-label="Close reading introduction"
-                  onClick={() => {
-                    window.localStorage.setItem(readingIntroKey(user.id), "true");
-                    setIntroDismissed(true);
-                  }}
-                  className="rounded-lg p-1.5 text-text/35 hover:bg-black/5 hover:text-text"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <h2 id="reading-intro-title" className="mb-2 font-heading text-xl font-bold text-text">
-                How the reading part works
-              </h2>
-              <p className="mb-5 text-sm font-body leading-6 text-text/60">
-                The reading part has two phases. In each phase, you read three short Dutch texts,
-                answer a few questions after each text, and then complete a vocabulary check.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  window.localStorage.setItem(readingIntroKey(user.id), "true");
-                  setIntroDismissed(true);
-                }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90"
-              >
-                Understood <ArrowRight size={16} />
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {alertMsg && (
@@ -539,8 +469,4 @@ function parseBackendTime(iso: string): number {
   const value = iso.trim().replace(" ", "T");
   const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(value);
   return new Date(hasTimezone ? value : `${value}Z`).getTime();
-}
-
-function readingIntroKey(userId: string) {
-  return `leeswijs-reading-intro-v3-seen-${userId}`;
 }

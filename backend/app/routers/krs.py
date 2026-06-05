@@ -24,12 +24,14 @@ def _maybe_trigger_krs(user_id: str) -> None:
         )
         if count < BLUE_WORD_THRESHOLD:
             logger.info(
-                f"[KRS-auto] user={user_id} has only {count} Blue words "
-                f"(< {BLUE_WORD_THRESHOLD}); running KRS"
+                "[KRS-auto] user=%s has only %d Blue words (< %d); running KRS",
+                user_id,
+                count,
+                BLUE_WORD_THRESHOLD,
             )
             run_krs(user_id=user_id, db=db)
     except Exception as e:
-        logger.error(f"[KRS-auto] failed for user={user_id}: {e}")
+        logger.error("[KRS-auto] failed for user=%s: %s", user_id, e)
     finally:
         db.close()
 

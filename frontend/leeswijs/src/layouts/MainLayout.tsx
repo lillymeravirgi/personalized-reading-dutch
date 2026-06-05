@@ -159,7 +159,9 @@ function UserMenu({ cefrLevel, name }: { cefrLevel: string; name: string }) {
         >
           {cefrLevel}
         </span>
-        <span className="text-sm font-body text-text/80">{name}</span>
+        <span className="hidden max-w-28 truncate text-sm font-body text-text/80 sm:inline">
+          {name}
+        </span>
         <ChevronDown
           size={14}
           className={[

@@ -37,7 +37,12 @@ from lexicon_data import LEXICON_DATA
 print("Seeding lexicon...")
 for entry in LEXICON_DATA:
     exists = db.query(Lexicon).filter(Lexicon.word == entry["word"]).first()
-    if not exists:
+    if exists:
+        exists.translation = entry["translation"]
+        exists.cefr_level = entry["cefr_level"]
+        exists.examples = entry.get("examples")
+        exists.use_cases = entry.get("use_cases")
+    else:
         db.add(Lexicon(**entry))
 db.commit()
 print(f"  {len(LEXICON_DATA)} words processed")
@@ -87,7 +92,6 @@ def reset_team_user(db, user: User, condition: ConditionType, display_name: str)
     user.mother_language = None
     user.other_languages = None
     user.purpose = None
-    user.preferred_styles = None
 
 if seed_team_accounts:
     team_accounts = [

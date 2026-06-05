@@ -84,7 +84,7 @@ def submit_survey(payload: SurveyResponse, db: Session = Depends(get_db)):
         db.commit()
     except Exception as e:
         db.rollback()
-        logger.error(f"[Survey] DB commit failed: {e}")
+        logger.error("[Survey] DB commit failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"success": True, "signal": signal}
