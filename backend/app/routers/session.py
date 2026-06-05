@@ -69,7 +69,6 @@ def _phase_word_set_ready(db: Session, user_id: str, study_phase: int) -> bool:
             OnboardingWords.study_phase == study_phase,
         )
         .order_by(OnboardingWords.id.asc())
-        .limit(TARGET_WORDS_PER_PHASE)
         .all()
     ]
     if len(word_ids) < TARGET_WORDS_PER_PHASE:
