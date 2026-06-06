@@ -22,6 +22,8 @@ export default function FlashcardsPage() {
   const navigate = useNavigate();
   const user = useStore((s) => s.user);
   const userId = user?.id;
+  // Phase 2 starts after condition switch; default to phase 1
+  const studyPhase = user?.has_switched_conditions ? 2 : 1;
 
   const [mode, setMode] = useState<Mode>("review");
 
@@ -36,14 +38,14 @@ export default function FlashcardsPage() {
   const fetchReview = useCallback(() => {
     if (!userId) return;
     setReviewLoading(true);
-    getFlashcards(null, userId)
+    getFlashcards(null, userId, studyPhase)
       .then((res) => {
         if (res.success) setReviewData(res.data);
         else setReviewError(res.error ?? "Could not load word review.");
       })
       .catch(() => setReviewError("Unexpected error."))
       .finally(() => setReviewLoading(false));
-  }, [userId]);
+  }, [userId, studyPhase]);
 
   useEffect(() => {
     fetchReview();
@@ -51,7 +53,7 @@ export default function FlashcardsPage() {
 
   useEffect(() => {
     if (!userId) return;
-    discoverPrefetch(userId)
+    discoverPrefetch(userId, studyPhase)
       .then(({ words }) => {
         setDiscoverCards(words);
         setDiscoverFetched(true);
@@ -67,7 +69,7 @@ export default function FlashcardsPage() {
   function openDiscover() {
     setMode("discover");
     if (!discoverFetched && user) {
-      discoverPrefetch(user.id)
+      discoverPrefetch(user.id, studyPhase)
         .then(({ words }) => { setDiscoverCards(words); setDiscoverFetched(true); })
         .catch(() => undefined);
     }

@@ -482,6 +482,20 @@ export async function markKnown(
   });
 }
 
+export async function markWordDecision(
+  userId: string,
+  wordId: number,
+  studyPhase: number,
+  toTested: boolean,
+): Promise<void> {
+  await apiClient.post("/onboarding/words/mark-decision", {
+    user_id:      userId,
+    word_id:      wordId,
+    study_phase:  studyPhase,
+    to_be_tested: toTested,
+  });
+}
+
 export async function submitSurvey(
   payload: SurveyResponse,
 ): Promise<ApiResponse<{ signal: Record<string, unknown> }>> {
@@ -537,12 +551,13 @@ function normalizeCard(card: FlashcardItem): FlashcardItem {
 export async function getFlashcards(
   _sessionId?: string | null,
   userId?: string | null,
+  studyPhase?: number | null,
 ): Promise<ApiResponse<FlashcardsResponse>> {
   if (!userId) return { success: false, error: "No user" };
   try {
-    const { data } = await apiClient.get<FlashcardsResponse>("/flashcards", {
-      params: { user_id: userId },
-    });
+    const params: Record<string, string | number> = { user_id: userId };
+    if (studyPhase != null) params.study_phase = studyPhase;
+    const { data } = await apiClient.get<FlashcardsResponse>("/flashcards", { params });
     return {
       success: true,
       data: {
@@ -557,11 +572,14 @@ export async function getFlashcards(
 
 export async function discoverPrefetch(
   userId: string,
+  studyPhase?: number | null,
 ): Promise<{ words: DiscoverCard[]; remaining: number }> {
   try {
+    const params: Record<string, string | number> = { user_id: userId };
+    if (studyPhase != null) params.study_phase = studyPhase;
     const { data } = await apiClient.get<{ words: DiscoverCard[]; remaining: number }>(
       "/flashcards/discover-prefetch",
-      { params: { user_id: userId } },
+      { params },
     );
     return { words: data.words ?? [], remaining: data.remaining ?? data.words?.length ?? 0 };
   } catch {

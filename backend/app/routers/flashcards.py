@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
-from app.models import Lexicon, RecommendedVocabulary, UserVocabularyVector, VocabStatus
+from app.models import Lexicon, OnboardingWords, RecommendedVocabulary, UserVocabularyVector, VocabStatus
 from app.krs_service import run_krs
 from app.schemas import LexiconEntry
 
@@ -39,11 +39,11 @@ def _row_to_card(row: UserVocabularyVector) -> dict:
 
 
 @router.get("")
-def list_flashcards(user_id: str, db: Session = Depends(get_db)):
+def list_flashcards(user_id: str, study_phase: int | None = None, db: Session = Depends(get_db)):
     from sqlalchemy import or_
     now = datetime.datetime.utcnow()
 
-    due_rows = (
+    base_q = (
         db.query(UserVocabularyVector)
         .filter(
             UserVocabularyVector.user_id == user_id,
@@ -54,9 +54,18 @@ def list_flashcards(user_id: str, db: Session = Depends(get_db)):
             )
         )
         .join(UserVocabularyVector.lexicon_entry)
-        .order_by(UserVocabularyVector.review_priority.desc())
-        .all()
     )
+
+    # Phase isolation: restrict to words assigned in this study phase
+    if study_phase is not None:
+        base_q = base_q.join(
+            OnboardingWords,
+            (OnboardingWords.user_id == UserVocabularyVector.user_id)
+            & (OnboardingWords.word_id == UserVocabularyVector.word_id)
+            & (OnboardingWords.study_phase == study_phase),
+        )
+
+    due_rows = base_q.order_by(UserVocabularyVector.review_priority.desc()).all()
 
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     reviewed_today = (
@@ -78,10 +87,10 @@ def list_flashcards(user_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/discover-prefetch")
-def discover_prefetch(user_id: str, db: Session = Depends(get_db)):
-    SERVE_LIMIT   = 50
+def discover_prefetch(user_id: str, study_phase: int | None = None, db: Session = Depends(get_db)):
+    SERVE_LIMIT = 50
 
-    usable_recs = (
+    rec_q = (
         db.query(RecommendedVocabulary)
         .outerjoin(
             UserVocabularyVector,
@@ -93,9 +102,13 @@ def discover_prefetch(user_id: str, db: Session = Depends(get_db)):
             UserVocabularyVector.word_id.is_(None),
         )
         .join(RecommendedVocabulary.lexicon_entry)
-        .order_by(RecommendedVocabulary.recommended_at.desc())
-        .all()
     )
+
+    # For phase-strict retrieval: filter by remark when study_phase is provided
+    if study_phase is not None:
+        rec_q = rec_q.filter(RecommendedVocabulary.remark == f"phase:{study_phase}")
+
+    usable_recs = rec_q.order_by(RecommendedVocabulary.recommended_at.desc()).all()
     usable_count = len(usable_recs)
 
     words = [

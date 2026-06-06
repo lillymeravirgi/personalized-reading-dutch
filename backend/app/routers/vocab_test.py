@@ -30,6 +30,7 @@ def _phase_word_rows(db: Session, user_id: str, study_phase: int) -> list[Onboar
         .filter(
             OnboardingWords.user_id == user_id,
             OnboardingWords.study_phase == study_phase,
+            OnboardingWords.is_to_be_tested == True,
         )
         .order_by(OnboardingWords.id.asc())
         .limit(VOCAB_TEST_WORD_COUNT)

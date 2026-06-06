@@ -191,15 +191,15 @@ def generate_session(
     else:
         selected_topic = random.choice(_NEUTRAL_POOL)
         blue_entries = []
-        yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
-        blue_words = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
-        yellow_words = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
+        yellow_entries = []   # Baseline: no target-word injection at all
+        blue_words = []
+        yellow_words = []
         story_json = _generate_baseline_content(
             cefr_level=user.estimated_cefr or "B1",
             topic=selected_topic,
             word_count_range=word_count_range,
-            blue_words=[w["word"] for w in blue_words],
-            yellow_words=[w["word"] for w in yellow_words],
+            blue_words=[],
+            yellow_words=[],
             recent_titles=None,
         )
 
@@ -351,9 +351,27 @@ def _fetch_yellow_words(user_id: str, study_phase: int, db: Session) -> list[Use
         .all()
     )
 
-    if phase_learning:
-        return phase_learning[:5]
-    return []
+    if not phase_learning:
+        return []
+
+    previous_sessions = (
+        db.query(ReadingSession)
+        .filter(
+            ReadingSession.user_id == user_id,
+            ReadingSession.study_phase == study_phase,
+        )
+        .all()
+    )
+    injected_words = set()
+    for s in previous_sessions:
+        if s.word_translations:
+            injected_words.update(w.lower() for w in s.word_translations.keys())
+
+    unseen = [v for v in phase_learning if v.lexicon_entry.word.lower() not in injected_words]
+    seen = [v for v in phase_learning if v.lexicon_entry.word.lower() in injected_words]
+    
+    prioritized = unseen + seen
+    return prioritized[:5]
 
 
 def _lex_to_dict(entry: Lexicon) -> dict:
@@ -392,6 +410,14 @@ def _generate_story_content(
     academic = user.academic_background or "not specified"
     languages = user.other_languages or "none specified"
     mother_l = user.mother_language or getattr(user, "native_language", None) or "not specified"
+    gender = user.gender or "not specified"
+
+    if cefr in ["A1", "A2"]:
+        length_constraint = "100-150"
+        difficulty_instruction = f"Difficulty: CEFR {cefr} — Use simple, short sentences (Subject-Verb-Object). Use basic vocabulary and primarily the present tense. Avoid nested clauses or complex conjunctions."
+    else:
+        length_constraint = word_count_range
+        difficulty_instruction = f"Difficulty: CEFR {cefr} — clear grammar, appropriate sentence complexity, no advanced subjunctive."
 
     prompt = f"""\
 ### GENERATION TASK
@@ -407,6 +433,7 @@ NOT a generic health-tip listicle. NOT a personal diary. NOT vague Wikipedia pro
 - Learning Purpose: {purpose}
 - Location: {city or "(not specified)"}
 - Occupation: {job or "(not specified)"}
+- Gender: {gender}
 Angle guidance by profile type (examples — adapt to the actual topic):
   sports/fitness interest → specific athletic events, records, infrastructure, training science
   technology interest    → real companies, innovations, data, AI or engineering examples
@@ -428,7 +455,7 @@ Recently used: {recent_str}
 The article MUST contain at least THREE of the following:
   a) A real statistic or number  (e.g. "23 miljoen fietsen voor 18 miljoen Nederlanders")
   b) A named real-world location, organization, institution, or event
-  c) A comparison between countries, cities, cultures, or time periods
+  c) A comparison tussen countries, cities, cultures, or time periods
   d) A surprising or counterintuitive fact
   e) A specific historical date, scientific finding, or expert discovery
   f) A concrete real-world case study or example
@@ -447,8 +474,8 @@ Follow this informational arc. Each step must add genuinely new content:
 NEVER repeat the same idea twice, even with different wording.
 
 ### WRITING REQUIREMENTS
-- Length: approximately {word_count_range} Dutch words.
-- Difficulty: CEFR {cefr} — clear grammar, appropriate sentence complexity, no advanced subjunctive.
+- Length: approximately {length_constraint} Dutch words.
+- {difficulty_instruction}
 - Vocabulary: integrate [[target_words]] into factual, informative sentences where they fit naturally.
 - Personalisation: the specific sub-angle subtly fits the learner profile above.
   Do NOT address the reader directly or repeat their city/job more than once if at all.
@@ -522,6 +549,13 @@ def _generate_baseline_content(
         avoid_list = "\n".join(f"- {t}" for t in recent_titles)
         titles_section = f"\n### TITLES ALREADY USED (do NOT reuse)\n{avoid_list}\n"
 
+    if cefr_level in ["A1", "A2"]:
+        length_constraint = "100-150"
+        difficulty_instruction = f"Difficulty: CEFR {cefr_level} — Use simple, short sentences (Subject-Verb-Object). Use basic vocabulary and primarily the present tense. Avoid nested clauses or complex conjunctions."
+    else:
+        length_constraint = word_count_range
+        difficulty_instruction = f"Ensure difficulty does not exceed CEFR {cefr_level}."
+
     prompt = f"""\
 ### TASK
 Write a Dutch reading text for a language learner at CEFR level {cefr_level}.
@@ -535,9 +569,9 @@ Write a Dutch reading text for a language learner at CEFR level {cefr_level}.
 2. YELLOW WORDS (Review — reinforce naturally, wrapped in [[word]]): {yellow_str}
 
 ### INSTRUCTIONS
-Write a cohesive Dutch text of approximately {word_count_range} words.
+Write a cohesive Dutch text of approximately {length_constraint} words.
 - Ensure ALL Blue and Yellow words appear at least once, bracketed as [[word]].
-- Ensure difficulty does not exceed CEFR {cefr_level}.
+- {difficulty_instruction}
 - Write for a general adult learner. Do NOT personalise with names, cities, or jobs.
 
 ### OUTPUT SPECIFICATION

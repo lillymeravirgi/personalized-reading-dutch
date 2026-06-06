@@ -142,6 +142,7 @@ class RecommendedVocabulary(Base):
     word_id:        Mapped[int]             = mapped_column(Integer,    ForeignKey("lexicon.word_id"), nullable=False)
     recommended_at: Mapped[datetime.datetime]= mapped_column(DateTime,  nullable=False, default=func.now())
     is_used:        Mapped[bool]            = mapped_column(Boolean,    nullable=False, default=False)
+    remark:         Mapped[Optional[str]]   = mapped_column(String(100), nullable=True, default=None)
 
     user:          Mapped["User"]   = relationship("User",   back_populates="recommendations")
     lexicon_entry: Mapped["Lexicon"]= relationship("Lexicon",back_populates="recommendations")
@@ -230,6 +231,7 @@ class OnboardingWords(Base):
     word_id:     Mapped[int]              = mapped_column(Integer,    ForeignKey("lexicon.word_id"), nullable=False)
     added_at:    Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     study_phase: Mapped[int]              = mapped_column(Integer, nullable=False, default=1)
+    is_to_be_tested: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=None)
 
     user:          Mapped["User"]   = relationship("User",   back_populates="onboarding_words")
     lexicon_entry: Mapped["Lexicon"]= relationship("Lexicon",back_populates="onboarding_words")

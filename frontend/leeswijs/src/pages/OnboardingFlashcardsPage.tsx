@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Check, BookOpen, Eye } from "lucide-react";
-import { getOnboardingWords, addToLearnList, completeOnboarding, markKnown, selectOnboardingWords } from "../services/api";
+import { getOnboardingWords, addToLearnList, completeOnboarding, markKnown, markWordDecision, selectOnboardingWords } from "../services/api";
 import { useStore } from "../store";
 import type { LexiconEntry } from "../types";
 import SpeakButton from "../components/SpeakButton";
@@ -72,7 +72,9 @@ export default function OnboardingFlashcardsPage() {
     setError(null);
     try {
       await markKnown(user.id, word.word_id);
-      advanceCard();
+      // Mark this word as NOT to be tested (user already knows it)
+      await markWordDecision(user.id, word.word_id, studyPhase, false);
+      advanceCard(false);
     } catch {
       setError("Could not save this word. Please try again.");
     } finally {
@@ -86,7 +88,9 @@ export default function OnboardingFlashcardsPage() {
     setError(null);
     try {
       await addToLearnList(user.id, word.word_id);
-      advanceCard();
+      // Mark this word as TO be tested (user wants to learn it)
+      await markWordDecision(user.id, word.word_id, studyPhase, true);
+      advanceCard(true);
     } catch {
       setError("Could not save this word. Please try again.");
     } finally {
@@ -94,9 +98,11 @@ export default function OnboardingFlashcardsPage() {
     }
   }
 
-  function advanceCard() {
-    const newCount = completedCount + 1;
-    setCompletedCount(newCount);
+  function advanceCard(isLearning: boolean) {
+    const newCount = isLearning ? completedCount + 1 : completedCount;
+    if (isLearning) {
+      setCompletedCount(newCount);
+    }
 
     if (newCount >= TARGET_WORDS) {
       setDone(true);
@@ -109,7 +115,8 @@ export default function OnboardingFlashcardsPage() {
     
     if (words.length - nextIndex <= PREFETCH_THRESHOLD && !refilling && user) {
       void refillWords();
-}}
+    }
+  }
   async function handleFinish() {
     if (!user) return;
     window.localStorage.setItem(`leeswijs-word-set-ready-${user.id}-${studyPhase}`, "true");

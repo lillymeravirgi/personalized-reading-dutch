@@ -71,9 +71,9 @@ export default function LoginPage() {
       className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9"
     >
       <div className="mb-7">
-        <h1 className="font-heading text-2xl font-bold text-text">Continue your study session</h1>
+        <h1 className="font-heading text-2xl font-bold text-text">Welcome to the reading study</h1>
         <p className="mt-1 text-sm text-text/50 font-body">
-          Use your Study ID to continue the reading study.
+          Please enter your Study ID to begin or continue your session.
         </p>
       </div>
 

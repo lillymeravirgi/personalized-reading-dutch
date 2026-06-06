@@ -2,12 +2,20 @@ import logging
 import random
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
 from app.krs_service import run_baseline_krs, run_krs
 from app.models import ConditionType, Lexicon, OnboardingWords, RecommendedVocabulary, User, UserVocabularyVector, VocabStatus
 from app.schemas import LexiconEntry, OnboardingPersonalInfoRequest
+
+
+class MarkDecisionRequest(BaseModel):
+    user_id: str
+    word_id: int
+    study_phase: int = 1
+    to_be_tested: bool
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
@@ -67,6 +75,27 @@ def save_personal_info(payload: OnboardingPersonalInfoRequest, db: Session = Dep
     return {"success": True}
 
 
+@router.post("/words/mark-decision")
+def mark_word_decision(payload: MarkDecisionRequest, db: Session = Depends(get_db)):
+    """Set is_to_be_tested on an OnboardingWords row after the user clicks
+    'I know it' (to_be_tested=False) or 'Add to learn' (to_be_tested=True)."""
+    row = (
+        db.query(OnboardingWords)
+        .filter(
+            OnboardingWords.user_id == payload.user_id,
+            OnboardingWords.word_id == payload.word_id,
+            OnboardingWords.study_phase == payload.study_phase,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Word not found in this phase's word set.")
+
+    row.is_to_be_tested = payload.to_be_tested
+    db.commit()
+    return {"success": True}
+
+
 @router.post("/words/{user_id}")
 def select_onboarding_words(
     user_id: str,
@@ -87,14 +116,22 @@ def select_onboarding_words(
     }
 
     if user.current_condition == ConditionType.BASELINE:
-        selected_word_ids = run_baseline_krs(user_id, db, target_count=ONBOARDING_WORD_COUNT)
-        entries = (
-            db.query(Lexicon)
-            .filter(Lexicon.word_id.in_(selected_word_ids))
+        # run_baseline_krs selects random CEFR-matched words, saves them to
+        # RecommendedVocabulary with remark="phase:N", and returns the word IDs.
+        run_baseline_krs(user_id, db, target_count=ONBOARDING_WORD_COUNT, study_phase=study_phase)
+        phase_remark = f"phase:{study_phase}"
+        recs = (
+            db.query(RecommendedVocabulary)
+            .filter(
+                RecommendedVocabulary.user_id == user_id,
+                RecommendedVocabulary.remark == phase_remark,
+            )
+            .join(RecommendedVocabulary.lexicon_entry)
             .all()
         )
-        by_id = {entry.word_id: entry for entry in entries}
-        selected = [by_id[word_id] for word_id in selected_word_ids if word_id in by_id]
+        valid_recs = [rec for rec in recs if _entry_from_row(rec).word_id not in used_ids]
+        selected = [_entry_from_row(rec) for rec in valid_recs[:ONBOARDING_WORD_COUNT]]
+        random.shuffle(selected)
     else:
         background_tasks.add_task(_run_krs_background, user_id, is_refill)
         recs = (
@@ -119,16 +156,16 @@ def select_onboarding_words(
                     recs.append(lex)
                     rec_word_ids.add(lex.word_id)
 
-        selected = [_entry_from_row(rec) for rec in recs[:ONBOARDING_WORD_COUNT]]
+        valid_recs = [rec for rec in recs if _entry_from_row(rec).word_id not in used_ids]
+        selected = [_entry_from_row(rec) for rec in valid_recs[:ONBOARDING_WORD_COUNT]]
         random.shuffle(selected)
 
     saved_count = 0
+    saved_entries = []
     for entry in selected:
         if saved_count >= PHASE_BUFFER_WORD_COUNT:
             break
         word_id = entry.word_id
-        if word_id in used_ids:
-            continue
         already = (
             db.query(OnboardingWords)
             .filter(
@@ -141,12 +178,15 @@ def select_onboarding_words(
         if not already:
             db.add(OnboardingWords(user_id=user_id, word_id=word_id, study_phase=study_phase))
             saved_count += 1
+        
+        saved_entries.append(entry)
     try:
         db.commit()
-    except Exception:
+    except Exception as e:
+        logger.error("DB error in select_onboarding_words: %s", e)
         db.rollback()
 
-    words_out = [LexiconEntry.model_validate(entry) for entry in selected]
+    words_out = [LexiconEntry.model_validate(entry) for entry in saved_entries]
     return {"words": [w.model_dump() for w in words_out]}
 
 
@@ -161,6 +201,9 @@ def get_onboarding_words(
         raise HTTPException(status_code=404, detail="No words found for this vocabulary set.")
 
     return {"words": words}
+
+
+
 
 
 @router.get("/words/{user_id}/status")
@@ -180,22 +223,21 @@ def get_onboarding_word_status(
         .all()
     ]
 
-    learning_count = 0
-    if len(phase_word_ids) >= VOCAB_TEST_WORD_COUNT:
-        learning_count = (
-            db.query(UserVocabularyVector)
-            .filter(
-                UserVocabularyVector.user_id == user_id,
-                UserVocabularyVector.word_id.in_(phase_word_ids),
-                UserVocabularyVector.status.in_([VocabStatus.LEARNING, VocabStatus.MASTERED]),
-            )
-            .count()
+    # Count words explicitly flagged to be tested (user clicked "Add to learn")
+    to_be_tested_count = (
+        db.query(OnboardingWords)
+        .filter(
+            OnboardingWords.user_id == user_id,
+            OnboardingWords.study_phase == study_phase,
+            OnboardingWords.is_to_be_tested == True,
         )
+        .count()
+    )
 
     return {
         "study_phase": study_phase,
         "target_count": VOCAB_TEST_WORD_COUNT,
         "selected_count": min(len(phase_word_ids), VOCAB_TEST_WORD_COUNT),
-        "learning_count": learning_count,
-        "ready": len(phase_word_ids) >= VOCAB_TEST_WORD_COUNT and learning_count >= VOCAB_TEST_WORD_COUNT,
+        "learning_count": to_be_tested_count,
+        "ready": to_be_tested_count >= VOCAB_TEST_WORD_COUNT,
     }

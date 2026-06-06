@@ -31,6 +31,7 @@ export default function OnboardingPage() {
 
   const [age,        setAge]        = useState<number | "">(user?.age ?? "");
   const [city,       setCity]       = useState(user?.city ?? "");
+  const [gender,     setGender]     = useState(user?.gender ?? "");
   const [job,        setJob]        = useState(user?.job ?? "");
   const [academic,   setAcademic]   = useState(user?.academic_background ?? "");
   const [motherLang, setMotherLang] = useState(user?.mother_language ?? "");
@@ -83,6 +84,7 @@ export default function OnboardingPage() {
     await savePersonalInfo(user.id, {
       age:                 age !== "" ? Number(age) : undefined,
       city,
+      gender,
       job,
       academic_background: academic,
       mother_language:     motherLang,
@@ -93,7 +95,7 @@ export default function OnboardingPage() {
     setUser({
       ...user,
       age: age !== "" ? Number(age) : null,
-      city, job,
+      city, gender, job,
       academic_background: academic,
       mother_language: motherLang,
       other_languages: otherLangs || null,
@@ -262,6 +264,7 @@ export default function OnboardingPage() {
           <PersonalStep key="personal"
             age={age} setAge={setAge}
             city={city} setCity={setCity}
+            gender={gender} setGender={setGender}
             job={job} setJob={setJob}
             academic={academic} setAcademic={setAcademic}
             motherLang={motherLang} setMotherLang={setMotherLang}
@@ -358,6 +361,7 @@ function StepIndicator({ step }: { step: Step }) {
 function PersonalStep(props: {
   age: number | ""; setAge: (v: number | "") => void;
   city: string; setCity: (v: string) => void;
+  gender: string; setGender: (v: string) => void;
   job: string; setJob: (v: string) => void;
   academic: string; setAcademic: (v: string) => void;
   motherLang: string; setMotherLang: (v: string) => void;
@@ -371,6 +375,7 @@ function PersonalStep(props: {
   const canContinue =
     props.age !== "" &&
     props.city.trim().length > 0 &&
+    props.gender !== "" &&
     props.job.trim().length > 0 &&
     props.academic.trim().length > 0 &&
     props.motherLang.trim().length > 0 &&
@@ -411,6 +416,15 @@ function PersonalStep(props: {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Age *"><input type="text" inputMode="numeric" value={props.age} onChange={(e) => handleAgeChange(e.target.value)} placeholder="e.g. 24" className={inputCls} /></Field>
         <Field label="City *"><input value={props.city} onChange={(e) => handleTextChange(e.target.value, props.setCity, "city name")} placeholder="e.g. Amsterdam" className={inputCls} /></Field>
+        <Field label="Gender *">
+          <select value={props.gender} onChange={(e) => props.setGender(e.target.value)} className={inputCls}>
+            <option value="">Select...</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Non-binary">Non-binary</option>
+            <option value="Prefer not to say">Prefer not to say</option>
+          </select>
+        </Field>
         <Field label="Job / occupation *"><input value={props.job} onChange={(e) => handleTextChange(e.target.value, props.setJob, "job/occupation")} placeholder="e.g. Software engineer" className={inputCls} /></Field>
         <Field label="Academic background *"><input value={props.academic} onChange={(e) => handleTextChange(e.target.value, props.setAcademic, "academic background")} placeholder="e.g. BSc Computer Science" className={inputCls} /></Field>
         <Field label="Mother language *"><input value={props.motherLang} onChange={(e) => handleTextChange(e.target.value, props.setMotherLang, "mother language")} placeholder="e.g. Arabic" className={inputCls} /></Field>

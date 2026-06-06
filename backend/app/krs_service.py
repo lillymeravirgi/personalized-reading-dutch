@@ -214,7 +214,7 @@ def _save_matches(user_id: str, words: list[str], db: Session) -> tuple[int, int
     return matched, new_count
 
 
-def run_baseline_krs(user_id: str, db: Session, target_count: int = 10) -> list[int]:
+def run_baseline_krs(user_id: str, db: Session, target_count: int = 10, study_phase: int = 1) -> list[int]:
     from app.models import OnboardingWords
 
     user = db.query(User).filter(User.user_id == user_id).first()
@@ -222,6 +222,7 @@ def run_baseline_krs(user_id: str, db: Session, target_count: int = 10) -> list[
         raise ValueError(f"User '{user_id}' not found.")
 
     cefr = user.estimated_cefr or "B1"
+    phase_remark = f"phase:{study_phase}"
 
     known_ids: set[int] = {
         v.word_id for v in
@@ -237,7 +238,18 @@ def run_baseline_krs(user_id: str, db: Session, target_count: int = 10) -> list[
         .all()
     }
 
-    exclude_ids = known_ids | used_ids
+    # Also exclude words already recommended for this phase
+    already_rec_ids: set[int] = {
+        r.word_id for r in
+        db.query(RecommendedVocabulary)
+        .filter(
+            RecommendedVocabulary.user_id == user_id,
+            RecommendedVocabulary.remark == phase_remark,
+        )
+        .all()
+    }
+
+    exclude_ids = known_ids | used_ids | already_rec_ids
 
     pool = (
         db.query(Lexicon)
@@ -267,8 +279,28 @@ def run_baseline_krs(user_id: str, db: Session, target_count: int = 10) -> list[
     _random.shuffle(candidates)
     selected = candidates[:target_count]
 
+    # Save selected words to RecommendedVocabulary tagged with the phase remark
+    new_count = 0
+    for lex in selected:
+        exists = db.query(RecommendedVocabulary).filter(
+            RecommendedVocabulary.user_id == user_id,
+            RecommendedVocabulary.word_id == lex.word_id,
+        ).first()
+        if not exists:
+            db.add(RecommendedVocabulary(
+                user_id=user_id,
+                word_id=lex.word_id,
+                remark=phase_remark,
+            ))
+            new_count += 1
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
     logger.info(
-        "[Baseline KRS] user=%s cefr=%s pool=%d selected=%d",
-        user_id, cefr, len(candidates), len(selected),
+        "[Baseline KRS] user=%s cefr=%s phase=%d pool=%d selected=%d saved=%d",
+        user_id, cefr, study_phase, len(candidates), len(selected), new_count,
     )
     return [lex.word_id for lex in selected]
