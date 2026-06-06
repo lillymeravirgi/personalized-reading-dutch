@@ -498,7 +498,18 @@ export default function ReadingSessionPage() {
 
       <WordTooltip
         lookup={tooltip}
-        onClose={() => setTooltip(null)}
+        onClose={() => {
+          if (tooltip?.wordId && currentSession) {
+            logInteraction({
+              wordId: tooltip.wordId,
+              sessionId: currentSession.sessionId,
+              action: "WORD_AVOIDANCE",
+              weight: 1,
+              timestamp: new Date().toISOString(),
+            }).catch(() => undefined);
+          }
+          setTooltip(null);
+        }}
         onOpenDetail={handleOpenDetail}
         onMarkKnown={() => void handleMarkKnown()}
         markingKnown={markingKnown}

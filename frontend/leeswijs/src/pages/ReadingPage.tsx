@@ -191,6 +191,50 @@ export default function ReadingPage() {
         </div>
       )}
 
+      {showWordSetCard && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={[
+            "rounded-lg border px-5 py-4",
+            currentWordSetReady
+              ? "border-black/8 bg-black/[0.025] text-text/55"
+              : "border-primary/20 bg-primary/[0.04]",
+          ].join(" ")}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className={[
+                "font-heading text-sm font-bold mb-1",
+                currentWordSetReady ? "text-text/55" : "text-primary",
+              ].join(" ")}>
+                {currentWordSetReady
+                  ? `Phase ${currentPhase} word set completed`
+                  : `Learn ${TARGET_WORDS_PER_PHASE} words for Phase ${currentPhase}`}
+              </h3>
+              <p className="text-xs font-body text-text/55">
+                {currentWordSetReady
+                  ? "You can generate the next reading now."
+                  : "This unlocks the three readings in this phase."}
+              </p>
+            </div>
+            {currentWordSetReady ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-black/8 bg-white px-3 py-2 text-xs font-heading font-semibold text-text/45">
+                <CheckCircle2 size={14} /> Completed
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => navigate(`/onboarding/flashcards?phase=${currentPhase}`)}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-heading font-semibold text-white hover:opacity-90"
+              >
+                Start word set <ArrowRight size={14} />
+              </button>
+            )}
+          </div>
+        </motion.div>
+      )}
+
       <div className="rounded-lg border border-black/8 bg-white px-5 py-5 shadow-sm shadow-black/5">
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -303,50 +347,6 @@ export default function ReadingPage() {
           })
         )}
       </div>
-
-      {showWordSetCard && (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={[
-            "rounded-lg border px-5 py-4",
-            currentWordSetReady
-              ? "border-black/8 bg-black/[0.025] text-text/55"
-              : "border-primary/20 bg-primary/[0.04]",
-          ].join(" ")}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className={[
-                "font-heading text-sm font-bold mb-1",
-                currentWordSetReady ? "text-text/55" : "text-primary",
-              ].join(" ")}>
-                {currentWordSetReady
-                  ? `Phase ${currentPhase} word set completed`
-                  : `Learn ${TARGET_WORDS_PER_PHASE} words for Phase ${currentPhase}`}
-              </h3>
-              <p className="text-xs font-body text-text/55">
-                {currentWordSetReady
-                  ? "You can generate the next reading now."
-                  : "This unlocks the three readings in this phase."}
-              </p>
-            </div>
-            {currentWordSetReady ? (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-black/8 bg-white px-3 py-2 text-xs font-heading font-semibold text-text/45">
-                <CheckCircle2 size={14} /> Completed
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => navigate(`/onboarding/flashcards?phase=${currentPhase}`)}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-heading font-semibold text-white hover:opacity-90"
-              >
-                Start word set <ArrowRight size={14} />
-              </button>
-            )}
-          </div>
-        </motion.div>
-      )}
 
       {(completedCount >= READINGS_PER_PHASE || currentPhaseDone) && (
         <div className="space-y-3">

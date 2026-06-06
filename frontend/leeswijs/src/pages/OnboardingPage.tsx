@@ -366,6 +366,8 @@ function PersonalStep(props: {
   selfCefr: string; setSelfCefr: (v: string) => void;
   onNext: () => void;
 }) {
+  const [inputError, setInputError] = useState<string | null>(null);
+
   const canContinue =
     props.age !== "" &&
     props.city.trim().length > 0 &&
@@ -374,6 +376,24 @@ function PersonalStep(props: {
     props.motherLang.trim().length > 0 &&
     props.purpose !== "" &&
     props.selfCefr !== "";
+
+  const handleTextChange = (val: string, setter: (v: string) => void, fieldName: string) => {
+    if (/\d/.test(val)) {
+      setInputError(`Oops! Please use only letters for your ${fieldName}.`);
+    } else {
+      setInputError(null);
+      setter(val);
+    }
+  };
+
+  const handleAgeChange = (val: string) => {
+    if (val !== "" && !/^\d+$/.test(val)) {
+      setInputError("Oops! Please use only numbers for your age.");
+    } else {
+      setInputError(null);
+      props.setAge(val === "" ? "" : Number(val));
+    }
+  };
   return (
     <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
       <h1 className="font-heading text-2xl font-bold text-text mb-1">Tell us about yourself</h1>
@@ -381,13 +401,20 @@ function PersonalStep(props: {
         These answers help match the study texts to your Dutch level, goals, and interests.
       </p>
 
+      {inputError && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+          <AlertCircle size={16} className="text-amber-500 mt-0.5 shrink-0" />
+          <p className="text-sm text-amber-700 font-body">{inputError}</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Age *"><input type="number" min={10} max={99} value={props.age} onChange={(e) => props.setAge(e.target.value === "" ? "" : Number(e.target.value))} placeholder="e.g. 24" className={inputCls} /></Field>
-        <Field label="City *"><input value={props.city} onChange={(e) => props.setCity(e.target.value)} placeholder="e.g. Amsterdam" className={inputCls} /></Field>
-        <Field label="Job / occupation *"><input value={props.job} onChange={(e) => props.setJob(e.target.value)} placeholder="e.g. Software engineer" className={inputCls} /></Field>
-        <Field label="Academic background *"><input value={props.academic} onChange={(e) => props.setAcademic(e.target.value)} placeholder="e.g. BSc Computer Science" className={inputCls} /></Field>
-        <Field label="Mother language *"><input value={props.motherLang} onChange={(e) => props.setMotherLang(e.target.value)} placeholder="e.g. Arabic" className={inputCls} /></Field>
-        <Field label="Other languages"><input value={props.otherLangs} onChange={(e) => props.setOtherLangs(e.target.value)} placeholder="e.g. English, Spanish" className={inputCls} /></Field>
+        <Field label="Age *"><input type="text" inputMode="numeric" value={props.age} onChange={(e) => handleAgeChange(e.target.value)} placeholder="e.g. 24" className={inputCls} /></Field>
+        <Field label="City *"><input value={props.city} onChange={(e) => handleTextChange(e.target.value, props.setCity, "city name")} placeholder="e.g. Amsterdam" className={inputCls} /></Field>
+        <Field label="Job / occupation *"><input value={props.job} onChange={(e) => handleTextChange(e.target.value, props.setJob, "job/occupation")} placeholder="e.g. Software engineer" className={inputCls} /></Field>
+        <Field label="Academic background *"><input value={props.academic} onChange={(e) => handleTextChange(e.target.value, props.setAcademic, "academic background")} placeholder="e.g. BSc Computer Science" className={inputCls} /></Field>
+        <Field label="Mother language *"><input value={props.motherLang} onChange={(e) => handleTextChange(e.target.value, props.setMotherLang, "mother language")} placeholder="e.g. Arabic" className={inputCls} /></Field>
+        <Field label="Other languages"><input value={props.otherLangs} onChange={(e) => handleTextChange(e.target.value, props.setOtherLangs, "other languages")} placeholder="e.g. English, Spanish" className={inputCls} /></Field>
         <Field label="Purpose of learning Dutch *">
           <select value={props.purpose} onChange={(e) => props.setPurpose(e.target.value as Purpose | "")} className={inputCls}>
             <option value="">Select…</option>
