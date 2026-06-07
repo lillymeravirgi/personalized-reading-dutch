@@ -1,5 +1,7 @@
 # Learn Dutch
 
+https://leeswijs.vercel.app/login
+
 Learn Dutch is an HCI course group project for studying personalized Dutch reading support for second-language learners. The frontend app is in `frontend/leeswijs`.
 
 The main goal is to run a clean experiment and collect usable data about reading engagement, willingness to continue reading, cognitive load, and vocabulary learning.
