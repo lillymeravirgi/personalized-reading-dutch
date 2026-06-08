@@ -427,7 +427,7 @@ export default function ReadingPage() {
                 <li key={s.session_id}>
                   <button
                     type="button"
-                    onClick={() => navigate(`/read/${s.session_id}`)}
+                    onClick={() => navigate(`/read/${s.session_id}?review=1`)}
                     className="flex w-full items-center justify-between gap-3 rounded-lg border border-black/8 bg-white px-5 py-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.02]"
                   >
                     <div className="min-w-0">

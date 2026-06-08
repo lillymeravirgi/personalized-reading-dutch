@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   CheckCircle2,
@@ -49,6 +49,7 @@ function cleanExamples(examples?: BilingualSentence[] | null) {
 export default function ReadingSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const currentSession    = useStore((s) => s.currentSession);
   const isLoading         = useStore((s) => s.isLoadingSession);
@@ -68,7 +69,10 @@ export default function ReadingSessionPage() {
   const [modalWordId, setModalWordId] = useState<string | null>(null);
   const [definedEntries, setDefinedEntries] = useState<Record<string, LexiconEntry>>({});
 
-  const { elapsedMs } = useReadingTimer(!!currentSession && !error);
+  const isReviewRoute = searchParams.get("review") === "1";
+  const isReadOnly = isReviewRoute || Boolean(currentSession?.surveyCompleted);
+
+  const { elapsedMs } = useReadingTimer(!!currentSession && !error && !isReadOnly);
   const elapsedRef = useRef(0);
   useEffect(() => { elapsedRef.current = elapsedMs; }, [elapsedMs]);
 
@@ -215,6 +219,7 @@ export default function ReadingSessionPage() {
   }
 
   async function handleMarkKnown() {
+    if (isReadOnly) return;
     if (!user || !tooltip?.wordId || markingKnown) return;
     setMarkingKnown(true);
     try {
@@ -239,7 +244,7 @@ export default function ReadingSessionPage() {
 
   function handleOpenDetail() {
     if (!tooltip?.wordId) return;
-    if (currentSession) {
+    if (currentSession && !isReadOnly) {
       logInteraction({
         wordId:    tooltip.wordId,
         sessionId: currentSession.sessionId,
@@ -253,6 +258,7 @@ export default function ReadingSessionPage() {
   }
 
   function handleWordStatusChange(wordId: string, newStatus: "known" | "learning") {
+    if (isReadOnly) return;
     if (newStatus === "known") {
       setKnownOverride((prev) => new Set([...prev, wordId]));
     } else if (newStatus === "learning" && currentSession) {
@@ -376,7 +382,7 @@ export default function ReadingSessionPage() {
             tokens.push({
               text: sp,
               type: "word",
-              status: null, // Words not explicitly wrapped by the LLM are never highlighted
+              status: null,
               wordId: match?.wordId ?? null,
             });
           }
@@ -388,11 +394,16 @@ export default function ReadingSessionPage() {
   }, [currentSession, knownOverride]);
 
   function handleFinish() {
+    if (isReadOnly) {
+      navigate("/reading");
+      return;
+    }
     const dur = Math.floor(elapsedRef.current / 1000);
     navigate(`/survey/${sessionId}?duration=${dur}`);
   }
 
   async function handleContinue() {
+    if (isReadOnly) return;
     if (!sessionId || !user || continuing) return;
     setContinuing(true);
     setContinueError(null);
@@ -509,52 +520,64 @@ export default function ReadingSessionPage() {
       </div>
 
       <div className="flex flex-col items-end gap-2">
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <motion.button
+        {isReadOnly ? (
+          <button
             type="button"
-            onClick={handleContinue}
-            disabled={continuing}
-            whileTap={{ scale: continuing ? 1 : 0.97 }}
-            className={[
-              "inline-flex items-center gap-2 rounded-lg px-5 py-2.5",
-              "text-sm font-heading font-semibold",
-              "border border-primary/40 text-primary bg-white transition-colors",
-              continuing ? "opacity-60 cursor-wait" : "hover:bg-primary/[0.06]",
-            ].join(" ")}
+            onClick={() => navigate("/reading")}
+            className="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-white px-5 py-2.5 text-sm font-heading font-semibold text-primary hover:bg-primary/[0.06]"
           >
-            {continuing ? (
-              <><Loader2 size={16} className="animate-spin" /> Continuing</>
-            ) : (
-              <><BookPlus size={16} strokeWidth={2.3} /> Continue reading</>
-            )}
-          </motion.button>
-          <motion.button
-            type="button"
-            onClick={handleFinish}
-            disabled={continuing}
-            whileTap={{ scale: continuing ? 1 : 0.97 }}
-            className={[
-              "inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5",
-              "text-sm font-heading font-semibold text-white",
-              continuing ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
-            ].join(" ")}
-          >
-            <CheckCircle2 size={16} strokeWidth={2.3} /> Finish reading
-          </motion.button>
-        </div>
-        {continueError ? (
-          <p className="max-w-xs text-right text-xs font-body text-red-600">{continueError}</p>
+            Back to Reading
+          </button>
         ) : (
-          <p className="text-right text-xs font-body text-text/45 sm:whitespace-nowrap">
-            Read more on this topic, or finish when ready.
-          </p>
+          <>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <motion.button
+                type="button"
+                onClick={handleContinue}
+                disabled={continuing}
+                whileTap={{ scale: continuing ? 1 : 0.97 }}
+                className={[
+                  "inline-flex items-center gap-2 rounded-lg px-5 py-2.5",
+                  "text-sm font-heading font-semibold",
+                  "border border-primary/40 text-primary bg-white transition-colors",
+                  continuing ? "opacity-60 cursor-wait" : "hover:bg-primary/[0.06]",
+                ].join(" ")}
+              >
+                {continuing ? (
+                  <><Loader2 size={16} className="animate-spin" /> Continuing</>
+                ) : (
+                  <><BookPlus size={16} strokeWidth={2.3} /> Continue reading</>
+                )}
+              </motion.button>
+              <motion.button
+                type="button"
+                onClick={handleFinish}
+                disabled={continuing}
+                whileTap={{ scale: continuing ? 1 : 0.97 }}
+                className={[
+                  "inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5",
+                  "text-sm font-heading font-semibold text-white",
+                  continuing ? "opacity-60 cursor-not-allowed" : "hover:opacity-90",
+                ].join(" ")}
+              >
+                <CheckCircle2 size={16} strokeWidth={2.3} /> Finish reading
+              </motion.button>
+            </div>
+            {continueError ? (
+              <p className="max-w-xs text-right text-xs font-body text-red-600">{continueError}</p>
+            ) : (
+              <p className="text-right text-xs font-body text-text/45 sm:whitespace-nowrap">
+                Read more on this topic, or finish when ready.
+              </p>
+            )}
+          </>
         )}
       </div>
 
       <WordTooltip
         lookup={tooltip}
         onClose={() => {
-          if (tooltip?.wordId && currentSession) {
+          if (tooltip?.wordId && currentSession && !isReadOnly) {
             logInteraction({
               wordId: tooltip.wordId,
               sessionId: currentSession.sessionId,
@@ -568,12 +591,14 @@ export default function ReadingSessionPage() {
         onOpenDetail={handleOpenDetail}
         onMarkKnown={() => void handleMarkKnown()}
         markingKnown={markingKnown}
+        readOnly={isReadOnly}
       />
 
       <WordModal
         word={activeWord}
         onClose={() => setModalWordId(null)}
         onWordStatusChange={handleWordStatusChange}
+        readOnly={isReadOnly}
       />
     </motion.div>
   );

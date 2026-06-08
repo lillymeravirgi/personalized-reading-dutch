@@ -10,9 +10,10 @@ type Props = {
   word: HighlightedWord | null;
   onClose: () => void;
   onWordStatusChange?: (wordId: string, newStatus: "known" | "learning") => void;
+  readOnly?: boolean;
 };
 
-export default function WordModal({ word, onClose, onWordStatusChange }: Props) {
+export default function WordModal({ word, onClose, onWordStatusChange, readOnly }: Props) {
   const user = useStore((s) => s.user);
   const [saving, setSaving] = useState(false);
 
@@ -122,21 +123,23 @@ export default function WordModal({ word, onClose, onWordStatusChange }: Props) 
             </div>
           )}
 
-          <div className="px-5 py-4 shrink-0 bg-white">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleSaveWord()}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
-            >
-              <Check size={16} strokeWidth={2.4} />
-              {saving
-                ? "Saving..."
-                : isNew
-                  ? "Add to learning list"
-                  : "Mark as reviewed"}
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="px-5 py-4 shrink-0 bg-white">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void handleSaveWord()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-heading font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                <Check size={16} strokeWidth={2.4} />
+                {saving
+                  ? "Saving..."
+                  : isNew
+                    ? "Add to learning list"
+                    : "Mark as reviewed"}
+              </button>
+            </div>
+          )}
         </motion.div>
       </motion.div>
     </AnimatePresence>

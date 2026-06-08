@@ -111,7 +111,7 @@ export default function VocabTestPage() {
       }
 
       if (isDelayed) {
-        setTimeout(() => navigate(studyPhase === FINAL_STUDY_PHASE ? "/thank-you" : "/home"), 2200);
+        return;
       } else if (result.next_action === "transition") {
         setTimeout(() => navigate(`/system-transition?phase=${studyPhase + 1}`), 2200);
       } else if (result.next_action === "finish") {

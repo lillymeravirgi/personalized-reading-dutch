@@ -20,6 +20,7 @@ type Props = {
   onOpenDetail: () => void;
   onMarkKnown: () => void;
   markingKnown?: boolean;
+  readOnly?: boolean;
 };
 
 export default function WordTooltip({
@@ -28,6 +29,7 @@ export default function WordTooltip({
   onOpenDetail,
   onMarkKnown,
   markingKnown,
+  readOnly,
 }: Props) {
   useEffect(() => {
     if (!lookup) return;
@@ -37,7 +39,7 @@ export default function WordTooltip({
   }, [lookup, onClose]);
 
   const isYellow = lookup?.status === "learning";
-  const showActions = !!lookup && !lookup.loading && !!lookup.wordId;
+  const showActions = !!lookup && !lookup.loading && !!lookup.wordId && !readOnly;
   const tooltipPosition = lookup ? tooltipStyle(lookup.anchor, 240) : undefined;
 
   return (

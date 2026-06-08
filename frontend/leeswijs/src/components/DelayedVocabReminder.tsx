@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ClipboardCheck } from "lucide-react";
 
-import { getDelayedVocabTestStatus, getVocabTestProgress, type DelayedVocabTestStatus } from "../services/api";
+import { getDelayedVocabTestStatus, type DelayedVocabTestStatus } from "../services/api";
 import { useStore } from "../store";
 
 const DELAYED_CHECK_POLL_MS = 10_000;
@@ -37,16 +37,12 @@ export default function DelayedVocabReminder() {
 
     async function checkDelayedTest() {
       try {
-        const [status, progress] = await Promise.all([
-          getDelayedVocabTestStatus(userId),
-          getVocabTestProgress(userId),
-        ]);
+        const status = await getDelayedVocabTestStatus(userId);
         if (cancelled) return;
         const key = status.sessionGroupId && status.studyPhase
           ? `${status.sessionGroupId}-${status.studyPhase}`
           : null;
-        const readingFlowComplete = progress.immediateCompleted.includes(FINAL_STUDY_PHASE);
-        if (status.due && key && readingFlowComplete && !isDelayedCheckSnoozed(key)) {
+        if (status.due && key && !isDelayedCheckSnoozed(key)) {
           setDelayedCheck(status);
         } else {
           setDelayedCheck(null);
@@ -87,6 +83,7 @@ export default function DelayedVocabReminder() {
         <DelayedVocabCheckModal
           onStart={startDelayedCheck}
           onLater={closeDelayedCheck}
+          studyPhase={delayedCheck.studyPhase ?? FINAL_STUDY_PHASE}
         />
       )}
     </AnimatePresence>
@@ -118,9 +115,11 @@ function snoozeDelayedCheck(key: string) {
 function DelayedVocabCheckModal({
   onStart,
   onLater,
+  studyPhase,
 }: {
   onStart: () => void;
   onLater: () => void;
+  studyPhase: number;
 }) {
   return (
     <motion.div
@@ -144,10 +143,10 @@ function DelayedVocabCheckModal({
           </div>
           <div>
             <h2 className="font-heading text-xl font-bold text-text">
-              24-hour vocabulary check
+              Follow-up vocabulary check
             </h2>
             <p className="mt-1 text-sm font-body leading-6 text-text/60">
-              Your 24-hour vocabulary check is ready. It helps us measure retention from your previous session.
+              Your Phase {studyPhase} follow-up vocabulary check is ready. It helps us measure what you still remember.
             </p>
           </div>
         </div>

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_current_user_id
 from app.models import (
     ConditionType,
     Lexicon,
@@ -28,6 +29,17 @@ router = APIRouter(prefix="/session", tags=["Session"])
 READINGS_PER_PHASE = 3
 FINAL_STUDY_PHASE = 2
 TARGET_WORDS_PER_PHASE = 10
+
+
+def _same_user(requested_user_id: str | None, current_user_id: str) -> str:
+    if not requested_user_id or requested_user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="User mismatch")
+    return current_user_id
+
+
+def _clean_title(title: str | None, fallback: str) -> str:
+    text = (title or fallback).strip()
+    return re.sub(r"\[\[([^\]]+)\]\]", r"\1", text)
 
 
 def _build_word_list(rows) -> list[dict]:
@@ -129,8 +141,13 @@ def _tokenize_content(content: str, blue_words: list, yellow_words: list) -> lis
 
 
 @router.post("/generate", response_model=GenerateSessionResponse)
-def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
-    req_user = db.query(User).filter(User.user_id == req.user_id).first()
+def generate(
+    req: GenerateSessionRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    user_id = _same_user(req.user_id, current_user_id)
+    req_user = db.query(User).filter(User.user_id == user_id).first()
     if not req_user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -140,7 +157,7 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
     latest = (
         db.query(ReadingSession)
         .filter(
-            ReadingSession.user_id == req.user_id,
+            ReadingSession.user_id == user_id,
             ReadingSession.study_phase == current_phase,
         )
         .order_by(ReadingSession.session_id.desc())
@@ -162,7 +179,7 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
         checked = (
             db.query(VocabularyTestResult.id)
             .filter(
-                VocabularyTestResult.user_id == req.user_id,
+                VocabularyTestResult.user_id == user_id,
                 VocabularyTestResult.study_phase == current_phase,
                 VocabularyTestResult.test_type == "immediate",
             )
@@ -179,7 +196,7 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
                 detail="All study readings are complete.",
             )
 
-    if not _phase_word_set_ready(db, req.user_id, current_phase):
+    if not _phase_word_set_ready(db, user_id, current_phase):
         raise HTTPException(
             status_code=409,
             detail=f"Please complete the Phase {current_phase} word set before generating readings.",
@@ -187,7 +204,7 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
 
     try:
         result = generate_session(
-            user_id=req.user_id,
+            user_id=user_id,
             K=req.K,
             narrative_style=req.narrative_style,
             word_count_range=req.word_count_range,
@@ -221,8 +238,12 @@ def generate(req: GenerateSessionRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/continue", response_model=GenerateSessionResponse)
-def continue_reading(payload: dict, db: Session = Depends(get_db)):
-    user_id             = payload.get("user_id")
+def continue_reading(
+    payload: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    user_id             = _same_user(payload.get("user_id"), current_user_id)
     previous_session_id = payload.get("previous_session_id")
     if not user_id or previous_session_id is None:
         raise HTTPException(status_code=422, detail="user_id and previous_session_id are required")
@@ -256,9 +277,6 @@ def continue_reading(payload: dict, db: Session = Depends(get_db)):
 
     user = db.query(User).filter(User.user_id == user_id).first()
 
-    # Build a comprehensive word list from ALL accumulated word_translations
-    # so that _tokenize_content correctly highlights [[words]] from previous
-    # sessions that are now part of the full accumulated content string.
     study_phase = previous.study_phase
     phase_word_ids = [
         row.word_id for row in db.query(OnboardingWords)
@@ -316,13 +334,11 @@ def continue_reading(payload: dict, db: Session = Depends(get_db)):
 
 @router.get("/list")
 def list_sessions(
-    user_id: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id),
     study_phase: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
-    q = db.query(ReadingSession)
-    if user_id:
-        q = q.filter(ReadingSession.user_id == user_id)
+    q = db.query(ReadingSession).filter(ReadingSession.user_id == user_id)
     if study_phase is not None:
         q = q.filter(ReadingSession.study_phase == study_phase)
     sessions = q.order_by(ReadingSession.created_at.desc()).all()
@@ -330,7 +346,7 @@ def list_sessions(
         {
             "session_id":       s.session_id,
             "user_id":          s.user_id,
-            "title":            s.title or f"Reading #{s.reading_number}",
+            "title":            _clean_title(s.title, f"Reading #{s.reading_number}"),
             "topic_used":       s.topic_used,
             "reading_number":   s.reading_number,
             "study_phase":      s.study_phase,
@@ -342,7 +358,11 @@ def list_sessions(
 
 
 @router.get("/{session_id}")
-def get_session(session_id: int, user_id: str, db: Session = Depends(get_db)):
+def get_session(
+    session_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     session = db.query(ReadingSession).filter(ReadingSession.session_id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -399,7 +419,7 @@ def get_session(session_id: int, user_id: str, db: Session = Depends(get_db)):
 
     return {
         "session_id":        session.session_id,
-        "title":             session.title or f"Reading #{session.reading_number}",
+        "title":             _clean_title(session.title, f"Reading #{session.reading_number}"),
         "content":           session.content,
         "tokens":            _tokenize_content(session.content, blue_list, yellow_list),
         "topic_used":        session.topic_used,
