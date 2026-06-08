@@ -332,15 +332,59 @@ export default function ReadingSessionPage() {
 
   const effectiveTokens = useMemo(() => {
     if (!currentSession) return [];
-    return currentSession.tokens.map(token => {
-      if (token.type === "word" && !canLookUpWord(token.text)) {
-        return { ...token, status: null, wordId: null };
-      }
-      if (token.wordId && knownOverride.has(token.wordId)) {
-        return { ...token, status: null };
-      }
-      return token;
+
+    const highlightMap = new Map<string, { status: "learning" | "new", wordId: string }>();
+    currentSession.highlights.forEach(h => {
+      highlightMap.set(h.dutch.toLowerCase(), {
+        status: h.highlightType === "learning" ? "learning" : "new",
+        wordId: h.wordId
+      });
     });
+
+    const parts = currentSession.rawText.split(/(\[\[[^\]]+\]\])/);
+    const tokens: TextToken[] = [];
+
+    for (const part of parts) {
+      if (!part) continue;
+      if (part.startsWith("[[") && part.endsWith("]]")) {
+        const rawWord = part.slice(2, -2);
+        const low = rawWord.toLowerCase();
+        const match = highlightMap.get(low);
+        let status: "learning" | "new" | null = match?.status ?? null;
+        
+        if (status && match && knownOverride.has(match.wordId)) status = null;
+        if (!canLookUpWord(rawWord)) status = null;
+
+        tokens.push({
+          text: rawWord,
+          type: "word",
+          status,
+          wordId: match?.wordId ?? null,
+        });
+      } else {
+        const subParts = part.split(/([^\w\u00C0-\u017F]+)/);
+        for (const sp of subParts) {
+          if (!sp) continue;
+          if (/^[^\w\u00C0-\u017F]+$/.test(sp)) {
+            tokens.push({
+              text: sp,
+              type: /^\s+$/.test(sp) ? "space" : "punctuation",
+            });
+          } else {
+            const low = sp.toLowerCase();
+            const match = highlightMap.get(low);
+            tokens.push({
+              text: sp,
+              type: "word",
+              status: null, // Words not explicitly wrapped by the LLM are never highlighted
+              wordId: match?.wordId ?? null,
+            });
+          }
+        }
+      }
+    }
+    
+    return tokens;
   }, [currentSession, knownOverride]);
 
   function handleFinish() {
@@ -354,7 +398,18 @@ export default function ReadingSessionPage() {
     setContinueError(null);
     try {
       const nextSession = await continueSession(user.id, sessionId);
-      setCurrentSession(nextSession);
+      if (currentSession) {
+        const existingWordIds = new Set(currentSession.highlights.map((h) => h.wordId));
+        const newHighlights = nextSession.highlights.filter(
+          (h) => !existingWordIds.has(h.wordId)
+        );
+        setCurrentSession({
+          ...nextSession,
+          highlights: [...currentSession.highlights, ...newHighlights],
+        });
+      } else {
+        setCurrentSession(nextSession);
+      }
       setTimeout(() => {
         window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
       }, 100);

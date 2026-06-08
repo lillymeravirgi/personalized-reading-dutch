@@ -101,7 +101,27 @@ if seed_team_accounts:
         ("TJ", "TJ", ConditionType.BASELINE),
         ("EVIE", "Evie", ConditionType.ADAPTIVE),
         ("JY", "Jy", ConditionType.BASELINE),
-    ]
+        ("TEST1", "Test User 1", ConditionType.ADAPTIVE),
+        ("TEST2", "Test User 2", ConditionType.BASELINE),
+        ("TEST3", "Test User 3", ConditionType.ADAPTIVE),
+        ("TEST4", "Test User 4", ConditionType.BASELINE),
+        ("TEST5", "Test User 5", ConditionType.ADAPTIVE),
+        ("TEST6", "Test User 6", ConditionType.BASELINE), 
+        ("TEST7", "Test User 7", ConditionType.ADAPTIVE),
+        ("TEST8", "Test User 8", ConditionType.BASELINE),     
+        ("TEST9", "Test User 9", ConditionType.ADAPTIVE),
+        ("TEST10", "Test User 10", ConditionType.BASELINE), 
+        ("TEST11", "Test User 11", ConditionType.ADAPTIVE),
+        ("TEST12", "Test User 12", ConditionType.BASELINE),
+        ("TEST13", "Test User 13", ConditionType.ADAPTIVE),
+        ("TEST14", "Test User 14", ConditionType.BASELINE),
+        ("TEST15", "Test User 15", ConditionType.ADAPTIVE),
+        ("TEST16", "Test User 16", ConditionType.BASELINE),
+        ("TEST17", "Test User 17", ConditionType.ADAPTIVE),
+        ("TEST18", "Test User 18", ConditionType.BASELINE),
+        ("TEST19", "Test User 19", ConditionType.ADAPTIVE),
+        ("TEST20", "Test User 20", ConditionType.BASELINE)   
+    ]   
     password = os.getenv("SEED_TEST_PASSWORD")
     if not password:
         raise RuntimeError("Set SEED_TEST_PASSWORD before seeding team test accounts.")

@@ -117,14 +117,13 @@ def select_onboarding_words(
 
     if user.current_condition == ConditionType.BASELINE:
         # run_baseline_krs selects random CEFR-matched words, saves them to
-        # RecommendedVocabulary with remark="phase:N", and returns the word IDs.
+        # RecommendedVocabulary with remark="baseline", and returns the word IDs.
         run_baseline_krs(user_id, db, target_count=ONBOARDING_WORD_COUNT, study_phase=study_phase)
-        phase_remark = f"phase:{study_phase}"
         recs = (
             db.query(RecommendedVocabulary)
             .filter(
                 RecommendedVocabulary.user_id == user_id,
-                RecommendedVocabulary.remark == phase_remark,
+                RecommendedVocabulary.remark == "baseline",
             )
             .join(RecommendedVocabulary.lexicon_entry)
             .all()
@@ -136,28 +135,41 @@ def select_onboarding_words(
         background_tasks.add_task(_run_krs_background, user_id, is_refill)
         recs = (
             db.query(RecommendedVocabulary)
-            .filter(RecommendedVocabulary.user_id == user_id)
+            .filter(
+                RecommendedVocabulary.user_id == user_id,
+                RecommendedVocabulary.remark == "adaptive"
+            )
             .join(RecommendedVocabulary.lexicon_entry)
             .all()
         )
+        # Filter out already-used words first
+        valid_recs = [_entry_from_row(r) for r in recs if _entry_from_row(r).word_id not in used_ids]
 
-        if len(recs) < ONBOARDING_WORD_COUNT:
+        # If KRS pool is too small, pad with Lexicon words from user's CEFR level (+ adjacent)
+        if len(valid_recs) < ONBOARDING_WORD_COUNT:
             level = user.estimated_cefr or "B1"
+            cefr_order = ["A1", "A2", "B1", "B2", "C1", "C2"]
+            levels_to_try = [level]
+            idx = cefr_order.index(level) if level in cefr_order else 2
+            if idx > 0:
+                levels_to_try.append(cefr_order[idx - 1])
+            if idx < len(cefr_order) - 1:
+                levels_to_try.append(cefr_order[idx + 1])
             extra = (
                 db.query(Lexicon)
-                .filter(Lexicon.cefr_level == level)
-                .limit(ONBOARDING_WORD_COUNT * 3)
+                .filter(Lexicon.cefr_level.in_(levels_to_try))
+                .limit(ONBOARDING_WORD_COUNT * 10)
                 .all()
             )
-            rec_word_ids = {r.word_id for r in recs} | used_ids
-
+            existing_ids = {r.word_id for r in valid_recs} | used_ids
             for lex in extra:
-                if lex.word_id not in rec_word_ids and len(recs) < ONBOARDING_WORD_COUNT:
-                    recs.append(lex)
-                    rec_word_ids.add(lex.word_id)
+                if lex.word_id not in existing_ids:
+                    valid_recs.append(lex)
+                    existing_ids.add(lex.word_id)
+                if len(valid_recs) >= ONBOARDING_WORD_COUNT:
+                    break
 
-        valid_recs = [rec for rec in recs if _entry_from_row(rec).word_id not in used_ids]
-        selected = [_entry_from_row(rec) for rec in valid_recs[:ONBOARDING_WORD_COUNT]]
+        selected = valid_recs[:ONBOARDING_WORD_COUNT]
         random.shuffle(selected)
 
     saved_count = 0
@@ -224,12 +236,20 @@ def get_onboarding_word_status(
     ]
 
     # Count words explicitly flagged to be tested (user clicked "Add to learn")
+    # Strictly check that the word successfully saved to UserVocabularyVector as LEARNING
+    from app.models import UserVocabularyVector, VocabStatus
     to_be_tested_count = (
         db.query(OnboardingWords)
+        .join(
+            UserVocabularyVector,
+            (OnboardingWords.user_id == UserVocabularyVector.user_id) &
+            (OnboardingWords.word_id == UserVocabularyVector.word_id)
+        )
         .filter(
             OnboardingWords.user_id == user_id,
             OnboardingWords.study_phase == study_phase,
             OnboardingWords.is_to_be_tested == True,
+            UserVocabularyVector.status == VocabStatus.LEARNING,
         )
         .count()
     )

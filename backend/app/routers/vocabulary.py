@@ -8,7 +8,9 @@ from app.database import get_db
 from app.models import Lexicon, RecommendedVocabulary, UserVocabularyVector, VocabStatus
 from app.schemas import AddToLearnRequest, LexiconEntry
 
+import logging
 router = APIRouter(prefix="/vocab", tags=["Vocabulary"])
+logger = logging.getLogger(__name__)
 
 
 class PlainWordRequest(BaseModel):
@@ -23,7 +25,7 @@ def get_word(word_id: int, db: Session = Depends(get_db)):
     if not entry:
         raise HTTPException(status_code=404, detail=f"word_id={word_id} not found in lexicon")
     return LexiconEntry.model_validate(entry)
-def _add_vector(user_id: str, word_id: int, db: Session, interval_days: int | None = None) -> None:
+def _add_vector(user_id: str, word_id: int, db: Session, interval_days: int | None = None, force: bool = False) -> None:
     existing = (
         db.query(UserVocabularyVector)
         .filter(
@@ -34,7 +36,7 @@ def _add_vector(user_id: str, word_id: int, db: Session, interval_days: int | No
     )
     if existing:
         existing.exposure_count += 1
-        if existing.status != VocabStatus.MASTERED:
+        if existing.status != VocabStatus.MASTERED or force:
             existing.status = VocabStatus.LEARNING
         vector = existing
     else:
@@ -62,14 +64,18 @@ def _add_vector(user_id: str, word_id: int, db: Session, interval_days: int | No
 
 @router.patch("/add-to-learn")
 def add_to_learn(req: AddToLearnRequest, db: Session = Depends(get_db)):
+    logger.info(f"Incoming AddToLearnRequest: user_id={req.user_id}, word_id={req.word_id}, force={req.force}")
     lex = db.query(Lexicon).filter(Lexicon.word_id == req.word_id).first()
     if not lex:
+        logger.warning(f"Word not found in lexicon: word_id={req.word_id}")
         raise HTTPException(status_code=404, detail="Word not found in lexicon")
 
     try:
-        _add_vector(req.user_id, req.word_id, db, req.review_interval_days)
+        _add_vector(req.user_id, req.word_id, db, req.review_interval_days, req.force)
         db.commit()
+        logger.info(f"Successfully added '{lex.word}' to learning list for user {req.user_id}")
     except Exception as e:
+        logger.error(f"Error adding to learn list: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 

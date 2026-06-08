@@ -105,6 +105,7 @@ class AddToLearnRequest(BaseModel):
     user_id: str
     word_id: int
     review_interval_days: Optional[int] = None
+    force: bool = False
 
 class LexiconEntry(BaseModel):
     word_id: int

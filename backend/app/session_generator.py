@@ -76,7 +76,7 @@ Your writing must adhere to five strict pillars:
    sentence. Vocabulary must feel integral to the facts, not bolted on.
 
 Formatting Rule: Every time you use a word from the provided Target Lists,
-you MUST wrap it in double brackets, like this: [[woord]].\
+you MUST wrap it in double brackets, like this: [[woord]]. Do NOT wrap any other words in brackets.\
 """
 
 _NEUTRAL_POOL = [
@@ -175,8 +175,13 @@ def generate_session(
         used_topics = set(recent_topics)
 
         selected_topic = _topic_roll(user_id, K, db, exclude_topics=used_topics)
-        blue_entries = _fetch_blue_words(user_id, db)
+        blue_entries = _fetch_blue_words(user_id, study_phase, db, condition=ConditionType.ADAPTIVE)
         yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
+        if yellow_entries:
+            sample_size = random.randint(2, max(3, len(yellow_entries)))
+            sample_size = min(sample_size, len(yellow_entries))
+            yellow_entries = random.sample(yellow_entries, sample_size)
+        
         blue_words = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
         yellow_words = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
         story_json = _generate_story_content(
@@ -190,15 +195,15 @@ def generate_session(
         )
     else:
         selected_topic = random.choice(_NEUTRAL_POOL)
-        blue_entries = []
+        blue_entries = _fetch_blue_words(user_id, study_phase, db, condition=ConditionType.BASELINE)
         yellow_entries = []   # Baseline: no target-word injection at all
-        blue_words = []
+        blue_words = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
         yellow_words = []
         story_json = _generate_baseline_content(
             cefr_level=user.estimated_cefr or "B1",
             topic=selected_topic,
             word_count_range=word_count_range,
-            blue_words=[],
+            blue_words=[w["word"] for w in blue_words],
             yellow_words=[],
             recent_titles=None,
         )
@@ -308,15 +313,36 @@ def _topic_roll(
     return random.choice(candidates)
 
 
-def _fetch_blue_words(user_id: str, db: Session) -> list[RecommendedVocabulary]:
-    all_recs = (
-        db.query(RecommendedVocabulary)
-        .filter(RecommendedVocabulary.user_id == user_id)
-        .join(Lexicon)
-        .all()
-    )
-    k = max(1, min(5, math.ceil(len(all_recs) * 0.05))) if all_recs else 0
-    return random.sample(all_recs, min(k, len(all_recs)))
+def _fetch_blue_words(user_id: str, study_phase: int, db: Session, condition: ConditionType = ConditionType.ADAPTIVE) -> list[RecommendedVocabulary]:
+    if condition == ConditionType.ADAPTIVE:
+        # Adaptive: words tagged "adaptive" by run_krs
+        all_recs = (
+            db.query(RecommendedVocabulary)
+            .filter(
+                RecommendedVocabulary.user_id == user_id,
+                RecommendedVocabulary.remark == "adaptive",
+            )
+            .join(Lexicon)
+            .all()
+        )
+    else:
+        # Baseline: words tagged "baseline" by run_baseline_krs
+        all_recs = (
+            db.query(RecommendedVocabulary)
+            .filter(
+                RecommendedVocabulary.user_id == user_id,
+                RecommendedVocabulary.remark == "baseline",
+            )
+            .join(Lexicon)
+            .all()
+        )
+    if not all_recs:
+        return []
+    if condition == ConditionType.ADAPTIVE:
+        k = min(len(all_recs), random.randint(1, 2))
+    else:
+        k = min(len(all_recs), random.randint(2, 4))
+    return random.sample(all_recs, k)
 
 
 def _fetch_yellow_words(user_id: str, study_phase: int, db: Session) -> list[UserVocabularyVector]:
@@ -351,27 +377,7 @@ def _fetch_yellow_words(user_id: str, study_phase: int, db: Session) -> list[Use
         .all()
     )
 
-    if not phase_learning:
-        return []
-
-    previous_sessions = (
-        db.query(ReadingSession)
-        .filter(
-            ReadingSession.user_id == user_id,
-            ReadingSession.study_phase == study_phase,
-        )
-        .all()
-    )
-    injected_words = set()
-    for s in previous_sessions:
-        if s.word_translations:
-            injected_words.update(w.lower() for w in s.word_translations.keys())
-
-    unseen = [v for v in phase_learning if v.lexicon_entry.word.lower() not in injected_words]
-    seen = [v for v in phase_learning if v.lexicon_entry.word.lower() in injected_words]
-    
-    prioritized = unseen + seen
-    return prioritized[:5]
+    return phase_learning
 
 
 def _lex_to_dict(entry: Lexicon) -> dict:
@@ -412,45 +418,30 @@ def _generate_story_content(
     mother_l = user.mother_language or getattr(user, "native_language", None) or "not specified"
     gender = user.gender or "not specified"
 
+    import random
+    profile_pool = []
+    if city: profile_pool.append(f"Location: {city}")
+    if job: profile_pool.append(f"Occupation: {job}")
+    if academic and academic != "not specified": profile_pool.append(f"Academic Background: {academic}")
+    if purpose and purpose != "general Dutch learning": profile_pool.append(f"Learning Purpose: {purpose}")
+
+    spotlight_attributes = random.sample(profile_pool, min(2, len(profile_pool))) if profile_pool else ["General Adult Learner"]
+    spotlight_str = "\n".join(f"- {attr}" for attr in spotlight_attributes)
+
     if cefr in ["A1", "A2"]:
         length_constraint = "100-150"
-        difficulty_instruction = f"Difficulty: CEFR {cefr} — Use simple, short sentences (Subject-Verb-Object). Use basic vocabulary and primarily the present tense. Avoid nested clauses or complex conjunctions."
+        difficulty_instruction = f"Difficulty: CEFR {cefr} — Use simple, short sentences. You CAN use basic connectors (like 'en', 'maar', 'want', 'omdat') so the text flows naturally. Avoid highly complex nested clauses, but ensure the story is connected and logical."
     else:
         length_constraint = word_count_range
         difficulty_instruction = f"Difficulty: CEFR {cefr} — clear grammar, appropriate sentence complexity, no advanced subjunctive."
 
-    prompt = f"""\
-### GENERATION TASK
-Write a Personalized Informative Exploration article in Dutch.
-Target: National Geographic (simplified) × CEFR reading passage × educational travel magazine.
-NOT a generic health-tip listicle. NOT a personal diary. NOT vague Wikipedia prose.
-
-### LEARNER PROFILE (pick a concrete sub-angle that resonates — do NOT write about the learner)
-- CEFR Level: {cefr}
-- Mother Language: {mother_l}
-- Other Languages: {languages}
-- Academic Background: {academic}
-- Learning Purpose: {purpose}
-- Location: {city or "(not specified)"}
-- Occupation: {job or "(not specified)"}
-- Gender: {gender}
-Angle guidance by profile type (examples — adapt to the actual topic):
-  sports/fitness interest → specific athletic events, records, infrastructure, training science
-  technology interest    → real companies, innovations, data, AI or engineering examples
-  travel/culture         → hidden statistics, cultural comparisons, local traditions, tourism data
-  business/work          → economic impact, industry numbers, startup ecosystems, market shifts
-  health/science         → clinical findings, WHO/EU data, named studies, biological mechanisms
-
-### TOPIC
-{selected_topic}
-
-### TOPIC DIVERSITY (avoid these recently covered topics and their close subtopics)
-Recently used: {recent_str}
-
-### MANDATORY VOCABULARY
-1. BLUE WORDS (new — use each at least once, wrap in [[word]]): {blue_str}
-2. YELLOW WORDS (reinforce — use naturally, wrap in [[word]]): {yellow_str}
-{survey_section}
+    if cefr in ["A1", "A2"]:
+        info_richness_block = """\
+### INFORMATIONAL DENSITY
+For A1/A2, prioritize a logical, cohesive, and simple narrative about daily life or basic facts over dense journalistic statistics. Keep it grounded in reality.
+"""
+    else:
+        info_richness_block = """\
 ### INFORMATIONAL RICHNESS — MANDATORY
 The article MUST contain at least THREE of the following:
   a) A real statistic or number  (e.g. "23 miljoen fietsen voor 18 miljoen Nederlanders")
@@ -472,7 +463,37 @@ Follow this informational arc. Each step must add genuinely new content:
   §3 Expand   — add a comparison, cultural angle, or contrasting perspective.
   §4 Implication (if word count allows) — consequence, trend, or practical application.
 NEVER repeat the same idea twice, even with different wording.
+"""
 
+    prompt = f"""\
+### GENERATION TASK
+Write a Personalized Informative Exploration article in Dutch.
+Target: National Geographic (simplified) × CEFR reading passage × educational travel magazine.
+NOT a generic health-tip listicle. NOT a personal diary. NOT vague Wikipedia prose.
+
+### LEARNER PROFILE SPOTLIGHT
+To subtly inspire the angle of the article, focus on these specific traits of the learner:
+{spotlight_str}
+
+CRITICAL PERSONALISATION RULES:
+1. Use the traits above to inspire the specific angle, examples, or comparisons in the text.
+2. Do NOT write the article *about* the learner. The reader should think, "This topic fits my world," not "This text is a biography about me."
+3. If a Location is provided, use it only as a brief comparison point (e.g., comparing a local trend to a global trend). The text must explore the wider world.
+
+### TOPIC
+{selected_topic}
+
+### TOPIC DIVERSITY (avoid these recently covered topics and their close subtopics)
+Recently used: {recent_str}
+
+### MANDATORY VOCABULARY
+1. BLUE WORDS (new): You MUST include EVERY single word from this list at least once. Wrap each in [[word]]. List: {blue_str}
+2. YELLOW WORDS (reinforce): You MUST include EVERY single word from this list at least once. Wrap each in [[word]]. List: {yellow_str}
+
+CRITICAL RULE: The text MUST flow logically. Do not just paste these words into random, disconnected sentences. You must build a single, cohesive narrative or explanation that naturally incorporates these words.
+CRITICAL RULE FOR TARGET WORDS: If a target word is a basic everyday object (e.g., 'stoel', 'tafelwater', 'raam'), do NOT invent fake facts, fake countries, or bizarre logic to make it sound 'educational'. Just use the word naturally in a normal, logical sentence (e.g., 'Hij zit op een stoel.'). Never sacrifice logic just to force an educational tone.
+{survey_section}
+{info_richness_block}
 ### WRITING REQUIREMENTS
 - Length: approximately {length_constraint} Dutch words.
 - {difficulty_instruction}
@@ -684,12 +705,17 @@ def generate_continuation(
     reading_number = previous_session.reading_number
     study_phase = previous_session.study_phase
 
-    blue_entries = _fetch_blue_words(user_id, db) if condition == ConditionType.ADAPTIVE else []
-    yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
-    blue_words = [_lex_to_dict(e.lexicon_entry) for e in blue_entries]
+    blue_entries = _fetch_blue_words(user_id, study_phase, db, condition=condition)
+    yellow_entries = _fetch_yellow_words(user_id, study_phase, db) if condition == ConditionType.ADAPTIVE else []
+    if yellow_entries:
+        sample_size = random.randint(2, max(3, len(yellow_entries)))
+        sample_size = min(sample_size, len(yellow_entries))
+        yellow_entries = random.sample(yellow_entries, sample_size)
+
+    blue_words = [_lex_to_dict(entry.lexicon_entry) for entry in blue_entries]
     yellow_words = [_lex_to_dict(e.lexicon_entry) for e in yellow_entries]
 
-    word_translations: dict[str, str] = {}
+    word_translations: dict[str, str] = dict(previous_session.word_translations or {})
     for w in blue_words + yellow_words:
         word_translations[w["word"].lower()] = w["translation"]
 
@@ -720,6 +746,45 @@ def generate_continuation(
         w["word"] for w in yellow_words if w["word"] not in vocab_already_used
     ) or yellow_str
 
+    if cefr_level in ["A1", "A2"]:
+        length_constraint = "80-120"
+        difficulty_block = (
+            f"STRICT A1/A2 CONSTRAINT — YOU MUST FOLLOW THIS:\n"
+            f"- Maximum {length_constraint} Dutch words total.\n"
+            f"- Use ONLY simple, short sentences (Subject-Verb-Object).\n"
+            f"- Use ONLY basic, everyday vocabulary appropriate for {cefr_level}.\n"
+            f"- Use ONLY the present tense. Do NOT use past tense, future tense, or conditional.\n"
+            f"- Do NOT use nested clauses, subordinate clauses, or complex conjunctions.\n"
+            f"- Keep sentences under 10 words each."
+        )
+    else:
+        length_constraint = "180-220"
+        difficulty_block = (
+            f"- Length: approximately {length_constraint} Dutch words across EXACTLY two (2) paragraphs.\n"
+            f"- Difficulty: CEFR {cefr_level} — grammatically correct, appropriately complex Dutch."
+        )
+
+    if cefr_level in ["A1", "A2"]:
+        info_richness_block = """\
+### INFORMATIONAL DENSITY
+For A1/A2, prioritize a logical, cohesive, and simple continuation about daily life or basic facts over dense journalistic statistics. Keep it grounded in reality.
+"""
+    else:
+        info_richness_block = """\
+### INFORMATIONAL RICHNESS — MANDATORY
+This continuation MUST introduce at least TWO new concrete data points not in the summary above.
+Choose from:
+  - A real statistic, number, or percentage
+  - A named location, organization, institution, or event
+  - A comparison between countries, eras, or groups
+  - A surprising or counterintuitive fact
+  - A scientific finding, historical date, or expert example
+
+BAD:  "Beweging is goed voor de gezondheid." (already covered, vague)
+GOOD: "Onderzoek van de Vrije Universiteit Amsterdam toonde aan dat twintig minuten
+       wandelen per dag het risico op hart- en vaatziekten met vijftien procent verlaagt."
+"""
+
     continuation_prompt = f"""\
 ### CONTINUATION TASK
 The learner has ALREADY READ the previous section of this Dutch educational article.
@@ -742,28 +807,19 @@ The learner is at CEFR {cefr_level}.
 1. BLUE WORDS — wrap in [[word]]: {new_blue_str}
 2. YELLOW WORDS — wrap in [[word]]: {new_yellow_str}
 
-### INFORMATIONAL RICHNESS — MANDATORY
-This continuation MUST introduce at least TWO new concrete data points not in the summary above.
-Choose from:
-  - A real statistic, number, or percentage
-  - A named location, organization, institution, or event
-  - A comparison between countries, eras, or groups
-  - A surprising or counterintuitive fact
-  - A scientific finding, historical date, or expert example
+CRITICAL RULE FOR TARGET WORDS: If a target word is a basic everyday object (e.g., 'stoel', 'tafelwater', 'raam'), do NOT invent fake facts, fake countries, or bizarre logic to make it sound 'educational'. Just use the word naturally in a normal, logical sentence (e.g., 'Hij zit op een stoel.'). Never sacrifice logic just to force an educational tone.
 
-BAD:  "Beweging is goed voor de gezondheid." (already covered, vague)
-GOOD: "Onderzoek van de Vrije Universiteit Amsterdam toonde aan dat twintig minuten
-       wandelen per dag het risico op hart- en vaatziekten met vijftien procent verlaagt."
+{info_richness_block}
 
 ### STRICT CONTINUATION REQUIREMENTS
 Style: Personalized Informative Exploration — factual, specific, magazine-like.
+- DO NOT REPEAT previous sentences. Read the 'Last sentence / ending context' provided below, and generate completely new thoughts moving forward.
 - Continue DIRECTLY from where the article ended — no recap, no re-introduction.
 - Each paragraph must advance the topic with genuinely NEW information.
 - Prioritise: new facts, events, named places, statistics, comparisons, implications.
 - Avoid: repeating emotional states, motivational loops, re-explaining prior concepts.
 - Vocabulary: integrate [[target_words]] into factual, informative sentences.
-- Length: approximately 180–220 Dutch words across EXACTLY two (2) paragraphs.
-- Difficulty: CEFR {cefr_level} — grammatically correct, appropriately complex Dutch.
+{difficulty_block}
 
 ### OUTPUT SPECIFICATION
 Return ONLY valid JSON:
@@ -793,7 +849,10 @@ Return ONLY valid JSON:
             response = _client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=continuation_prompt,
-                config={"system_instruction": _SYSTEM_INSTRUCTION},
+                config={
+                    "system_instruction": _SYSTEM_INSTRUCTION,
+                    "temperature": 0.7,
+                },
             )
             text = response.text.strip()
             text = re.sub(r"^```(?:json)?\s*", "", text)

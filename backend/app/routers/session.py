@@ -256,11 +256,54 @@ def continue_reading(payload: dict, db: Session = Depends(get_db)):
 
     user = db.query(User).filter(User.user_id == user_id).first()
 
+    # Build a comprehensive word list from ALL accumulated word_translations
+    # so that _tokenize_content correctly highlights [[words]] from previous
+    # sessions that are now part of the full accumulated content string.
+    study_phase = previous.study_phase
+    phase_word_ids = [
+        row.word_id for row in db.query(OnboardingWords)
+        .filter(
+            OnboardingWords.user_id == user_id,
+            OnboardingWords.study_phase == study_phase,
+        ).all()
+    ]
+    yellow_vector_ids = set()
+    for w in yellow_words:
+        yellow_vector_ids.add(w.word_id)
+
+    all_translations = result["word_translations"]  # already merged dict
+    if all_translations:
+        from sqlalchemy import func
+        all_word_texts = [w.lower() for w in all_translations.keys()]
+        lex_rows = db.query(Lexicon).filter(func.lower(Lexicon.word).in_(all_word_texts)).all()
+        lex_by_word = {row.word.lower(): row for row in lex_rows}
+
+        all_blue_words_for_tok = []
+        all_yellow_words_for_tok = []
+        for word_text, translation in all_translations.items():
+            lex = lex_by_word.get(word_text.lower())
+            if lex is None:
+                continue
+            entry = {
+                "word_id": lex.word_id,
+                "word": lex.word,
+                "translation": translation,
+                "cefr_level": lex.cefr_level,
+                "examples": lex.examples or [],
+            }
+            if lex.word_id in yellow_vector_ids or lex.word_id in phase_word_ids:
+                all_yellow_words_for_tok.append(entry)
+            else:
+                all_blue_words_for_tok.append(entry)
+        tokens = _tokenize_content(result["content"], all_blue_words_for_tok, all_yellow_words_for_tok)
+    else:
+        tokens = _tokenize_content(result["content"], result["blue_words"], result["yellow_words"])
+
     return GenerateSessionResponse(
         session_id=result["session_id"],
         title=result["title"],
         content=result["content"],
-        tokens=_tokenize_content(result["content"], result["blue_words"], result["yellow_words"]),
+        tokens=tokens,
         topic_used=result["topic_used"],
         blue_words=blue_words,
         yellow_words=yellow_words,
@@ -325,7 +368,10 @@ def get_session(session_id: int, user_id: str, db: Session = Depends(get_db)):
         .all()
     ) if phase_word_ids else []
 
-    yellow_list = _build_word_list(yellow)
+    if session.condition == ConditionType.BASELINE:
+        yellow_list = []
+    else:
+        yellow_list = _build_word_list(yellow)
 
     yellow_words = {item["word"].lower() for item in yellow_list}
     session_words = set()
@@ -338,11 +384,15 @@ def get_session(session_id: int, user_id: str, db: Session = Depends(get_db)):
         for word in re.findall(r"\[\[([^\]]+)\]\]", session.content or "")
     )
     blue_keys = sorted(session_words - yellow_words)
-    blue_entries = (
-        db.query(Lexicon)
-        .filter(Lexicon.word.in_(blue_keys))
-        .all()
-    ) if blue_keys and session.condition == ConditionType.ADAPTIVE else []
+    if blue_keys:
+        from sqlalchemy import func
+        blue_entries = (
+            db.query(Lexicon)
+            .filter(func.lower(Lexicon.word).in_(blue_keys))
+            .all()
+        )
+    else:
+        blue_entries = []
     blue_list = _build_lexicon_word_list(blue_entries)
 
     user = db.query(User).filter(User.user_id == session.user_id).first()

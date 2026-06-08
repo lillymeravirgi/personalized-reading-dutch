@@ -104,9 +104,11 @@ def discover_prefetch(user_id: str, study_phase: int | None = None, db: Session 
         .join(RecommendedVocabulary.lexicon_entry)
     )
 
-    # For phase-strict retrieval: filter by remark when study_phase is provided
-    if study_phase is not None:
-        rec_q = rec_q.filter(RecommendedVocabulary.remark == f"phase:{study_phase}")
+    from app.models import User, ConditionType
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if user:
+        remark_val = "adaptive" if user.current_condition == ConditionType.ADAPTIVE else "baseline"
+        rec_q = rec_q.filter(RecommendedVocabulary.remark == remark_val)
 
     usable_recs = rec_q.order_by(RecommendedVocabulary.recommended_at.desc()).all()
     usable_count = len(usable_recs)
@@ -127,6 +129,12 @@ def discover_prefetch(user_id: str, study_phase: int | None = None, db: Session 
 
 @router.post("/refill-check")
 def refill_check(user_id: str, db: Session = Depends(get_db)):
+    from app.models import User, ConditionType
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        return {"status": "error", "detail": "User not found"}
+    remark_val = "adaptive" if user.current_condition == ConditionType.ADAPTIVE else "baseline"
+
     LOW_WATERMARK = 25
     usable_count = (
         db.query(RecommendedVocabulary)
@@ -137,6 +145,7 @@ def refill_check(user_id: str, db: Session = Depends(get_db)):
         )
         .filter(
             RecommendedVocabulary.user_id == user_id,
+            RecommendedVocabulary.remark == remark_val,
             UserVocabularyVector.word_id.is_(None),
         )
         .count()
@@ -158,6 +167,12 @@ class DiscoverRequest(BaseModel):
 
 @router.post("/discover")
 def discover_new_words(req: DiscoverRequest, db: Session = Depends(get_db)):
+    from app.models import User, ConditionType
+    user = db.query(User).filter(User.user_id == req.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    remark_val = "adaptive" if user.current_condition == ConditionType.ADAPTIVE else "baseline"
+
     try:
         run_krs(user_id=req.user_id, db=db)
     except Exception as e:
@@ -165,7 +180,10 @@ def discover_new_words(req: DiscoverRequest, db: Session = Depends(get_db)):
 
     recs = (
         db.query(RecommendedVocabulary)
-        .filter(RecommendedVocabulary.user_id == req.user_id)
+        .filter(
+            RecommendedVocabulary.user_id == req.user_id,
+            RecommendedVocabulary.remark == remark_val
+        )
         .join(RecommendedVocabulary.lexicon_entry)
         .order_by(RecommendedVocabulary.recommended_at.desc())
         .limit(20)

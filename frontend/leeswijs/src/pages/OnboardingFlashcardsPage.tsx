@@ -87,7 +87,8 @@ export default function OnboardingFlashcardsPage() {
     setSaving(true);
     setError(null);
     try {
-      await addToLearnList(user.id, word.word_id);
+      // Pass 0 for interval_days so these words are due immediately for the experiment
+      await addToLearnList(user.id, word.word_id, 0, true);
       // Mark this word as TO be tested (user wants to learn it)
       await markWordDecision(user.id, word.word_id, studyPhase, true);
       advanceCard(true);
@@ -113,8 +114,20 @@ export default function OnboardingFlashcardsPage() {
     setIndex(nextIndex);
     setShowMeaning(false);
     
+    // Trigger refill when close to the end of available words
     if (words.length - nextIndex <= PREFETCH_THRESHOLD && !refilling && user) {
       void refillWords();
+    }
+  }
+
+  async function handleManualRefill() {
+    if (!user || refilling) return;
+    setRefilling(true);
+    try {
+      const more = await selectOnboardingWords(user.id, true, studyPhase);
+      setWords((prev) => mergeUnique(prev, more));
+    } finally {
+      setRefilling(false);
     }
   }
   async function handleFinish() {
@@ -195,8 +208,33 @@ export default function OnboardingFlashcardsPage() {
       )}
 
       <AnimatePresence mode="wait">
+        {/* Queue empty while fetching or after a failed refill — show recovery UI */}
+      {!word && !done && (
+        <div className="flex flex-col items-center gap-4 py-12 text-center">
+          {refilling ? (
+            <>
+              <div className="animate-spin w-8 h-8 rounded-full border-4 border-primary/20 border-t-primary" />
+              <p className="text-sm font-body text-text/50">Finding more words…</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-body text-text/60">
+                Ran out of words in the queue.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleManualRefill()}
+                className="inline-flex items-center gap-2 rounded-xl bg-primary text-white px-5 py-2.5 text-sm font-heading font-semibold hover:opacity-90"
+              >
+                Load more words
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {word && (
         <motion.div
-          key={word?.word_id}
+          key={word.word_id}
           initial={{ opacity: 0, y: 20, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -20, scale: 0.97 }}
@@ -209,20 +247,18 @@ export default function OnboardingFlashcardsPage() {
             <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Dutch word</p>
             <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
               <h2 className="min-w-0 break-words text-center font-heading text-3xl font-bold text-text">
-                {word?.word ?? "Finding another word..."}
+                {word.word}
               </h2>
-              {word?.word && (
-                <SpeakButton
-                  text={word.word}
-                  label={`Play pronunciation for ${word.word}`}
-                  className="h-9 w-9 shrink-0"
-                />
-              )}
+              <SpeakButton
+                text={word.word}
+                label={`Play pronunciation for ${word.word}`}
+                className="h-9 w-9 shrink-0"
+              />
             </div>
           </div>
 
           <AnimatePresence>
-            {showMeaning && word && (
+            {showMeaning && (
               <motion.div
                 key="meaning"
                 initial={{ opacity: 0, height: 0 }}
@@ -257,7 +293,7 @@ export default function OnboardingFlashcardsPage() {
             <button
               type="button"
               onClick={() => void handleKnow()}
-              disabled={!word || saving}
+              disabled={saving}
               className="flex-1 rounded-xl border border-black/12 px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/[0.03] transition-colors disabled:opacity-50"
             >
               I know this word
@@ -265,13 +301,14 @@ export default function OnboardingFlashcardsPage() {
             <button
               type="button"
               onClick={() => void handleAddToLearn()}
-              disabled={!word || saving}
+              disabled={saving}
               className="flex-1 rounded-xl bg-primary text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               Add to learn
             </button>
           </div>
         </motion.div>
+      )}
       </AnimatePresence>
     </motion.div>
   );

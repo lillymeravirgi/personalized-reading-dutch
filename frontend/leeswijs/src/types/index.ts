@@ -78,6 +78,7 @@ export interface TextToken {
 export interface ReadingSession {
   sessionId: string;
   text: string;
+  rawText: string;
   tokens: TextToken[];
   title: string;
   topic: string;

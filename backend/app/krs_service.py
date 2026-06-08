@@ -56,7 +56,10 @@ def run_krs(user_id: str, db: Session, is_refill: bool = False) -> dict:
     }
     current_recs = (
         db.query(RecommendedVocabulary)
-        .filter(RecommendedVocabulary.user_id == user_id)
+        .filter(
+            RecommendedVocabulary.user_id == user_id,
+            RecommendedVocabulary.remark == "adaptive"
+        )
         .all()
     )
     usable_count = sum(1 for r in current_recs if r.word_id not in vector_ids)
@@ -95,7 +98,10 @@ def reservoir_count(user_id: str, db: Session) -> int:
     }
     recs = (
         db.query(RecommendedVocabulary)
-        .filter(RecommendedVocabulary.user_id == user_id)
+        .filter(
+            RecommendedVocabulary.user_id == user_id,
+            RecommendedVocabulary.remark == "adaptive"
+        )
         .all()
     )
     return sum(1 for r in recs if r.word_id not in vector_ids)
@@ -207,7 +213,7 @@ def _save_matches(user_id: str, words: list[str], db: Session) -> tuple[int, int
         ).first()
 
         if not exists_in_rec and not exists_in_vector:
-            db.add(RecommendedVocabulary(user_id=user_id, word_id=lex.word_id))
+            db.add(RecommendedVocabulary(user_id=user_id, word_id=lex.word_id, remark="adaptive"))
             new_count += 1
 
     db.commit()
@@ -222,7 +228,7 @@ def run_baseline_krs(user_id: str, db: Session, target_count: int = 10, study_ph
         raise ValueError(f"User '{user_id}' not found.")
 
     cefr = user.estimated_cefr or "B1"
-    phase_remark = f"phase:{study_phase}"
+    remark_val = "baseline"
 
     known_ids: set[int] = {
         v.word_id for v in
@@ -244,7 +250,7 @@ def run_baseline_krs(user_id: str, db: Session, target_count: int = 10, study_ph
         db.query(RecommendedVocabulary)
         .filter(
             RecommendedVocabulary.user_id == user_id,
-            RecommendedVocabulary.remark == phase_remark,
+            RecommendedVocabulary.remark == "baseline",
         )
         .all()
     }
@@ -290,7 +296,7 @@ def run_baseline_krs(user_id: str, db: Session, target_count: int = 10, study_ph
             db.add(RecommendedVocabulary(
                 user_id=user_id,
                 word_id=lex.word_id,
-                remark=phase_remark,
+                remark="baseline",
             ))
             new_count += 1
 

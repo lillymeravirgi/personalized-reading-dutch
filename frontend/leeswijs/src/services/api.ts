@@ -364,6 +364,7 @@ function mapSessionResponse(data: Record<string, unknown>): ReadingSession {
   return {
     sessionId: String(data.session_id ?? ""),
     title: String(data.title ?? ""),
+    rawText: content,
     text: content.replace(/\[\[([^\]]+)\]\]/g, "$1"),
     tokens: ((data.tokens ?? []) as BackendTextToken[]).map(t => ({
       text: String(t.text),
@@ -464,11 +465,13 @@ export async function addToLearnList(
   userId: string,
   wordId: number,
   reviewIntervalDays?: number,
+  force?: boolean
 ): Promise<void> {
   await apiClient.patch("/vocab/add-to-learn", {
     user_id:               userId,
     word_id:               wordId,
     review_interval_days:  reviewIntervalDays,
+    force:                 force,
   });
 }
 
