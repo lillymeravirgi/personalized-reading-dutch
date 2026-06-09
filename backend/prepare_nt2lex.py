@@ -1,21 +1,18 @@
-from __future__ import annotations
-
 import argparse
 import csv
-from collections import Counter
 from pathlib import Path
 
 try:
     from lexicon_data import LEXICON_DATA
-except Exception:
+except ImportError:
     LEXICON_DATA = []
 
 
 LEVELS = ["A1", "A2", "B1", "B2", "C1"]
-DEFAULT_SOURCE = Path("/Users/jy/Downloads/NT2Lex-CGN-v01.tsv")
-DEFAULT_OUTPUT = Path("/private/tmp/leeswijs_vocab/nt2lex_candidates.csv")
+DEFAULT_SOURCE = Path("NT2Lex-CGN-v01.tsv")
+DEFAULT_OUTPUT = Path("nt2lex_candidates.csv")
 
-FUNCTION_WORDS = {
+BASIC_WORDS_TO_SKIP = {
     "de", "het", "een", "en", "maar", "of", "want", "dus", "omdat",
     "ik", "jij", "je", "hij", "zij", "ze", "wij", "we", "u", "jullie",
     "mij", "me", "jou", "hem", "haar", "ons", "hun", "hen",
@@ -37,31 +34,31 @@ def parse_number(value: str | None) -> float | None:
         return None
 
 
-def target_pos(tag: str) -> bool:
+def useful_part_of_speech(tag: str) -> bool:
     parts = tag.split()
     return any(part.startswith(("N(", "WW(", "ADJ(")) for part in parts)
 
 
-def eligible_reason(word: str, tag: str) -> tuple[bool, str]:
+def check_word(word: str, tag: str) -> tuple[bool, str]:
     raw = word.strip()
     clean = raw.lower()
     if not clean:
         return False, "empty"
     if raw != raw.lower():
-        return False, "capitalized_or_name"
-    if clean in FUNCTION_WORDS:
-        return False, "function_word"
+        return False, "starts with capital"
+    if clean in BASIC_WORDS_TO_SKIP:
+        return False, "too basic"
     if clean.startswith("'"):
-        return False, "contracted_phrase"
+        return False, "contraction"
     if any(char.isdigit() for char in clean):
-        return False, "contains_digit"
+        return False, "has number"
     if len(clean) < 3:
-        return False, "too_short"
+        return False, "too short"
     if len(clean) > 36:
-        return False, "too_long"
-    if not target_pos(tag):
-        return False, "non_target_pos"
-    return True, "eligible"
+        return False, "too long"
+    if not useful_part_of_speech(tag):
+        return False, "not noun/verb/adjective"
+    return True, "ok"
 
 
 def derive_level(row: dict[str, str]) -> tuple[str | None, float, int, str]:
@@ -82,12 +79,12 @@ def derive_level(row: dict[str, str]) -> tuple[str | None, float, int, str]:
 
 def prepare(source: Path, output: Path, max_per_level: int, include_ineligible: bool) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    existing_translations = {
-        entry["word"].strip().lower(): entry.get("translation", "")
-        for entry in LEXICON_DATA
-    }
+    existing_translations = {}
+    for entry in LEXICON_DATA:
+        word = entry["word"].strip().lower()
+        existing_translations[word] = entry.get("translation", "")
 
-    by_word: dict[str, dict[str, str | int | float | bool]] = {}
+    by_word: dict[str, dict[str, object]] = {}
     raw_count = 0
     with source.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
@@ -99,8 +96,8 @@ def prepare(source: Path, output: Path, max_per_level: int, include_ineligible: 
 
             raw_word = row["word"].strip()
             word = raw_word.lower()
-            eligible, reason = eligible_reason(raw_word, row["tag"])
-            if not include_ineligible and not eligible:
+            keep_word, note = check_word(raw_word, row["tag"])
+            if not include_ineligible and not keep_word:
                 continue
 
             candidate = {
@@ -110,8 +107,8 @@ def prepare(source: Path, output: Path, max_per_level: int, include_ineligible: 
                 "source_sfi": round(sfi, 4),
                 "source_frequency": freq,
                 "levels_observed": observed,
-                "eligible_for_target": eligible,
-                "eligibility_reason": reason,
+                "keep_word": keep_word,
+                "note": note,
                 "already_in_seed": word in existing_translations,
                 "existing_translation": existing_translations.get(word, ""),
             }
@@ -121,11 +118,13 @@ def prepare(source: Path, output: Path, max_per_level: int, include_ineligible: 
                 by_word[word] = candidate
 
     rows = list(by_word.values())
-    rows.sort(key=lambda r: (str(r["derived_cefr_level"]), -float(r["source_sfi"]), str(r["word"])))
+    rows.sort(key=lambda row: str(row["word"]))
+    rows.sort(key=lambda row: -float(row["source_sfi"]))
+    rows.sort(key=lambda row: str(row["derived_cefr_level"]))
 
     if max_per_level > 0:
-        kept: list[dict[str, str | int | float | bool]] = []
-        counts: Counter[str] = Counter()
+        kept: list[dict[str, object]] = []
+        counts = {level: 0 for level in LEVELS}
         for row in rows:
             level = str(row["derived_cefr_level"])
             if counts[level] >= max_per_level:
@@ -141,8 +140,8 @@ def prepare(source: Path, output: Path, max_per_level: int, include_ineligible: 
         "source_sfi",
         "source_frequency",
         "levels_observed",
-        "eligible_for_target",
-        "eligibility_reason",
+        "keep_word",
+        "note",
         "already_in_seed",
         "existing_translation",
     ]
@@ -151,7 +150,9 @@ def prepare(source: Path, output: Path, max_per_level: int, include_ineligible: 
         writer.writeheader()
         writer.writerows(rows)
 
-    level_counts = Counter(str(row["derived_cefr_level"]) for row in rows)
+    level_counts = {level: 0 for level in LEVELS}
+    for row in rows:
+        level_counts[str(row["derived_cefr_level"])] += 1
     seed_matches = sum(1 for row in rows if row["already_in_seed"])
     print(f"source_rows={raw_count}")
     print(f"candidate_rows={len(rows)}")

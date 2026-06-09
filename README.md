@@ -4,6 +4,35 @@ LearnDutch is an HCI course group project for studying personalized Dutch readin
 
 The main goal is to run a clean experiment and collect usable data about reading engagement, willingness to continue reading, cognitive load, and vocabulary learning.
 
+## Quick Start for Examiners
+
+After downloading the code ZIP, run this from the project root:
+
+```bash
+chmod +x run_local.sh
+./run_local.sh
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5173
+```
+
+Two local test accounts are available after the script seeds the local database:
+
+| Study ID | Password |
+|---|---|
+| `TST-01` | `test1234` |
+| `TST-02` | `test1234` |
+
+Reading generation requires a Gemini API key in `backend/.env`:
+
+```env
+GOOGLE_API_KEY=your-own-gemini-key
+```
+
+The app can start without this key, but generating new reading texts will not work until the key is added.
 
 ## Research Questions
 
@@ -57,13 +86,10 @@ You need:
 - Node 20 or newer
 - A Gemini API key for reading generation
 
-### 1. Pull the Latest Code
+The quickest local setup is the script above. The manual setup below does the same steps one by one.
 
-```bash
-git pull
-```
 
-### 2. Set Up the Backend
+###  Set Up the Backend
 
 From the repository root:
 
@@ -80,9 +106,6 @@ On Windows PowerShell, activate the virtual environment with:
 ```powershell
 .venv\Scripts\Activate.ps1
 ```
-
-
-
 ```env
 DATABASE_URL=sqlite:///./dev.db
 FRONTEND_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174
@@ -93,19 +116,13 @@ SEED_TEST_ACCOUNTS=true
 SEED_TEST_PASSWORD=choose-a-local-password
 RESET_TEAM_ACCOUNT_DATA=false
 EXPORT_API_BASE_URL=
-EXPORT_TOKEN=
+
 ```
 
 Create the local database and load the lexicon:
 
 ```bash
 python seed.py
-```
-
-create 10 fully-onboarded local flow-test accounts:
-
-```bash
-python seed_local_test_accounts.py
 ```
 
 Start the backend:
@@ -119,7 +136,7 @@ Useful backend URLs:
 - Health check: `http://127.0.0.1:8000/`
 - API docs: `http://127.0.0.1:8000/docs`
 
-### 3. Set Up the Frontend
+### Set Up the Frontend
 
 Open a second terminal from the repository root:
 
@@ -142,23 +159,13 @@ http://127.0.0.1:5173
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
-## Local Test Accounts
-
-`python seed.py` creates local team/demo Study IDs when `SEED_TEST_ACCOUNTS=true`:
-
-
 
 ## Online Deployment Policy
 
 Online deployment uses Vercel for the frontend, Render for the FastAPI backend, and Neon Postgres for the study database. Deployment settings and online data access are managed by the deployment owner, not committed to GitHub.
 
-## Study Data for Analysis
 
-run `python backend/download_study_export.py` to download the study data zip into `backend/exports/`. The script requires an online `https://.../api` backend URL and will not use a local localhost backend for analysis exports.
 
-The zip contains CSV files for users, topics, assessment batches, onboarding words, recommended vocabulary, user vocabulary vectors, reading sessions, interaction telemetry, survey results, vocabulary test results, and lexicon data. Authentication fields such as password hashes and emails are excluded.
-
-## Common Problems
 
 ### Backend cannot find packages
 

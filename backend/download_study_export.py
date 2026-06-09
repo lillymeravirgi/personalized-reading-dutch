@@ -4,7 +4,6 @@ import argparse
 import datetime
 import os
 from pathlib import Path
-from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -37,14 +36,7 @@ def build_export_url(api_base_url: str) -> str:
 def check_api_url(api_base_url: str) -> str:
     value = api_base_url.strip().rstrip("/")
     if not value:
-        raise ValueError("Missing EXPORT_API_BASE_URL. Use the online backend API URL.")
-
-    parsed = urlparse(value)
-    if parsed.scheme != "https":
-        raise ValueError("EXPORT_API_BASE_URL must use the online https backend URL.")
-    if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
-        raise ValueError("EXPORT_API_BASE_URL must not point to a local backend.")
-
+        raise ValueError("Missing EXPORT_API_BASE_URL.")
     return value
 
 
@@ -60,11 +52,8 @@ def filename_from_headers(headers) -> str:
     return f"leeswijs-study-export-{timestamp}.zip"
 
 
-def download_export(api_base_url: str, token: str, output_dir: Path) -> Path:
-    request = Request(
-        build_export_url(api_base_url),
-        headers={"X-Export-Token": token},
-    )
+def download_export(api_base_url: str, output_dir: Path) -> Path:
+    request = Request(build_export_url(api_base_url))
     with urlopen(request, timeout=60) as response:
         filename = filename_from_headers(response.headers)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -88,7 +77,6 @@ def main() -> int:
 
     env_file = read_env_file(ROOT / ".env")
     api_url_input = args.api_base_url or env_value("EXPORT_API_BASE_URL", env_file)
-    token = env_value("EXPORT_TOKEN", env_file)
     output_dir = Path(args.output_dir or env_value("EXPORT_OUTPUT_DIR", env_file, str(ROOT / "exports")))
 
     try:
@@ -97,12 +85,8 @@ def main() -> int:
         print(str(exc))
         return 1
 
-    if not token:
-        print("Missing EXPORT_TOKEN. Add it to backend/.env or set it in your shell.")
-        return 1
-
     try:
-        output_path = download_export(api_base_url, token, output_dir)
+        output_path = download_export(api_base_url, output_dir)
     except HTTPError as exc:
         print(f"Export download failed: HTTP {exc.code} {exc.reason}")
         return 1

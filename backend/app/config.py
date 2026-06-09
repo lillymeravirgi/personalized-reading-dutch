@@ -29,5 +29,3 @@ try:
     DELAYED_VOCAB_TEST_MINUTES: int = int(os.getenv("DELAYED_VOCAB_TEST_MINUTES", "1440"))
 except ValueError:
     DELAYED_VOCAB_TEST_MINUTES = 1440
-
-EXPORT_TOKEN: str = os.getenv("EXPORT_TOKEN", "")

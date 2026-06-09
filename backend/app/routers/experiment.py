@@ -3,19 +3,18 @@ import datetime
 import enum
 import io
 import json
-import secrets
 import zipfile
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.config import EXPORT_TOKEN
 from app.database import get_db
 from app.models import (
     AssessmentBatch,
     ConditionType,
+    IntentTagType,
     InteractionTelemetry,
     Lexicon,
     OnboardingWords,
@@ -53,13 +52,6 @@ EXPORT_TABLES = (
     ("vocabulary_test_results", VocabularyTestResult, set()),
     ("lexicon", Lexicon, set()),
 )
-
-
-def verify_export_token(token: str | None, expected_token: str) -> None:
-    if not expected_token:
-        raise HTTPException(status_code=503, detail="Export is not configured")
-    if not token or not secrets.compare_digest(token, expected_token):
-        raise HTTPException(status_code=401, detail="Invalid export token")
 
 
 def _csv_value(value: Any) -> Any:
@@ -104,6 +96,24 @@ def _mean(values: list[int | float]) -> float | str:
     return round(sum(values) / len(values), 2)
 
 
+def _ids_json(values: list[int]) -> str:
+    return json.dumps(sorted(set(values)))
+
+
+def _latest_test_time(rows: list[VocabularyTestResult]) -> datetime.datetime | None:
+    return max((row.timestamp for row in rows if row.timestamp), default=None)
+
+
+def _first_time(values: list[datetime.datetime]) -> str:
+    value = min(values) if values else None
+    return _csv_value(value)
+
+
+def _last_time(values: list[datetime.datetime]) -> str:
+    value = max(values) if values else None
+    return _csv_value(value)
+
+
 def _test_summary(rows: list[VocabularyTestResult]) -> dict[str, Any]:
     if not rows:
         return {
@@ -116,7 +126,11 @@ def _test_summary(rows: list[VocabularyTestResult]) -> dict[str, Any]:
     latest_by_word: dict[int, VocabularyTestResult] = {}
     for row in rows:
         current = latest_by_word.get(row.word_id)
-        if current is None or (row.timestamp, row.id) > (current.timestamp, current.id):
+        if current is None:
+            latest_by_word[row.word_id] = row
+        elif row.timestamp > current.timestamp:
+            latest_by_word[row.word_id] = row
+        elif row.timestamp == current.timestamp and row.id > current.id:
             latest_by_word[row.word_id] = row
     rows = list(latest_by_word.values())
 
@@ -138,13 +152,28 @@ def _study_phase_summary_csv(db: Session) -> str:
         "study_phase",
         "condition",
         "condition_source",
+        "condition_order",
+        "has_switched_conditions",
+        "estimated_cefr",
+        "interested_topics",
+        "neutral_topics",
         "onboarding_word_count",
         "phase_learning_word_count",
+        "word_set_first_added_at",
+        "word_set_last_added_at",
         "readings_started",
         "readings_completed",
+        "expected_readings",
+        "completion_ratio",
         "reading_session_ids",
+        "reading_numbers",
+        "reading_titles",
+        "topics_used",
+        "first_reading_started_at",
+        "last_reading_started_at",
         "total_reading_seconds",
         "avg_reading_seconds",
+        "survey_count",
         "avg_mental_effort",
         "avg_appropriate_challenge",
         "avg_comprehension",
@@ -156,15 +185,27 @@ def _study_phase_summary_csv(db: Session) -> str:
         "avg_engagement_composite",
         "telemetry_events",
         "telemetry_weight_total",
+        "telemetry_words_touched",
+        "telemetry_events_per_minute",
+        "telemetry_weight_per_minute",
+        "telemetry_deep_processing",
+        "telemetry_acquisition_intent",
+        "telemetry_word_avoidance",
         "reading_more_count",
+        "session_group_ids",
+        "tested_word_count",
+        "tested_word_ids",
+        "immediate_session_group_ids",
         "immediate_correct",
         "immediate_total",
         "immediate_percent",
         "immediate_completed_at",
+        "delayed_session_group_ids",
         "delayed_correct",
         "delayed_total",
         "delayed_percent",
         "delayed_completed_at",
+        "actual_delay_hours",
         "retention_delta_percent",
     ]
 
@@ -192,6 +233,19 @@ def _study_phase_summary_csv(db: Session) -> str:
             .order_by(VocabularyTestResult.study_phase, VocabularyTestResult.test_type, VocabularyTestResult.id)
             .all()
         )
+        topics = (
+            db.query(UserTopic)
+            .filter(UserTopic.user_id == user.user_id)
+            .order_by(UserTopic.status, UserTopic.topic_name)
+            .all()
+        )
+
+        phase_conditions = []
+        for session_phase in sorted({session.study_phase for session in sessions}):
+            phase_session = next((session for session in sessions if session.study_phase == session_phase), None)
+            if phase_session:
+                phase_conditions.append(_csv_value(phase_session.condition))
+        condition_order = " -> ".join(phase_conditions)
 
         phases = sorted(
             {
@@ -206,6 +260,9 @@ def _study_phase_summary_csv(db: Session) -> str:
             phase_session_ids = [session.session_id for session in phase_sessions]
             phase_onboarding = [row for row in onboarding_rows if row.study_phase == phase]
             phase_word_ids = {row.word_id for row in phase_onboarding}
+            phase_tests = [row for row in test_rows if row.study_phase == phase]
+            immediate_rows = [row for row in phase_tests if row.test_type == "immediate"]
+            delayed_rows = [row for row in phase_tests if row.test_type == "delayed"]
 
             phase_vectors = []
             if phase_word_ids:
@@ -234,18 +291,18 @@ def _study_phase_summary_csv(db: Session) -> str:
                     .all()
                 )
 
-            immediate = _test_summary([
-                row for row in test_rows
-                if row.study_phase == phase and row.test_type == "immediate"
-            ])
-            delayed = _test_summary([
-                row for row in test_rows
-                if row.study_phase == phase and row.test_type == "delayed"
-            ])
+            immediate = _test_summary(immediate_rows)
+            delayed = _test_summary(delayed_rows)
 
             retention_delta = ""
             if immediate["percent"] != "" and delayed["percent"] != "":
                 retention_delta = round(float(delayed["percent"]) - float(immediate["percent"]), 2)
+
+            immediate_time = _latest_test_time(immediate_rows)
+            delayed_time = _latest_test_time(delayed_rows)
+            actual_delay_hours = ""
+            if immediate_time and delayed_time:
+                actual_delay_hours = round((delayed_time - immediate_time).total_seconds() / 3600, 2)
 
             engagement_scores = [
                 (row.focused_attention + row.reward + row.perceived_relevance) / 3
@@ -256,9 +313,19 @@ def _study_phase_summary_csv(db: Session) -> str:
                 for session in phase_sessions
                 if session.duration_seconds is not None
             ]
+            total_reading_seconds = sum(reading_seconds) if reading_seconds else 0
+            telemetry_weight_total = sum(row.engagement_weight for row in telemetry_rows)
             condition = ""
             if phase_sessions:
                 condition = _csv_value(phase_sessions[0].condition)
+            completed_count = sum(1 for session in phase_sessions if session.survey_completed)
+            telemetry_by_intent = {
+                IntentTagType.DEEP_PROCESSING: 0,
+                IntentTagType.ACQUISITION_INTENT: 0,
+                IntentTagType.WORD_AVOIDANCE: 0,
+            }
+            for row in telemetry_rows:
+                telemetry_by_intent[row.intent_tag] = telemetry_by_intent.get(row.intent_tag, 0) + 1
 
             writer.writerow({
                 "user_id": user.user_id,
@@ -266,13 +333,28 @@ def _study_phase_summary_csv(db: Session) -> str:
                 "study_phase": phase,
                 "condition": condition,
                 "condition_source": "first_reading_session" if condition else "",
+                "condition_order": condition_order,
+                "has_switched_conditions": user.has_switched_conditions,
+                "estimated_cefr": user.estimated_cefr or "",
+                "interested_topics": json.dumps([topic.topic_name for topic in topics if topic.status.value == "INTERESTED"]),
+                "neutral_topics": json.dumps([topic.topic_name for topic in topics if topic.status.value == "NEUTRAL"]),
                 "onboarding_word_count": len(phase_onboarding),
                 "phase_learning_word_count": len(phase_vectors),
+                "word_set_first_added_at": _first_time([row.added_at for row in phase_onboarding]),
+                "word_set_last_added_at": _last_time([row.added_at for row in phase_onboarding]),
                 "readings_started": len(phase_sessions),
-                "readings_completed": sum(1 for session in phase_sessions if session.survey_completed),
+                "readings_completed": completed_count,
+                "expected_readings": 3,
+                "completion_ratio": round(completed_count / 3, 2),
                 "reading_session_ids": json.dumps(phase_session_ids),
-                "total_reading_seconds": sum(reading_seconds) if reading_seconds else "",
+                "reading_numbers": json.dumps([session.reading_number for session in phase_sessions]),
+                "reading_titles": json.dumps([session.title or "" for session in phase_sessions], ensure_ascii=False),
+                "topics_used": json.dumps([session.topic_used or "" for session in phase_sessions], ensure_ascii=False),
+                "first_reading_started_at": _first_time([session.created_at for session in phase_sessions]),
+                "last_reading_started_at": _last_time([session.created_at for session in phase_sessions]),
+                "total_reading_seconds": total_reading_seconds or "",
                 "avg_reading_seconds": _mean(reading_seconds),
+                "survey_count": len(surveys),
                 "avg_mental_effort": _mean([row.mental_effort for row in surveys]),
                 "avg_appropriate_challenge": _mean([row.appropriate_challenge for row in surveys]),
                 "avg_comprehension": _mean([row.comprehension for row in surveys]),
@@ -283,16 +365,28 @@ def _study_phase_summary_csv(db: Session) -> str:
                 "avg_perceived_personalization": _mean([row.perceived_personalization for row in surveys]),
                 "avg_engagement_composite": _mean(engagement_scores),
                 "telemetry_events": len(telemetry_rows),
-                "telemetry_weight_total": sum(row.engagement_weight for row in telemetry_rows),
+                "telemetry_weight_total": telemetry_weight_total,
+                "telemetry_words_touched": len({row.word_id for row in telemetry_rows}),
+                "telemetry_events_per_minute": round((len(telemetry_rows) / total_reading_seconds) * 60, 2) if total_reading_seconds else "",
+                "telemetry_weight_per_minute": round((telemetry_weight_total / total_reading_seconds) * 60, 2) if total_reading_seconds else "",
+                "telemetry_deep_processing": telemetry_by_intent[IntentTagType.DEEP_PROCESSING],
+                "telemetry_acquisition_intent": telemetry_by_intent[IntentTagType.ACQUISITION_INTENT],
+                "telemetry_word_avoidance": telemetry_by_intent[IntentTagType.WORD_AVOIDANCE],
                 "reading_more_count": sum(session.continuation_count or 0 for session in phase_sessions),
+                "session_group_ids": _ids_json([row.session_group_id for row in phase_tests]),
+                "tested_word_count": len({row.word_id for row in phase_tests}),
+                "tested_word_ids": _ids_json([row.word_id for row in phase_tests]),
+                "immediate_session_group_ids": _ids_json([row.session_group_id for row in immediate_rows]),
                 "immediate_correct": immediate["correct"],
                 "immediate_total": immediate["total"],
                 "immediate_percent": immediate["percent"],
                 "immediate_completed_at": immediate["completed_at"],
+                "delayed_session_group_ids": _ids_json([row.session_group_id for row in delayed_rows]),
                 "delayed_correct": delayed["correct"],
                 "delayed_total": delayed["total"],
                 "delayed_percent": delayed["percent"],
                 "delayed_completed_at": delayed["completed_at"],
+                "actual_delay_hours": actual_delay_hours,
                 "retention_delta_percent": retention_delta,
             })
 
@@ -348,11 +442,8 @@ def _reset_team_user(db: Session, user: User, condition: ConditionType, display_
 
 @router.post("/reset-team-accounts")
 def reset_team_accounts(
-    x_export_token: str | None = Header(default=None, alias="X-Export-Token"),
     db: Session = Depends(get_db),
 ):
-    verify_export_token(x_export_token, EXPORT_TOKEN)
-
     reset_ids: list[str] = []
     missing_ids: list[str] = []
 
@@ -383,10 +474,8 @@ def reset_team_accounts(
 
 @router.get("/export")
 def download_export(
-    x_export_token: str | None = Header(default=None, alias="X-Export-Token"),
     db: Session = Depends(get_db),
 ):
-    verify_export_token(x_export_token, EXPORT_TOKEN)
     timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d-%H%M%S")
     filename = f"leeswijs-study-export-{timestamp}.zip"
     return Response(
