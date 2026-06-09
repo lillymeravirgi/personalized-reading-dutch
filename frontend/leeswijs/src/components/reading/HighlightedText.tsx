@@ -1,4 +1,4 @@
-import { TextToken } from "../../types";
+import type { TextToken } from "../../types";
 
 type Props = {
   tokens: TextToken[];

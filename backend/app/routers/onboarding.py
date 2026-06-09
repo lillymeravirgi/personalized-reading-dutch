@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
 from app.krs_service import run_baseline_krs, run_krs
-from app.models import ConditionType, Lexicon, OnboardingWords, RecommendedVocabulary, User, UserVocabularyVector, VocabStatus
+from app.models import ConditionType, Lexicon, OnboardingWords, RecommendedVocabulary, User
 from app.schemas import LexiconEntry, OnboardingPersonalInfoRequest
 
 
@@ -60,16 +60,15 @@ def save_personal_info(payload: OnboardingPersonalInfoRequest, db: Session = Dep
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if payload.display_name       is not None: user.display_name       = payload.display_name
-    if payload.age                is not None: user.age                = payload.age
-    if payload.city               is not None: user.city               = payload.city
-    if payload.gender             is not None: user.gender             = payload.gender
-    if payload.job                is not None: user.job                = payload.job
+    if payload.display_name is not None: user.display_name = payload.display_name
+    if payload.age is not None: user.age = payload.age
+    if payload.city is not None: user.city = payload.city
+    if payload.job is not None: user.job = payload.job
     if payload.academic_background is not None: user.academic_background = payload.academic_background
-    if payload.mother_language    is not None: user.mother_language    = payload.mother_language
-    if payload.other_languages    is not None: user.other_languages    = payload.other_languages
-    if payload.purpose            is not None: user.purpose            = payload.purpose
-    if payload.self_reported_cefr is not None: user.estimated_cefr    = payload.self_reported_cefr
+    if payload.mother_language is not None: user.mother_language = payload.mother_language
+    if payload.other_languages is not None: user.other_languages = payload.other_languages
+    if payload.purpose is not None: user.purpose = payload.purpose
+    if payload.self_reported_cefr is not None: user.estimated_cefr = payload.self_reported_cefr
 
     db.commit()
     return {"success": True}

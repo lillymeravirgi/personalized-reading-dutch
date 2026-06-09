@@ -51,22 +51,22 @@ def _build_word_list(rows) -> list[dict]:
 
 def _word_info(entry) -> dict:
     return {
-        "word_id":    entry.word_id,
-        "word":       entry.word,
-        "translation":entry.translation,
+        "word_id": entry.word_id,
+        "word": entry.word,
+        "translation": entry.translation,
         "cefr_level": entry.cefr_level,
-        "examples":   entry.examples or [],
+        "examples": entry.examples or [],
     }
 
 
 def _build_lexicon_word_list(rows) -> list[dict]:
     return [
         {
-            "word_id":    row.word_id,
-            "word":       row.word,
-            "translation":row.translation,
+            "word_id": row.word_id,
+            "word": row.word,
+            "translation": row.translation,
             "cefr_level": row.cefr_level,
-            "examples":   row.examples or [],
+            "examples": row.examples or [],
         }
         for row in rows
     ]
@@ -205,7 +205,7 @@ def generate(
     try:
         result = generate_session(
             user_id=user_id,
-            K=req.K,
+            k_value=req.k,
             narrative_style=req.narrative_style,
             word_count_range=req.word_count_range,
             condition=server_condition,
@@ -220,7 +220,7 @@ def generate(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    blue_words   = [WordInfo(**w) for w in result["blue_words"]]
+    blue_words = [WordInfo(**w) for w in result["blue_words"]]
     yellow_words = [WordInfo(**w) for w in result["yellow_words"]]
 
     return GenerateSessionResponse(
@@ -243,7 +243,7 @@ def continue_reading(
     current_user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    user_id             = _same_user(payload.get("user_id"), current_user_id)
+    user_id = _same_user(payload.get("user_id"), current_user_id)
     previous_session_id = payload.get("previous_session_id")
     if not user_id or previous_session_id is None:
         raise HTTPException(status_code=422, detail="user_id and previous_session_id are required")
@@ -289,7 +289,7 @@ def continue_reading(
     for w in yellow_words:
         yellow_vector_ids.add(w.word_id)
 
-    all_translations = result["word_translations"]  # already merged dict
+    all_translations = result["word_translations"]
     if all_translations:
         from sqlalchemy import func
         all_word_texts = [w.lower() for w in all_translations.keys()]
@@ -344,14 +344,14 @@ def list_sessions(
     sessions = q.order_by(ReadingSession.created_at.desc()).all()
     return [
         {
-            "session_id":       s.session_id,
-            "user_id":          s.user_id,
-            "title":            _clean_title(s.title, f"Reading #{s.reading_number}"),
-            "topic_used":       s.topic_used,
-            "reading_number":   s.reading_number,
-            "study_phase":      s.study_phase,
+            "session_id": s.session_id,
+            "user_id": s.user_id,
+            "title": _clean_title(s.title, f"Reading #{s.reading_number}"),
+            "topic_used": s.topic_used,
+            "reading_number": s.reading_number,
+            "study_phase": s.study_phase,
             "survey_completed": s.survey_completed,
-            "created_at":       s.created_at.isoformat() if s.created_at else None,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
         }
         for s in sessions
     ]
@@ -418,15 +418,15 @@ def get_session(
     user = db.query(User).filter(User.user_id == session.user_id).first()
 
     return {
-        "session_id":        session.session_id,
-        "title":             _clean_title(session.title, f"Reading #{session.reading_number}"),
-        "content":           session.content,
-        "tokens":            _tokenize_content(session.content, blue_list, yellow_list),
-        "topic_used":        session.topic_used,
-        "reading_number":    session.reading_number,
-        "survey_completed":  session.survey_completed,
+        "session_id": session.session_id,
+        "title": _clean_title(session.title, f"Reading #{session.reading_number}"),
+        "content": session.content,
+        "tokens": _tokenize_content(session.content, blue_list, yellow_list),
+        "topic_used": session.topic_used,
+        "reading_number": session.reading_number,
+        "survey_completed": session.survey_completed,
         "word_translations": session.word_translations or {},
-        "blue_words":        blue_list,
-        "yellow_words":      yellow_list,
-        "cefr_level":        user.estimated_cefr if user else None,
+        "blue_words": blue_list,
+        "yellow_words": yellow_list,
+        "cefr_level": user.estimated_cefr if user else None,
     }

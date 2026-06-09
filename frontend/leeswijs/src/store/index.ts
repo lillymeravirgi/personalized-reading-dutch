@@ -52,92 +52,92 @@ type Store = UserSlice & VocabularySlice & SessionSlice & FlashcardSlice;
 export const useStore = create<Store>()(
   persist(
     (set) => ({
-  user: null,
-  isLoadingUser: false,
+      user: null,
+      isLoadingUser: false,
 
-  setUser: (user) => set({ user }),
-  setLoadingUser: (loading) => set({ isLoadingUser: loading }),
-  clearUser: () => set({ user: null }),
+      setUser: (user) => set({ user }),
+      setLoadingUser: (loading) => set({ isLoadingUser: loading }),
+      clearUser: () => set({ user: null }),
 
-  vocabulary: [],
+      vocabulary: [],
 
-  setVocabulary: (vocabulary) => set({ vocabulary }),
+      setVocabulary: (vocabulary) => set({ vocabulary }),
 
-  updateWordStatus: (wordId, status) =>
-    set((state) => ({
-      vocabulary: state.vocabulary.map((w) =>
-        w.wordId === wordId ? { ...w, status } : w
-      ),
-    })),
+      updateWordStatus: (wordId, status) =>
+        set((state) => ({
+          vocabulary: state.vocabulary.map((w) =>
+            w.wordId === wordId ? { ...w, status } : w
+          ),
+        })),
 
-  incrementExposure: (wordId) =>
-    set((state) => ({
-      vocabulary: state.vocabulary.map((w) =>
-        w.wordId === wordId
-          ? {
-              ...w,
-              exposureCount: w.exposureCount + 1,
-              lastSeen: new Date().toISOString(),
-            }
-          : w
-      ),
-    })),
+      incrementExposure: (wordId) =>
+        set((state) => ({
+          vocabulary: state.vocabulary.map((w) =>
+            w.wordId === wordId
+              ? {
+                  ...w,
+                  exposureCount: w.exposureCount + 1,
+                  lastSeen: new Date().toISOString(),
+                }
+              : w
+          ),
+        })),
 
-  currentSession: null,
-  interactions: [],
-  isLoadingSession: false,
+      currentSession: null,
+      interactions: [],
+      isLoadingSession: false,
 
-  setCurrentSession: (session) => set({ currentSession: session }),
-  setLoadingSession: (loading) => set({ isLoadingSession: loading }),
+      setCurrentSession: (session) => set({ currentSession: session }),
+      setLoadingSession: (loading) => set({ isLoadingSession: loading }),
 
-  addInteraction: (interaction) =>
-    set((state) => ({
-      interactions: [...state.interactions, interaction],
-    })),
+      addInteraction: (interaction) =>
+        set((state) => ({
+          interactions: [...state.interactions, interaction],
+        })),
 
-  clearSession: () =>
-    set({ currentSession: null, interactions: [] }),
+      clearSession: () =>
+        set({ currentSession: null, interactions: [] }),
 
-  flashcards: [],
-  currentIndex: 0,
-  reviewedIds: new Set(),
-  isLoadingFlashcards: false,
-
-  setFlashcards: (flashcards) => set({ flashcards, currentIndex: 0, reviewedIds: new Set() }),
-  setLoadingFlashcards: (loading) => set({ isLoadingFlashcards: loading }),
-
-  nextCard: () =>
-    set((state) => ({
-      currentIndex: Math.min(state.currentIndex + 1, state.flashcards.length - 1),
-    })),
-
-  prevCard: () =>
-    set((state) => ({
-      currentIndex: Math.max(state.currentIndex - 1, 0),
-    })),
-
-  markReviewed: (wordId) =>
-    set((state) => {
-      const next = new Set(state.reviewedIds);
-      next.add(wordId);
-      const nextIndex = state.flashcards.findIndex(
-        (c, i) => i > state.currentIndex && !next.has(c.wordId)
-      );
-      return {
-        reviewedIds: next,
-        currentIndex: nextIndex !== -1 ? nextIndex : state.currentIndex,
-      };
-    }),
-
-  resetSession: () =>
-    set((state) => ({
+      flashcards: [],
       currentIndex: 0,
       reviewedIds: new Set(),
-      flashcards: [
-        ...state.flashcards.filter((c) => !state.reviewedIds.has(c.wordId)),
-        ...state.flashcards.filter((c) => state.reviewedIds.has(c.wordId)),
-      ],
-    })),
+      isLoadingFlashcards: false,
+
+      setFlashcards: (flashcards) => set({ flashcards, currentIndex: 0, reviewedIds: new Set() }),
+      setLoadingFlashcards: (loading) => set({ isLoadingFlashcards: loading }),
+
+      nextCard: () =>
+        set((state) => ({
+          currentIndex: Math.min(state.currentIndex + 1, state.flashcards.length - 1),
+        })),
+
+      prevCard: () =>
+        set((state) => ({
+          currentIndex: Math.max(state.currentIndex - 1, 0),
+        })),
+
+      markReviewed: (wordId) =>
+        set((state) => {
+          const next = new Set(state.reviewedIds);
+          next.add(wordId);
+          const nextIndex = state.flashcards.findIndex(
+            (c, i) => i > state.currentIndex && !next.has(c.wordId)
+          );
+          return {
+            reviewedIds: next,
+            currentIndex: nextIndex !== -1 ? nextIndex : state.currentIndex,
+          };
+        }),
+
+      resetSession: () =>
+        set((state) => ({
+          currentIndex: 0,
+          reviewedIds: new Set(),
+          flashcards: [
+            ...state.flashcards.filter((c) => !state.reviewedIds.has(c.wordId)),
+            ...state.flashcards.filter((c) => state.reviewedIds.has(c.wordId)),
+          ],
+        })),
     }),
     {
       name: "leeswijs-store",

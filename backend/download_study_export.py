@@ -26,15 +26,15 @@ def read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def env_value(name: str, env_file_values: dict[str, str], default: str = "") -> str:
-    return os.getenv(name) or env_file_values.get(name, default)
+def env_value(name: str, env_file: dict[str, str], default: str = "") -> str:
+    return os.getenv(name) or env_file.get(name, default)
 
 
 def build_export_url(api_base_url: str) -> str:
     return f"{api_base_url.rstrip('/')}/experiment/export"
 
 
-def validate_online_api_base_url(api_base_url: str) -> str:
+def check_api_url(api_base_url: str) -> str:
     value = api_base_url.strip().rstrip("/")
     if not value:
         raise ValueError("Missing EXPORT_API_BASE_URL. Use the online backend API URL.")
@@ -86,13 +86,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    env_file_values = read_env_file(ROOT / ".env")
-    raw_api_base_url = args.api_base_url or env_value("EXPORT_API_BASE_URL", env_file_values)
-    token = env_value("EXPORT_TOKEN", env_file_values)
-    output_dir = Path(args.output_dir or env_value("EXPORT_OUTPUT_DIR", env_file_values, str(ROOT / "exports")))
+    env_file = read_env_file(ROOT / ".env")
+    api_url_input = args.api_base_url or env_value("EXPORT_API_BASE_URL", env_file)
+    token = env_value("EXPORT_TOKEN", env_file)
+    output_dir = Path(args.output_dir or env_value("EXPORT_OUTPUT_DIR", env_file, str(ROOT / "exports")))
 
     try:
-        api_base_url = validate_online_api_base_url(raw_api_base_url)
+        api_base_url = check_api_url(api_url_input)
     except ValueError as exc:
         print(str(exc))
         return 1

@@ -1,13 +1,12 @@
 import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal, get_db
+from app.database import get_db
 from app.models import Lexicon, OnboardingWords, RecommendedVocabulary, UserVocabularyVector, VocabStatus
 from app.krs_service import run_krs
-from app.schemas import LexiconEntry
 
 router = APIRouter(prefix="/flashcards", tags=["Flashcards"])
 
@@ -27,12 +26,12 @@ def _map_examples(entry) -> list[dict]:
 def _row_to_card(row: UserVocabularyVector) -> dict:
     lex = row.lexicon_entry
     return {
-        "wordId":         str(lex.word_id),
-        "dutch":          lex.word,
-        "english":        lex.translation,
-        "examples":       _map_examples(lex),
-        "difficulty":     max(0.0, min(1.0, 1.0 - row.mastery_score)),
-        "mode":           "review" if row.status == VocabStatus.MASTERED else "learning",
+        "wordId": str(lex.word_id),
+        "dutch": lex.word,
+        "english": lex.translation,
+        "examples": _map_examples(lex),
+        "difficulty": max(0.0, min(1.0, 1.0 - row.mastery_score)),
+        "mode": "review" if row.status == VocabStatus.MASTERED else "learning",
         "nextReviewDate": row.next_review_at.isoformat() if row.next_review_at else None,
         "reviewInterval": row.review_interval_days,
     }
@@ -78,11 +77,11 @@ def list_flashcards(user_id: str, study_phase: int | None = None, db: Session = 
     )
 
     return {
-        "cards":          [_row_to_card(r) for r in due_rows],
-        "due_count":      len(due_rows),
-        "not_due_count":  0,
+        "cards": [_row_to_card(r) for r in due_rows],
+        "due_count": len(due_rows),
+        "not_due_count": 0,
         "reviewed_today": reviewed_today,
-        "total":          len(due_rows),
+        "total": len(due_rows),
     }
 
 
@@ -115,10 +114,10 @@ def discover_prefetch(user_id: str, study_phase: int | None = None, db: Session 
 
     words = [
         {
-            "wordId":    str(rec.lexicon_entry.word_id),
-            "dutch":     rec.lexicon_entry.word,
-            "english":   rec.lexicon_entry.translation,
-            "examples":  _map_examples(rec.lexicon_entry),
+            "wordId": str(rec.lexicon_entry.word_id),
+            "dutch": rec.lexicon_entry.word,
+            "english": rec.lexicon_entry.translation,
+            "examples": _map_examples(rec.lexicon_entry),
             "cefrLevel": rec.lexicon_entry.cefr_level,
         }
         for rec in usable_recs[:SERVE_LIMIT]
@@ -135,7 +134,7 @@ def refill_check(user_id: str, db: Session = Depends(get_db)):
         return {"status": "error", "detail": "User not found"}
     remark_val = "adaptive" if user.current_condition == ConditionType.ADAPTIVE else "baseline"
 
-    LOW_WATERMARK = 25
+    low_watermark = 25
     usable_count = (
         db.query(RecommendedVocabulary)
         .outerjoin(
@@ -151,7 +150,7 @@ def refill_check(user_id: str, db: Session = Depends(get_db)):
         .count()
     )
 
-    if usable_count < LOW_WATERMARK:
+    if usable_count < low_watermark:
         try:
             run_krs(user_id=user_id, db=db)
             return {"status": "refilled"}
@@ -202,9 +201,9 @@ def discover_new_words(req: DiscoverRequest, db: Session = Depends(get_db)):
         if lex.word_id in learning_ids:
             continue
         words.append({
-            "wordId":   str(lex.word_id),
-            "dutch":    lex.word,
-            "english":  lex.translation,
+            "wordId": str(lex.word_id),
+            "dutch": lex.word,
+            "english": lex.translation,
             "examples": _map_examples(lex),
         })
 
@@ -268,10 +267,10 @@ def mark_known_flashcard(req: MarkKnownRequest, db: Session = Depends(get_db)):
         .first()
     )
     if row:
-        row.status           = VocabStatus.MASTERED
-        row.mastery_score    = 1.0
+        row.status = VocabStatus.MASTERED
+        row.mastery_score = 1.0
         row.last_reviewed_at = datetime.datetime.utcnow()
-        row.next_review_at   = datetime.datetime.utcnow() + datetime.timedelta(days=30)
+        row.next_review_at = datetime.datetime.utcnow() + datetime.timedelta(days=30)
     else:
         db.add(UserVocabularyVector(
             user_id=req.user_id,
@@ -325,10 +324,10 @@ def add_to_learn(req: AddToLearnRequest, db: Session = Depends(get_db)):
         if existing.status == VocabStatus.MASTERED:
             db.commit()
             return {"success": True, "message": "Already mastered"}
-        existing.status               = VocabStatus.LEARNING
+        existing.status = VocabStatus.LEARNING
         existing.review_interval_days = req.interval_days
-        existing.next_review_at       = next_review
-        existing.exposure_count      += 1
+        existing.next_review_at = next_review
+        existing.exposure_count += 1
     else:
         db.add(UserVocabularyVector(
             user_id=req.user_id,

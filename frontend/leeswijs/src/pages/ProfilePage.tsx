@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { INTERESTS } from "../constants/interests";
+import { easeOut } from "../constants/animation";
 import { useStore } from "../store";
 
 function interestLabel(id: string) {
@@ -18,8 +19,8 @@ function interestLabel(id: string) {
 }
 
 export default function ProfilePage() {
-  const navigate  = useNavigate();
-  const user      = useStore((s) => s.user);
+  const navigate = useNavigate();
+  const user = useStore((s) => s.user);
   const clearUser = useStore((s) => s.clearUser);
 
   if (!user) return null;
@@ -33,7 +34,7 @@ export default function ProfilePage() {
     <motion.div
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.35, ease: easeOut }}
       className="mx-auto max-w-3xl space-y-4"
     >
       <div className="flex flex-wrap items-end justify-between gap-3">

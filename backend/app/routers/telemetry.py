@@ -7,14 +7,21 @@ from app.schemas import LogTelemetryRequest, LogTelemetryResponse
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
 
+intent_weights = {
+    "DEEP_PROCESSING": 5,
+    "ACQUISITION_INTENT": 2,
+    "WORD_AVOIDANCE": 1,
+}
+
 
 @router.post("/log", response_model=LogTelemetryResponse)
 def log_telemetry(req: LogTelemetryRequest, db: Session = Depends(get_db)):
+    weight = intent_weights[req.intent_tag.value]
     log = InteractionTelemetry(
         session_id=req.session_id,
         word_id=req.word_id,
         intent_tag=req.intent_tag,
-        engagement_weight=req.engagement_weight,
+        engagement_weight=weight,
     )
     db.add(log)
     try:
@@ -26,5 +33,5 @@ def log_telemetry(req: LogTelemetryRequest, db: Session = Depends(get_db)):
 
     return LogTelemetryResponse(
         log_id=log.log_id,
-        message=f"Logged {req.intent_tag.value} (weight={req.engagement_weight})",
+        message=f"Logged {req.intent_tag.value.lower()} (weight={weight})",
     )

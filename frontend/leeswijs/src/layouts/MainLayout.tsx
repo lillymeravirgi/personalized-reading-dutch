@@ -15,12 +15,13 @@ import {
 
 import { useStore } from "../store";
 import DelayedVocabReminder from "../components/DelayedVocabReminder";
+import { easeOut } from "../constants/animation";
 
 const NAV_ITEMS = [
-  { to: "/home",       label: "Dashboard", icon: Home },
-  { to: "/reading",   label: "Reading",   icon: BookOpen },
-  { to: "/flashcards",label: "Flashcards",icon: Layers },
-  { to: "/profile",   label: "Profile",   icon: User },
+  { to: "/home", label: "Dashboard", icon: Home },
+  { to: "/reading", label: "Reading", icon: BookOpen },
+  { to: "/flashcards", label: "Flashcards", icon: Layers },
+  { to: "/profile", label: "Profile", icon: User },
 ] as const;
 
 export default function MainLayout() {
@@ -177,7 +178,7 @@ function UserMenu({ cefrLevel, name }: { cefrLevel: string; name: string }) {
             initial={{ opacity: 0, y: -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
-            transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.15, ease: easeOut }}
             role="menu"
             className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-white shadow-xl shadow-black/10 border border-black/6 overflow-hidden z-40"
           >

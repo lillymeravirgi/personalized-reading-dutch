@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 
 import { generateSession, getOnboardingWordSetStatus, getVocabTestProgress, listSessions } from "../services/api";
+import { easeOut } from "../constants/animation";
 import type { SessionSummary } from "../types";
+import ErrorBanner from "../components/ErrorBanner";
 import ReadingGenerationStatus from "../components/ReadingGenerationStatus";
 import { useStore } from "../store";
 
@@ -26,12 +28,12 @@ export default function ReadingPage() {
   const userId = user?.id;
   const hasSwitchedConditions = user?.has_switched_conditions ?? false;
 
-  const [sessions,     setSessions]     = useState<SessionSummary[]>([]);
-  const [loading,      setLoading]      = useState(false);
-  const [loadingList,  setLoadingList]  = useState(true);
-  const [error,        setError]        = useState<string | null>(null);
-  const [alertMsg,     setAlertMsg]     = useState<string | null>(null);
-  const [query,        setQuery]        = useState("");
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingList, setLoadingList] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [alertMsg, setAlertMsg] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [immediateDone, setImmediateDone] = useState<number[]>([]);
   const [readyWordSets, setReadyWordSets] = useState<number[]>([]);
 
@@ -149,7 +151,7 @@ export default function ReadingPage() {
     <motion.div
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.4, ease: easeOut }}
       className="mx-auto max-w-3xl space-y-6"
     >
       <div className="flex items-center gap-3">
@@ -185,10 +187,7 @@ export default function ReadingPage() {
       </AnimatePresence>
 
       {error && (
-        <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
-          <AlertCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
-          <p className="text-sm text-red-700 font-body">{error}</p>
-        </div>
+        <ErrorBanner message={error} />
       )}
 
       {showWordSetCard && (
@@ -286,12 +285,11 @@ export default function ReadingPage() {
         ) : (
           phaseSlots.map((session, i) => {
             const num = i + 1;
-            const localNum = num;
-            const isActive    = session !== null && !session.survey_completed;
+            const isActive = session !== null && !session.survey_completed;
             const isCompleted = session !== null && session.survey_completed;
-            const isLocked    = session === null && localNum > nextLocalReadingNumber;
-            const isReady     = session === null && localNum === nextLocalReadingNumber && canGenerate;
-            const isWaiting   = session === null && localNum === nextLocalReadingNumber && !canGenerate;
+            const isLocked = session === null && num > nextLocalReadingNumber;
+            const isReady = session === null && num === nextLocalReadingNumber && canGenerate;
+            const isWaiting = session === null && num === nextLocalReadingNumber && !canGenerate;
 
             return (
               <motion.div
@@ -325,7 +323,7 @@ export default function ReadingPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-heading text-sm font-semibold text-text">
-                    {session?.title ?? `Reading ${localNum}`}
+                    {session?.title ?? `Reading ${num}`}
                   </p>
                   <p className="text-xs font-body text-text/45 mt-0.5">
                     {isCompleted
@@ -333,7 +331,7 @@ export default function ReadingPage() {
                       : isActive
                       ? "In progress - tap to continue"
                       : isLocked
-                      ? `Unlocks after Reading ${localNum - 1}`
+                      ? `Unlocks after Reading ${num - 1}`
                       : isWaiting && needsCurrentWordSet
                       ? "Learn the word set first"
                       : isWaiting && nextTestSet
@@ -353,7 +351,7 @@ export default function ReadingPage() {
           {(() => {
             const isDone = currentPhaseDone;
             const firstSession = phaseSessions.find((s) => s.reading_number === 1);
-            const sgId = firstSession?.session_id ?? "";
+            const sessionGroupId = firstSession?.session_id ?? "";
 
             return (
               <motion.div
@@ -390,8 +388,8 @@ export default function ReadingPage() {
                   ) : (
                     <button
                       type="button"
-                      disabled={!sgId}
-                      onClick={() => navigate(`/vocab-test/${sgId}?phase=${currentPhase}`)}
+                      disabled={!sessionGroupId}
+                      onClick={() => navigate(`/vocab-test/${sessionGroupId}?phase=${currentPhase}`)}
                       className="inline-flex items-center gap-2 bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-heading font-semibold hover:opacity-90"
                     >
                       Start vocabulary check <ArrowRight size={14} />
@@ -460,8 +458,8 @@ function relTime(iso: string): string {
   if (m < 60) return `${m} min ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d ago`;
   return new Date(then).toLocaleDateString();
 }
 

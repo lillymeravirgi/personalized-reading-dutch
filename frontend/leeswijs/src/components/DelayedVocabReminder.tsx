@@ -15,19 +15,9 @@ export default function DelayedVocabReminder() {
   const location = useLocation();
   const navigate = useNavigate();
   const [delayedCheck, setDelayedCheck] = useState<DelayedVocabTestStatus | null>(null);
-  const [homeIntroOpen, setHomeIntroOpen] = useState(false);
 
   useEffect(() => {
-    function onIntroVisibility(event: Event) {
-      const detail = (event as CustomEvent<{ open?: boolean }>).detail;
-      setHomeIntroOpen(Boolean(detail?.open));
-    }
-    window.addEventListener("leeswijs-reading-intro-visibility", onIntroVisibility);
-    return () => window.removeEventListener("leeswijs-reading-intro-visibility", onIntroVisibility);
-  }, []);
-
-  useEffect(() => {
-    if (!user?.id || !user.onboarding_completed || homeIntroOpen || shouldSkipReminder(location.pathname)) {
+    if (!user?.id || !user.onboarding_completed || shouldSkipReminder(location.pathname)) {
       setDelayedCheck(null);
       return;
     }
@@ -52,16 +42,23 @@ export default function DelayedVocabReminder() {
       }
     }
 
+    function onDelayedCheckCompleted() {
+      setDelayedCheck(null);
+      void checkDelayedTest();
+    }
+
     void checkDelayedTest();
     window.addEventListener("focus", checkDelayedTest);
+    window.addEventListener("leeswijs-delayed-check-completed", onDelayedCheckCompleted);
     const timer = window.setInterval(() => void checkDelayedTest(), DELAYED_CHECK_POLL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("focus", checkDelayedTest);
+      window.removeEventListener("leeswijs-delayed-check-completed", onDelayedCheckCompleted);
     };
-  }, [user?.id, user?.onboarding_completed, location.pathname, homeIntroOpen]);
+  }, [user?.id, user?.onboarding_completed, location.pathname]);
 
   function startDelayedCheck() {
     if (!delayedCheck?.sessionGroupId || !delayedCheck.studyPhase) return;

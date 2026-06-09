@@ -23,36 +23,35 @@ type Step = "personal" | "interests" | "assessment";
 export default function OnboardingPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const user   = useStore((s) => s.user);
+  const user = useStore((s) => s.user);
   const setUser = useStore((s) => s.setUser);
   const retakeAssessment = searchParams.get("step") === "assessment";
 
   const [step, setStep] = useState<Step>(retakeAssessment ? "assessment" : "personal");
 
-  const [age,        setAge]        = useState<number | "">(user?.age ?? "");
-  const [city,       setCity]       = useState(user?.city ?? "");
-  const [gender,     setGender]     = useState(user?.gender ?? "");
-  const [job,        setJob]        = useState(user?.job ?? "");
-  const [academic,   setAcademic]   = useState(user?.academic_background ?? "");
+  const [age, setAge] = useState<number | "">(user?.age ?? "");
+  const [city, setCity] = useState(user?.city ?? "");
+  const [job, setJob] = useState(user?.job ?? "");
+  const [academic, setAcademic] = useState(user?.academic_background ?? "");
   const [motherLang, setMotherLang] = useState(user?.mother_language ?? "");
   const [otherLangs, setOtherLangs] = useState(user?.other_languages ?? "");
-  const [purpose,    setPurpose]    = useState<Purpose | "">(user?.purpose ?? "");
-  const [selfCefr,   setSelfCefr]   = useState<string>(user?.cefrLevel ?? "B1");
+  const [purpose, setPurpose] = useState<Purpose | "">(user?.purpose ?? "");
+  const [selfCefr, setSelfCefr] = useState<string>(user?.cefrLevel ?? "B1");
 
   const [selectedInterests, setSelectedInterests] = useState<Set<InterestId>>(
     new Set((user?.interests ?? []) as InterestId[]),
   );
 
-  const [batchNum,     setBatchNum]     = useState(1);
-  const [batch,        setBatch]        = useState<null | Awaited<ReturnType<typeof getAssessmentBatch>>>(null);
-  const [knownIds,     setKnownIds]     = useState<Set<string>>(new Set());
-  const [allKnownIds,  setAllKnownIds]  = useState<Set<string>>(new Set());
+  const [batchNum, setBatchNum] = useState(1);
+  const [batch, setBatch] = useState<null | Awaited<ReturnType<typeof getAssessmentBatch>>>(null);
+  const [knownIds, setKnownIds] = useState<Set<string>>(new Set());
+  const [allKnownIds, setAllKnownIds] = useState<Set<string>>(new Set());
   const [allWordsSeen, setAllWordsSeen] = useState<Array<{ wordId: string; dutch: string }>>([]);
   const [loadingBatch, setLoadingBatch] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
   const [assessmentError, setAssessmentError] = useState<string | null>(null);
-  const [assessDone,   setAssessDone]   = useState(false);
-  const [finalResult,  setFinalResult]  = useState<{ level: string; acquisition: number } | null>(null);
+  const [assessmentDone, setAssessmentDone] = useState(false);
+  const [finalResult, setFinalResult] = useState<{ level: string; acquisition: number } | null>(null);
 
   useEffect(() => {
     if (!retakeAssessment || !user?.id) return;
@@ -82,20 +81,20 @@ export default function OnboardingPage() {
   async function handlePersonalNext() {
     if (!user) return;
     await savePersonalInfo(user.id, {
-      age:                 age !== "" ? Number(age) : undefined,
+      age: age !== "" ? Number(age) : undefined,
       city,
-      gender,
       job,
       academic_background: academic,
-      mother_language:     motherLang,
-      other_languages:     otherLangs || undefined,
-      purpose:             purpose || undefined,
-      self_reported_cefr:  selfCefr,
+      mother_language: motherLang,
+      other_languages: otherLangs || undefined,
+      purpose: purpose || undefined,
+      self_reported_cefr: selfCefr,
     });
     setUser({
       ...user,
       age: age !== "" ? Number(age) : null,
-      city, gender, job,
+      city,
+      job,
       academic_background: academic,
       mother_language: motherLang,
       other_languages: otherLangs || null,
@@ -145,20 +144,20 @@ export default function OnboardingPage() {
     if (!user || !batch || !batch.success) return;
 
     const words = batch.data.words;
-    const cumKnown = new Set([...allKnownIds, ...knownIds]);
-    const cumSeen  = [...allWordsSeen, ...words.map((w) => ({ wordId: w.wordId, dutch: w.dutch }))];
+    const knownAfterThisBatch = new Set([...allKnownIds, ...knownIds]);
+    const wordsSeenAfterThisBatch = [...allWordsSeen, ...words.map((w) => ({ wordId: w.wordId, dutch: w.dutch }))];
 
     if (batchNum < TOTAL_BATCHES) {
-      setAllKnownIds(cumKnown);
-      setAllWordsSeen(cumSeen);
+      setAllKnownIds(knownAfterThisBatch);
+      setAllWordsSeen(wordsSeenAfterThisBatch);
       setKnownIds(new Set());
       setBatchNum((n) => n + 1);
       setLoadingBatch(true);
       setAssessmentError(null);
       const res = await getAssessmentBatch(
         batchNum + 1, user.id, selfCefr,
-        [...cumKnown].map((id) => cumSeen.find((w) => w.wordId === id)?.dutch ?? "").filter(Boolean),
-        cumSeen.map((w) => w.dutch),
+        [...knownAfterThisBatch].map((id) => wordsSeenAfterThisBatch.find((w) => w.wordId === id)?.dutch ?? "").filter(Boolean),
+        wordsSeenAfterThisBatch.map((w) => w.dutch),
       );
       setBatch(res);
       if (!hasAssessmentWords(res)) {
@@ -169,9 +168,9 @@ export default function OnboardingPage() {
     }
 
     setCalculatingResults(true);
-    const secondPitchWords = words.filter((w) => !w.isPseudo);
-    const secondPitchKnown = secondPitchWords.filter((w) => knownIds.has(w.wordId));
-    const acquisitionScore = secondPitchWords.length > 0 ? secondPitchKnown.length / secondPitchWords.length : 0;
+    const realWordsInFinalBatch = words.filter((w) => !w.isPseudo);
+    const knownRealWordsInFinalBatch = realWordsInFinalBatch.filter((w) => knownIds.has(w.wordId));
+    const acquisitionScore = realWordsInFinalBatch.length > 0 ? knownRealWordsInFinalBatch.length / realWordsInFinalBatch.length : 0;
     
     const levelIndex = CEFR_LEVELS.findIndex((level) => level === selfCefr);
     const cefrIndex = levelIndex !== -1 ? levelIndex : 2;
@@ -184,8 +183,8 @@ export default function OnboardingPage() {
 
     await submitAssessment(
       user.id, batchNum,
-      [...cumKnown].filter((id) => !id.startsWith("pseudo")),
-      cumSeen.filter((w) => !w.wordId.startsWith("pseudo")).map((w) => w.wordId),
+      [...knownAfterThisBatch].filter((id) => !id.startsWith("pseudo")),
+      wordsSeenAfterThisBatch.filter((w) => !w.wordId.startsWith("pseudo")).map((w) => w.wordId),
       finalLevel, Math.min(0.95, 0.5 + Math.max(0, acquisitionScore) * 0.45),
       true,
     );
@@ -202,7 +201,7 @@ export default function OnboardingPage() {
     });
     setFinalResult({ level: finalLevel, acquisition: Math.round(acquisitionScore * 100) });
     setCalculatingResults(false);
-    setAssessDone(true);
+    setAssessmentDone(true);
   }
 
   if (calculatingResults) {
@@ -222,7 +221,7 @@ export default function OnboardingPage() {
     );
   }
 
-  if (assessDone && finalResult) {
+  if (assessmentDone && finalResult) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
@@ -262,10 +261,9 @@ export default function OnboardingPage() {
       <AnimatePresence mode="wait">
         {step === "personal" && (
           <PersonalStep key="personal"
-            age={age} setAge={setAge}
-            city={city} setCity={setCity}
-            gender={gender} setGender={setGender}
-            job={job} setJob={setJob}
+        age={age} setAge={setAge}
+        city={city} setCity={setCity}
+        job={job} setJob={setJob}
             academic={academic} setAcademic={setAcademic}
             motherLang={motherLang} setMotherLang={setMotherLang}
             otherLangs={otherLangs} setOtherLangs={setOtherLangs}
@@ -318,8 +316,8 @@ export default function OnboardingPage() {
 
 function StepIndicator({ step }: { step: Step }) {
   const steps: { key: Step; label: string }[] = [
-    { key: "personal",   label: "About you" },
-    { key: "interests",  label: "Interests" },
+    { key: "personal", label: "About you" },
+    { key: "interests", label: "Interests" },
     { key: "assessment", label: "Word check" },
   ];
   const idx = steps.findIndex((s) => s.key === step);
@@ -328,7 +326,7 @@ function StepIndicator({ step }: { step: Step }) {
     <div className="mb-7">
       <div className="flex items-center gap-2 sm:gap-3">
         {steps.map((s, i) => {
-          const done   = i < idx;
+          const done = i < idx;
           const active = i === idx;
           return (
             <div key={s.key} className="flex min-w-0 flex-1 items-center gap-2 last:flex-none sm:gap-3">
@@ -361,7 +359,6 @@ function StepIndicator({ step }: { step: Step }) {
 function PersonalStep(props: {
   age: number | ""; setAge: (v: number | "") => void;
   city: string; setCity: (v: string) => void;
-  gender: string; setGender: (v: string) => void;
   job: string; setJob: (v: string) => void;
   academic: string; setAcademic: (v: string) => void;
   motherLang: string; setMotherLang: (v: string) => void;
@@ -375,7 +372,6 @@ function PersonalStep(props: {
   const canContinue =
     props.age !== "" &&
     props.city.trim().length > 0 &&
-    props.gender !== "" &&
     props.job.trim().length > 0 &&
     props.academic.trim().length > 0 &&
     props.motherLang.trim().length > 0 &&
@@ -416,15 +412,6 @@ function PersonalStep(props: {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Age *"><input type="text" inputMode="numeric" value={props.age} onChange={(e) => handleAgeChange(e.target.value)} placeholder="e.g. 24" className={inputCls} /></Field>
         <Field label="City *"><input value={props.city} onChange={(e) => handleTextChange(e.target.value, props.setCity, "city name")} placeholder="e.g. Amsterdam" className={inputCls} /></Field>
-        <Field label="Gender *">
-          <select value={props.gender} onChange={(e) => props.setGender(e.target.value)} className={inputCls}>
-            <option value="">Select...</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Non-binary">Non-binary</option>
-            <option value="Prefer not to say">Prefer not to say</option>
-          </select>
-        </Field>
         <Field label="Job / occupation *"><input value={props.job} onChange={(e) => handleTextChange(e.target.value, props.setJob, "job/occupation")} placeholder="e.g. Software engineer" className={inputCls} /></Field>
         <Field label="Academic background *"><input value={props.academic} onChange={(e) => handleTextChange(e.target.value, props.setAcademic, "academic background")} placeholder="e.g. BSc Computer Science" className={inputCls} /></Field>
         <Field label="Mother language *"><input value={props.motherLang} onChange={(e) => handleTextChange(e.target.value, props.setMotherLang, "mother language")} placeholder="e.g. Arabic" className={inputCls} /></Field>

@@ -62,14 +62,14 @@ function DecorativeBackground() {
 }
 
 const TILES: TileProps[] = [
-  { char: "A", x: "8%",  y: "12%", rotate: -12, size: 28, opacity: 0.07 },
-  { char: "B", x: "88%", y: "8%",  rotate: 8,   size: 22, opacity: 0.06 },
-  { char: "N", x: "15%", y: "78%", rotate: 15,  size: 26, opacity: 0.07 },
-  { char: "Z", x: "82%", y: "72%", rotate: -8,  size: 24, opacity: 0.06 },
-  { char: "G", x: "72%", y: "30%", rotate: 10,  size: 20, opacity: 0.05 },
-  { char: "IJ",x: "5%",  y: "45%", rotate: -6,  size: 18, opacity: 0.06 },
-  { char: "V", x: "92%", y: "48%", rotate: 14,  size: 22, opacity: 0.05 },
-  { char: "E", x: "50%", y: "5%",  rotate: -4,  size: 20, opacity: 0.05 },
+  { char: "A", x: "8%", y: "12%", rotate: -12, size: 28, opacity: 0.07 },
+  { char: "B", x: "88%", y: "8%", rotate: 8, size: 22, opacity: 0.06 },
+  { char: "N", x: "15%", y: "78%", rotate: 15, size: 26, opacity: 0.07 },
+  { char: "Z", x: "82%", y: "72%", rotate: -8, size: 24, opacity: 0.06 },
+  { char: "G", x: "72%", y: "30%", rotate: 10, size: 20, opacity: 0.05 },
+  { char: "IJ", x: "5%", y: "45%", rotate: -6, size: 18, opacity: 0.06 },
+  { char: "V", x: "92%", y: "48%", rotate: 14, size: 22, opacity: 0.05 },
+  { char: "E", x: "50%", y: "5%", rotate: -4, size: 20, opacity: 0.05 },
 ];
 
 interface TileProps {

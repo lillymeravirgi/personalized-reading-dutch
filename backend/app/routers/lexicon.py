@@ -9,7 +9,7 @@ from google import genai
 
 from app.config import GEMINI_MODEL, GOOGLE_API_KEY
 from app.database import get_db
-from app.models import Lexicon, RecommendedVocabulary
+from app.models import Lexicon
 from app.schemas import LexiconEntry
 
 logger = logging.getLogger(__name__)

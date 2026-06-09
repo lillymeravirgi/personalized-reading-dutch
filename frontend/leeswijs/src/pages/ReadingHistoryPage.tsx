@@ -12,6 +12,7 @@ import {
   readActivity,
   type Activity,
 } from "../services/api";
+import { easeOut } from "../constants/animation";
 import { useStore } from "../store";
 
 export default function ReadingHistoryPage() {
@@ -19,7 +20,7 @@ export default function ReadingHistoryPage() {
   const user = useStore((s) => s.user);
 
   const [sessions, setSessions] = useState<Activity["sessions"]>([]);
-  const [query,    setQuery]    = useState("");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -43,7 +44,7 @@ export default function ReadingHistoryPage() {
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.35, ease: easeOut }}
       className="mx-auto max-w-5xl"
     >
       <div className="mb-5 flex items-center gap-3">
@@ -167,8 +168,8 @@ function relTime(iso: string): string {
   if (m < 60) return `${m} min ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d ago`;
   return new Date(then).toLocaleDateString();
 }
 

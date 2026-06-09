@@ -17,7 +17,6 @@ export interface User {
 
   age?: number | null;
   city?: string | null;
-  gender?: string | null;
   job?: string | null;
   academic_background?: string | null;
   mother_language?: string | null;
@@ -139,7 +138,7 @@ export interface FlashcardItem {
   reviewInterval: ReviewInterval;
 }
 
-export type InteractionAction = "DEEP_PROCESSING" | "ACQUISITION_INTENT" | "WORD_AVOIDANCE";
+export type InteractionAction = "deep_processing" | "acquisition_intent" | "word_avoidance";
 export type InteractionWeight = 5 | 2 | 1;
 
 export interface WordInteraction {

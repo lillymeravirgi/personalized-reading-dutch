@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle, ArrowRight, ClipboardCheck, Home, Loader2 } from "lucide-react";
+import { ArrowRight, ClipboardCheck, Home, Loader2 } from "lucide-react";
 
+import ErrorBanner from "../components/ErrorBanner";
 import TestProgress from "../components/vocab-test/TestProgress";
 import TestQuestion from "../components/vocab-test/TestQuestion";
 import { startVocabTest, submitVocabTest } from "../services/api";
@@ -17,6 +18,10 @@ interface LocalAnswer {
   chosenAnswer: string;
 }
 
+function isLocalAnswer(answer: LocalAnswer | undefined): answer is LocalAnswer {
+  return Boolean(answer);
+}
+
 const FINAL_STUDY_PHASE = 2;
 const VOCAB_TEST_WORD_COUNT = 10;
 
@@ -24,30 +29,30 @@ export default function VocabTestPage() {
   const { sessionGroupId = "1" } = useParams<{ sessionGroupId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const user    = useStore((s) => s.user);
+  const user = useStore((s) => s.user);
   const setUser = useStore((s) => s.setUser);
   const userId = user?.id;
 
-  const sgId = parseInt(sessionGroupId, 10);
+  const sessionGroupIdNumber = parseInt(sessionGroupId, 10);
   const studyPhase = parseInt(searchParams.get("phase") ?? "1", 10);
   const testType = searchParams.get("test") === "delayed" ? "delayed" : "immediate";
   const isDelayed = testType === "delayed";
-  const isFinal    = !isDelayed && studyPhase === FINAL_STUDY_PHASE;
+  const isFinal = !isDelayed && studyPhase === FINAL_STUDY_PHASE;
 
-  const [questions,  setQuestions]  = useState<VocabTestQuestion[]>([]);
-  const [index,      setIndex]      = useState(0);
-  const [answers,    setAnswers]    = useState<Record<string, LocalAnswer>>({});
-  const [loading,    setLoading]    = useState(true);
+  const [questions, setQuestions] = useState<VocabTestQuestion[]>([]);
+  const [index, setIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, LocalAnswer>>({});
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-  const [done,       setDone]       = useState(false);
-  const [score,      setScore]      = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [score, setScore] = useState(0);
 
   useEffect(() => {
     if (!userId) return;
     setLoading(true);
     setError(null);
-    startVocabTest(userId, sgId, studyPhase)
+    startVocabTest(userId, sessionGroupIdNumber, studyPhase)
       .then((res) => {
         if (res.success) {
           setQuestions(res.data.questions.slice(0, VOCAB_TEST_WORD_COUNT));
@@ -59,10 +64,17 @@ export default function VocabTestPage() {
         setError(err instanceof Error ? err.message : "Could not load vocabulary check."),
       )
       .finally(() => setLoading(false));
-  }, [userId, sgId, studyPhase]);
+  }, [userId, sessionGroupIdNumber, studyPhase]);
 
-  const currentQuestion = questions[index] ?? null;
-  const selectedIndex   = currentQuestion ? answers[currentQuestion.questionId]?.selectedIndex ?? null : null;
+  useEffect(() => {
+    if (questions.length > 0 && index > questions.length - 1) {
+      setIndex(questions.length - 1);
+    }
+  }, [index, questions.length]);
+
+  const safeIndex = questions.length > 0 ? Math.min(index, questions.length - 1) : 0;
+  const currentQuestion = questions[safeIndex] ?? null;
+  const selectedIndex = currentQuestion ? answers[currentQuestion.questionId]?.selectedIndex ?? null : null;
 
   const correct = useMemo(
     () => Object.values(answers).filter((a) => a.isCorrect).length,
@@ -71,38 +83,46 @@ export default function VocabTestPage() {
 
   function handleSelect(selected: number) {
     if (!currentQuestion) return;
+    setError(null);
     const isCorrect = selected === currentQuestion.correctIndex;
     setAnswers((prev) => ({
       ...prev,
       [currentQuestion.questionId]: {
-        questionId:    currentQuestion.questionId,
-        wordId:        currentQuestion.wordId,
+        questionId: currentQuestion.questionId,
+        wordId: currentQuestion.wordId,
         selectedIndex: selected,
         isCorrect,
-        chosenAnswer:  currentQuestion.options[selected] ?? "",
+        chosenAnswer: currentQuestion.options[selected] ?? "",
       },
     }));
   }
 
   async function handleNext() {
     if (!user || !currentQuestion || selectedIndex === null) return;
-    const isLast = index === questions.length - 1;
+    const isLast = safeIndex === questions.length - 1;
 
     if (!isLast) {
-      setIndex((n) => n + 1);
+      setError(null);
+      setIndex(safeIndex + 1);
       return;
     }
 
-    const allAnswers: VocabTestAnswer[] = Object.values(answers).map((a) => ({
-      word_id:       a.wordId,
+    const orderedAnswers = questions.map((question) => answers[question.questionId]);
+    if (!orderedAnswers.every(isLocalAnswer)) {
+      setError("Please answer all vocabulary questions.");
+      return;
+    }
+
+    const allAnswers: VocabTestAnswer[] = orderedAnswers.map((a) => ({
+      word_id: a.wordId,
       chosen_answer: a.chosenAnswer,
-      is_correct:    a.isCorrect,
+      is_correct: a.isCorrect,
     }));
 
     setSubmitting(true);
     setError(null);
     try {
-      const result = await submitVocabTest(user.id, sgId, allAnswers, correct, studyPhase, isFinal, testType);
+      const result = await submitVocabTest(user.id, sessionGroupIdNumber, allAnswers, correct, studyPhase, isFinal, testType);
       setScore(correct);
       setDone(true);
 
@@ -111,6 +131,9 @@ export default function VocabTestPage() {
       }
 
       if (isDelayed) {
+        window.dispatchEvent(new CustomEvent("leeswijs-delayed-check-completed", {
+          detail: { sessionGroupId: sessionGroupIdNumber, studyPhase },
+        }));
         return;
       } else if (result.next_action === "transition") {
         setTimeout(() => navigate(`/system-transition?phase=${studyPhase + 1}`), 2200);
@@ -137,18 +160,12 @@ export default function VocabTestPage() {
 
   if (error && questions.length === 0) {
     return (
-      <div className="mx-auto max-w-2xl rounded-lg border border-red-200 bg-red-50 px-5 py-4">
-        <div className="flex gap-3">
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
-          <div>
-            <h1 className="font-heading text-sm font-semibold text-red-700">Could not load vocabulary check</h1>
-            <p className="mt-1 text-sm font-body text-red-700/80">{error}</p>
-            <button type="button" onClick={() => navigate("/home")}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-heading font-semibold text-red-700 hover:bg-red-100">
-              <Home size={13} /> Back home
-            </button>
-          </div>
-        </div>
+      <div className="mx-auto max-w-2xl">
+        <ErrorBanner message={error} title="Could not load vocabulary check" />
+        <button type="button" onClick={() => navigate("/home")}
+          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-heading font-semibold text-red-700 hover:bg-red-100">
+          <Home size={13} /> Back home
+        </button>
       </div>
     );
   }
@@ -187,7 +204,8 @@ export default function VocabTestPage() {
     );
   }
 
-  const isLast = index === questions.length - 1;
+  const isLast = safeIndex === questions.length - 1;
+  const progressIndex = questions.length > 0 ? Math.min(safeIndex + 1, questions.length) : 0;
 
   return (
     <motion.div
@@ -222,7 +240,7 @@ export default function VocabTestPage() {
             transition={{ duration: 0.25 }}
             className="space-y-7"
           >
-            <TestProgress current={index + 1} total={questions.length} />
+            <TestProgress current={progressIndex} total={questions.length} />
 
             {currentQuestion && (
               <TestQuestion
@@ -235,10 +253,7 @@ export default function VocabTestPage() {
             )}
 
             {error && (
-              <div className="flex gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-500" />
-                <p className="text-sm font-body text-red-700">{error}</p>
-              </div>
+              <ErrorBanner message={error} />
             )}
 
             <div className="flex justify-end">

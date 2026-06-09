@@ -18,11 +18,10 @@ logger = logging.getLogger(__name__)
 
 _client = genai.Client(api_key=GOOGLE_API_KEY)
 
-RESERVOIR_TARGET = 50
-GATEKEEPER_FLOOR = 25
-LOW_WATERMARK = 25
+reservoir_target = 50
+gatekeeper_floor = 25
 
-FUNCTION_WORDS = {
+function_words = {
     "de", "het", "een", "en", "maar", "of", "want", "dus", "omdat",
     "ik", "jij", "je", "hij", "zij", "ze", "wij", "we", "u", "jullie",
     "mij", "me", "jou", "hem", "haar", "ons", "hun", "hen",
@@ -37,7 +36,7 @@ FUNCTION_WORDS = {
 
 def _is_target_candidate(lex: Lexicon) -> bool:
     word = (lex.word or "").strip().lower()
-    if not word or word in FUNCTION_WORDS:
+    if not word or word in function_words:
         return False
     if word.startswith("'") or any(char.isdigit() for char in word):
         return False
@@ -64,17 +63,17 @@ def run_krs(user_id: str, db: Session, is_refill: bool = False) -> dict:
     )
     usable_count = sum(1 for r in current_recs if r.word_id not in vector_ids)
 
-    if usable_count >= GATEKEEPER_FLOOR:
+    if usable_count >= gatekeeper_floor:
         logger.info(
-            f"[KRS] user={user_id} | reservoir={usable_count} >= {GATEKEEPER_FLOOR} "
+            f"[KRS] user={user_id} | reservoir={usable_count} >= {gatekeeper_floor} "
             f"| skipping Gemini call"
         )
         return {"user_id": user_id, "words_recommended": 0, "new_entries_saved": 0, "skipped": True}
 
-    interests      = _get_interests(user_id, db)
+    interests = _get_interests(user_id, db)
     excluded_words = _get_excluded_words(user_id, db)
 
-    needed = max(1, RESERVOIR_TARGET - usable_count)
+    needed = max(1, reservoir_target - usable_count)
     raw_words = _call_gemini_krs(user, interests, excluded_words, needed, is_refill)
     matched, new_count = _save_matches(user_id, raw_words, db)
 
@@ -83,11 +82,11 @@ def run_krs(user_id: str, db: Session, is_refill: bool = False) -> dict:
         f"| gemini={len(raw_words)} | matched={matched} | saved={new_count}"
     )
     return {
-        "user_id":           user_id,
+        "user_id": user_id,
         "words_recommended": len(raw_words),
-        "words_matched":     matched,
+        "words_matched": matched,
         "new_entries_saved": new_count,
-        "skipped":           False,
+        "skipped": False,
     }
 
 
@@ -143,7 +142,7 @@ def _call_gemini_krs(
     is_refill: bool = False,
 ) -> list[str]:
     interests_str = ", ".join(interests) if interests else "general life"
-    excluded_str  = ", ".join(excluded_words) if excluded_words else "none"
+    excluded_str = ", ".join(excluded_words) if excluded_words else "none"
 
     prompt = (
         f"You help choose Dutch vocabulary for language learners.\n\n"
@@ -193,7 +192,7 @@ def _call_gemini_krs(
 
 
 def _save_matches(user_id: str, words: list[str], db: Session) -> tuple[int, int]:
-    matched   = 0
+    matched = 0
     new_count = 0
 
     for word in words:
@@ -203,8 +202,8 @@ def _save_matches(user_id: str, words: list[str], db: Session) -> tuple[int, int
         matched += 1
 
         exists_in_rec = db.query(RecommendedVocabulary).filter(
-            RecommendedVocabulary.user_id  == user_id,
-            RecommendedVocabulary.word_id  == lex.word_id,
+            RecommendedVocabulary.user_id == user_id,
+            RecommendedVocabulary.word_id == lex.word_id,
         ).first()
 
         exists_in_vector = db.query(UserVocabularyVector).filter(

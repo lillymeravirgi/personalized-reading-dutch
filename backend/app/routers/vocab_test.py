@@ -88,6 +88,43 @@ def _normalise_answers(answers: list[dict], expected_word_ids: list[int]) -> lis
     return [by_word[word_id] for word_id in expected_word_ids]
 
 
+def _existing_result_response(rows: list[VocabularyTestResult], study_phase: int, test_type: str) -> dict:
+    saved_score = next((row.score for row in rows if row.score is not None), None)
+    if saved_score is None:
+        saved_score = sum(1 for row in rows if row.is_correct)
+
+    response = {
+        "success": True,
+        "score": saved_score,
+        "total": len(rows),
+        "next_action": "finish",
+        "already_completed": True,
+    }
+
+    if test_type == "immediate" and study_phase < FINAL_STUDY_PHASE:
+        response["next_action"] = "transition"
+        response["phase_switched"] = True
+
+    return response
+
+
+def _delayed_status_response(
+    due: bool,
+    session_group_id: int | None,
+    study_phase: int | None,
+    due_at: datetime.datetime | None,
+    minutes_remaining: int | None,
+) -> dict:
+    return {
+        "due": due,
+        "session_group_id": session_group_id,
+        "study_phase": study_phase,
+        "due_at": due_at.isoformat() if due_at else None,
+        "minutes_remaining": minutes_remaining,
+        "delay_minutes": DELAYED_VOCAB_TEST_MINUTES,
+    }
+
+
 @router.get("/progress")
 def vocab_test_progress(user_id: str, db: Session = Depends(get_db)):
     rows = (
@@ -128,11 +165,11 @@ def start_vocab_test(
             options.insert(correct_index, word.translation)
 
             questions.append({
-                "questionId":   f"{session_group_id}-{word.word_id}",
-                "wordId":       str(word.word_id),
-                "dutch":        word.word,
-                "prompt":       f"What does '{word.word}' mean?",
-                "options":      options,
+                "questionId": f"{session_group_id}-{word.word_id}",
+                "wordId": str(word.word_id),
+                "dutch": word.word,
+                "prompt": f"What does '{word.word}' mean?",
+                "options": options,
                 "correctIndex": correct_index,
             })
 
@@ -140,8 +177,8 @@ def start_vocab_test(
             "success": True,
             "data": {
                 "sessionGroupId": session_group_id,
-                "studyPhase":     study_phase,
-                "questions":      questions,
+                "studyPhase": study_phase,
+                "questions": questions,
             },
         }
 
@@ -167,6 +204,20 @@ def submit_vocab_test(payload: VocabTestSubmitRequest, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="Unknown study phase.")
 
     _require_session_group(db, payload.user_id, payload.session_group_id, payload.study_phase)
+
+    existing_rows = (
+        db.query(VocabularyTestResult)
+        .filter(
+            VocabularyTestResult.user_id == payload.user_id,
+            VocabularyTestResult.session_group_id == payload.session_group_id,
+            VocabularyTestResult.study_phase == payload.study_phase,
+            VocabularyTestResult.test_type == test_type,
+        )
+        .order_by(VocabularyTestResult.id.asc())
+        .all()
+    )
+    if existing_rows:
+        return _existing_result_response(existing_rows, payload.study_phase, test_type)
 
     rows = _phase_word_rows(db, payload.user_id, payload.study_phase)
     if len(rows) < VOCAB_TEST_WORD_COUNT:
@@ -228,25 +279,25 @@ def submit_vocab_test(payload: VocabTestSubmitRequest, db: Session = Depends(get
 
     if test_type == "delayed":
         return {
-            "success":     True,
-            "score":       score,
-            "total":       len(answers),
+            "success": True,
+            "score": score,
+            "total": len(answers),
             "next_action": "finish",
         }
 
     if next_action == "transition":
         return {
-            "success":       True,
-            "score":         score,
-            "total":         len(answers),
-            "next_action":   "transition",
+            "success": True,
+            "score": score,
+            "total": len(answers),
+            "next_action": "transition",
             "phase_switched": phase_switched,
         }
 
     return {
-        "success":     True,
-        "score":       score,
-        "total":       len(answers),
+        "success": True,
+        "score": score,
+        "total": len(answers),
         "next_action": "finish",
     }
 
@@ -263,16 +314,18 @@ def delayed_vocab_status(user_id: str, db: Session = Depends(get_db)):
         .all()
     )
 
-    completed: dict[tuple[int, int], datetime.datetime] = {}
+    completed_by_phase: dict[int, tuple[int, datetime.datetime]] = {}
     for row in immediate_rows:
-        key = (row.session_group_id, row.study_phase)
-        if row.timestamp and (key not in completed or row.timestamp > completed[key]):
-            completed[key] = row.timestamp
+        current = completed_by_phase.get(row.study_phase)
+        if row.timestamp and (current is None or row.timestamp > current[1]):
+            completed_by_phase[row.study_phase] = (row.session_group_id, row.timestamp)
 
-    due_tests: list[tuple[datetime.datetime, int, int]] = []
-    next_due_at: datetime.datetime | None = None
+    for study_phase in range(1, FINAL_STUDY_PHASE + 1):
+        phase_completion = completed_by_phase.get(study_phase)
+        if not phase_completion:
+            break
 
-    for (session_group_id, study_phase), submitted_at in completed.items():
+        session_group_id, submitted_at = phase_completion
         delayed_exists = (
             db.query(VocabularyTestResult.id)
             .filter(
@@ -288,33 +341,12 @@ def delayed_vocab_status(user_id: str, db: Session = Depends(get_db)):
 
         due_at = submitted_at + datetime.timedelta(minutes=DELAYED_VOCAB_TEST_MINUTES)
         if now >= due_at:
-            due_tests.append((due_at, session_group_id, study_phase))
-        elif next_due_at is None or due_at < next_due_at:
-            next_due_at = due_at
+            return _delayed_status_response(True, session_group_id, study_phase, due_at, 0)
 
-    if due_tests:
-        due_at, session_group_id, study_phase = sorted(due_tests, key=lambda item: item[0])[0]
-        return {
-            "due": True,
-            "session_group_id": session_group_id,
-            "study_phase": study_phase,
-            "due_at": due_at.isoformat(),
-            "minutes_remaining": 0,
-            "delay_minutes": DELAYED_VOCAB_TEST_MINUTES,
-        }
+        minutes_remaining = max(0, int((due_at - now).total_seconds() // 60))
+        return _delayed_status_response(False, session_group_id, study_phase, due_at, minutes_remaining)
 
-    minutes_remaining = None
-    if next_due_at:
-        minutes_remaining = max(0, int((next_due_at - now).total_seconds() // 60))
-
-    return {
-        "due": False,
-        "session_group_id": None,
-        "study_phase": None,
-        "due_at": next_due_at.isoformat() if next_due_at else None,
-        "minutes_remaining": minutes_remaining,
-        "delay_minutes": DELAYED_VOCAB_TEST_MINUTES,
-    }
+    return _delayed_status_response(False, None, None, None, None)
 
 
 

@@ -29,7 +29,7 @@ const CHOICES: {
 }[] = [
   {
     id: "context",
-    action: "DEEP_PROCESSING",
+    action: "deep_processing",
     weight: 5,
     label: "Context",
     hint: "I want examples",
@@ -37,7 +37,7 @@ const CHOICES: {
   },
   {
     id: "learn",
-    action: "ACQUISITION_INTENT",
+    action: "acquisition_intent",
     weight: 2,
     label: "Learn",
     hint: "Save for review",
@@ -46,7 +46,7 @@ const CHOICES: {
   },
   {
     id: "known",
-    action: "WORD_AVOIDANCE",
+    action: "word_avoidance",
     weight: 1,
     label: "Known",
     hint: "No review needed",

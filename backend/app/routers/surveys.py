@@ -27,16 +27,16 @@ def _compute_survey_signal(payload: SurveyResponse) -> dict:
     ) / 3
     engagement_boost = ues_composite < 3.0
 
-    worth_continuing  = payload.worth_my_time >= 4
+    worth_continuing = payload.worth_my_time >= 4
     felt_personalised = payload.perceived_personalization >= 4
 
     return {
         "challenge_direction": challenge_direction,
-        "tlx_md":             tlx_md,
-        "engagement_boost":   engagement_boost,
-        "worth_continuing":   worth_continuing,
-        "felt_personalised":  felt_personalised,
-        "ues_composite":      round(ues_composite, 2),
+        "tlx_md": tlx_md,
+        "engagement_boost": engagement_boost,
+        "worth_continuing": worth_continuing,
+        "felt_personalised": felt_personalised,
+        "ues_composite": round(ues_composite, 2),
     }
 
 
@@ -59,13 +59,13 @@ def submit_survey(payload: SurveyResponse, db: Session = Depends(get_db)):
     if not existing:
         db.add(row)
 
-    row.worth_my_time             = payload.worth_my_time
-    row.appropriate_challenge     = payload.appropriate_challenge
-    row.comprehension             = payload.comprehension
-    row.focused_attention         = payload.focused_attention
-    row.reward                    = payload.reward
-    row.perceived_relevance       = payload.perceived_relevance
-    row.mental_effort             = payload.mental_effort
+    row.worth_my_time = payload.worth_my_time
+    row.appropriate_challenge = payload.appropriate_challenge
+    row.comprehension = payload.comprehension
+    row.focused_attention = payload.focused_attention
+    row.reward = payload.reward
+    row.perceived_relevance = payload.perceived_relevance
+    row.mental_effort = payload.mental_effort
     row.perceived_personalization = payload.perceived_personalization
 
     if payload.duration_seconds and payload.duration_seconds > 0:
@@ -75,7 +75,7 @@ def submit_survey(payload: SurveyResponse, db: Session = Depends(get_db)):
         session.duration_seconds = max(1, int(delta.total_seconds()))
 
     signal = _compute_survey_signal(payload)
-    session.survey_signal    = signal
+    session.survey_signal = signal
     session.survey_completed = True
 
     logger.info("[Survey] session=%d signal=%s", payload.session_id, signal)

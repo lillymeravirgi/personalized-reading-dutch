@@ -6,6 +6,7 @@ import { getOnboardingWords, addToLearnList, completeOnboarding, markKnown, mark
 import { useStore } from "../store";
 import type { LexiconEntry } from "../types";
 import SpeakButton from "../components/SpeakButton";
+import ErrorBanner from "../components/ErrorBanner";
 
 const TARGET_WORDS = 10;
 const READINGS_PER_PHASE = 3;
@@ -14,22 +15,22 @@ const PREFETCH_THRESHOLD = 12;
 export default function OnboardingFlashcardsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const user     = useStore((s) => s.user);
-  const setUser  = useStore((s) => s.setUser);
+  const user = useStore((s) => s.user);
+  const setUser = useStore((s) => s.setUser);
 
   const studyPhase = parseInt(searchParams.get("phase") ?? "1", 10);
   const firstReading = (studyPhase - 1) * READINGS_PER_PHASE + 1;
   const readingRange = `${firstReading}-${firstReading + READINGS_PER_PHASE - 1}`;
 
-  const [words,        setWords]        = useState<LexiconEntry[]>([]);
-  const [index,        setIndex]        = useState(0);
-  const [done,         setDone]         = useState(false);
-  const [loading,      setLoading]      = useState(true);
-  const [saving,       setSaving]       = useState(false);
+  const [words, setWords] = useState<LexiconEntry[]>([]);
+  const [index, setIndex] = useState(0);
+  const [wordSetDone, setWordSetDone] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [completedCount, setCompletedCount] = useState(0);
-  const [refilling,    setRefilling]    = useState(false);
-  const [showMeaning,  setShowMeaning]  = useState(false);
-  const [error,        setError]        = useState<string | null>(null);
+  const [refilling, setRefilling] = useState(false);
+  const [showMeaning, setShowMeaning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function mergeUnique(current: LexiconEntry[], incoming: LexiconEntry[]) {
     const seen = new Set(current.map((w) => w.word_id));
@@ -51,12 +52,12 @@ export default function OnboardingFlashcardsPage() {
     if (!user) return;
     getOnboardingWords(user.id, studyPhase)
       .catch(() => selectOnboardingWords(user.id, false, studyPhase))
-      .then(async (ws) => {
-        let nextWords = ws;
+      .then(async (loadedWords) => {
+        let nextWords = loadedWords;
         if (nextWords.length < TARGET_WORDS) {
-          const refillWords = await selectOnboardingWords(user.id, true, studyPhase).catch(() => []);
+          const extraWords = await selectOnboardingWords(user.id, true, studyPhase).catch(() => []);
           const existingIds = new Set(nextWords.map((w) => w.word_id));
-          nextWords = [...nextWords, ...refillWords.filter((w) => !existingIds.has(w.word_id))];
+          nextWords = [...nextWords, ...extraWords.filter((w) => !existingIds.has(w.word_id))];
         }
         setWords(nextWords);
         setLoading(false);
@@ -72,7 +73,6 @@ export default function OnboardingFlashcardsPage() {
     setError(null);
     try {
       await markKnown(user.id, word.word_id);
-      // Mark this word as NOT to be tested (user already knows it)
       await markWordDecision(user.id, word.word_id, studyPhase, false);
       advanceCard(false);
     } catch {
@@ -87,9 +87,8 @@ export default function OnboardingFlashcardsPage() {
     setSaving(true);
     setError(null);
     try {
-      // Pass 0 for interval_days so these words are due immediately for the experiment
-      await addToLearnList(user.id, word.word_id, 0, true);
-      // Mark this word as TO be tested (user wants to learn it)
+      const intervalDays = 0;
+      await addToLearnList(user.id, word.word_id, intervalDays, true);
       await markWordDecision(user.id, word.word_id, studyPhase, true);
       advanceCard(true);
     } catch {
@@ -106,7 +105,7 @@ export default function OnboardingFlashcardsPage() {
     }
 
     if (newCount >= TARGET_WORDS) {
-      setDone(true);
+      setWordSetDone(true);
       return;
     }
     
@@ -114,7 +113,6 @@ export default function OnboardingFlashcardsPage() {
     setIndex(nextIndex);
     setShowMeaning(false);
     
-    // Trigger refill when close to the end of available words
     if (words.length - nextIndex <= PREFETCH_THRESHOLD && !refilling && user) {
       void refillWords();
     }
@@ -124,8 +122,8 @@ export default function OnboardingFlashcardsPage() {
     if (!user || refilling) return;
     setRefilling(true);
     try {
-      const more = await selectOnboardingWords(user.id, true, studyPhase);
-      setWords((prev) => mergeUnique(prev, more));
+      const extraWords = await selectOnboardingWords(user.id, true, studyPhase);
+      setWords((prev) => mergeUnique(prev, extraWords));
     } finally {
       setRefilling(false);
     }
@@ -151,7 +149,7 @@ export default function OnboardingFlashcardsPage() {
     );
   }
 
-  if (done) {
+  if (wordSetDone) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
@@ -202,113 +200,110 @@ export default function OnboardingFlashcardsPage() {
         </p>
       )}
       {error && (
-        <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-center text-xs font-body text-red-700">
-          {error}
-        </p>
+        <ErrorBanner message={error} className="mb-3" />
       )}
 
       <AnimatePresence mode="wait">
-        {/* Queue empty while fetching or after a failed refill — show recovery UI */}
-      {!word && !done && (
-        <div className="flex flex-col items-center gap-4 py-12 text-center">
-          {refilling ? (
-            <>
-              <div className="animate-spin w-8 h-8 rounded-full border-4 border-primary/20 border-t-primary" />
-              <p className="text-sm font-body text-text/50">Finding more words…</p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-body text-text/60">
-                Ran out of words in the queue.
-              </p>
+        {!word && !wordSetDone && (
+          <div className="flex flex-col items-center gap-4 py-12 text-center">
+            {refilling ? (
+              <>
+                <div className="animate-spin w-8 h-8 rounded-full border-4 border-primary/20 border-t-primary" />
+                <p className="text-sm font-body text-text/50">Finding more words…</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-body text-text/60">
+                  Ran out of words in the queue.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void handleManualRefill()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary text-white px-5 py-2.5 text-sm font-heading font-semibold hover:opacity-90"
+                >
+                  Load more words
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {word && (
+          <motion.div
+            key={word.word_id}
+            initial={{ opacity: 0, y: 20, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.97 }}
+            className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-10"
+          >
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 text-primary mb-4">
+                <BookOpen size={22} />
+              </div>
+              <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Dutch word</p>
+              <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
+                <h2 className="min-w-0 break-words text-center font-heading text-3xl font-bold text-text">
+                  {word.word}
+                </h2>
+                <SpeakButton
+                  text={word.word}
+                  label={`Play pronunciation for ${word.word}`}
+                  className="h-9 w-9 shrink-0"
+                />
+              </div>
+            </div>
+
+            <AnimatePresence>
+              {showMeaning && (
+                <motion.div
+                  key="meaning"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden mb-6"
+                >
+                  <div className="rounded-xl bg-primary/6 border border-primary/15 px-4 py-3 text-center">
+                    <p className="text-xs font-body font-semibold text-primary/60 uppercase tracking-widest mb-1">Meaning</p>
+                    <p className="font-heading text-lg font-semibold text-text">{word.translation}</p>
+                    {word.examples && word.examples.length > 0 && (
+                      <p className="mt-2 text-xs font-body text-text/50 italic">
+                        "{word.examples[0].nl}"
+                      </p>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {!showMeaning && (
               <button
                 type="button"
-                onClick={() => void handleManualRefill()}
-                className="inline-flex items-center gap-2 rounded-xl bg-primary text-white px-5 py-2.5 text-sm font-heading font-semibold hover:opacity-90"
+                onClick={() => setShowMeaning(true)}
+                className="w-full mb-3 flex items-center justify-center gap-1.5 text-xs font-body text-text/40 hover:text-text/60 transition-colors"
               >
-                Load more words
+                <Eye size={13} /> Show meaning
               </button>
-            </>
-          )}
-        </div>
-      )}
-      {word && (
-        <motion.div
-          key={word.word_id}
-          initial={{ opacity: 0, y: 20, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -20, scale: 0.97 }}
-          className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-10"
-        >
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 text-primary mb-4">
-              <BookOpen size={22} />
-            </div>
-            <p className="text-xs font-body font-semibold text-text/40 uppercase tracking-widest mb-1">Dutch word</p>
-            <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
-              <h2 className="min-w-0 break-words text-center font-heading text-3xl font-bold text-text">
-                {word.word}
-              </h2>
-              <SpeakButton
-                text={word.word}
-                label={`Play pronunciation for ${word.word}`}
-                className="h-9 w-9 shrink-0"
-              />
-            </div>
-          </div>
-
-          <AnimatePresence>
-            {showMeaning && (
-              <motion.div
-                key="meaning"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden mb-6"
-              >
-                <div className="rounded-xl bg-primary/6 border border-primary/15 px-4 py-3 text-center">
-                  <p className="text-xs font-body font-semibold text-primary/60 uppercase tracking-widest mb-1">Meaning</p>
-                  <p className="font-heading text-lg font-semibold text-text">{word.translation}</p>
-                  {word.examples && word.examples.length > 0 && (
-                    <p className="mt-2 text-xs font-body text-text/50 italic">
-                      "{word.examples[0].nl}"
-                    </p>
-                  )}
-                </div>
-              </motion.div>
             )}
-          </AnimatePresence>
 
-          {!showMeaning && (
-            <button
-              type="button"
-              onClick={() => setShowMeaning(true)}
-              className="w-full mb-3 flex items-center justify-center gap-1.5 text-xs font-body text-text/40 hover:text-text/60 transition-colors"
-            >
-              <Eye size={13} /> Show meaning
-            </button>
-          )}
-
-          <div className="mt-2 flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => void handleKnow()}
-              disabled={saving}
-              className="flex-1 rounded-xl border border-black/12 px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/[0.03] transition-colors disabled:opacity-50"
-            >
-              I know this word
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleAddToLearn()}
-              disabled={saving}
-              className="flex-1 rounded-xl bg-primary text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-            >
-              Add to learn
-            </button>
-          </div>
-        </motion.div>
-      )}
+            <div className="mt-2 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => void handleKnow()}
+                disabled={saving}
+                className="flex-1 rounded-xl border border-black/12 px-4 py-2.5 text-sm font-heading font-semibold text-text/70 hover:bg-black/[0.03] transition-colors disabled:opacity-50"
+              >
+                I know this word
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAddToLearn()}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-primary text-white px-4 py-2.5 text-sm font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                Add to learn
+              </button>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </motion.div>
   );

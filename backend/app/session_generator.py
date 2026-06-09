@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import random
 import re
 import time
 import datetime
-from typing import Any, Optional
 
 from google import genai
 from sqlalchemy.orm import Session
@@ -47,6 +45,23 @@ def _is_rate_limit_error(error: Exception) -> bool:
         or "resource_exhausted" in message
         or "rate limit" in message
     )
+
+
+def _strip_inline_markdown(text: str | None) -> str:
+    if not text:
+        return ""
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"__([^_]+)__", r"\1", text)
+    text = re.sub(r"\*([^*]+)\*", r"\1", text)
+    text = re.sub(r"_([^_]+)_", r"\1", text)
+    return text
+
+
+def _clean_generated_text(result: dict) -> dict:
+    result["title"] = _strip_inline_markdown(result.get("title"))
+    result["content"] = _strip_inline_markdown(result.get("content"))
+    return result
+
 
 _SYSTEM_INSTRUCTION = """\
 You are an expert Dutch Pedagogical Content Creator specialising in L2 educational reading.
@@ -133,7 +148,7 @@ def _survey_signal_prompt_block(session: ReadingSession | None) -> str:
 
 def generate_session(
     user_id: str,
-    K: float,
+    k_value: float,
     word_count_range: str,
     condition: ConditionType,
     db: Session,
@@ -174,7 +189,7 @@ def generate_session(
         recent_topics = [s.topic_used for s in recent_sessions if s.topic_used]
         used_topics = set(recent_topics)
 
-        selected_topic = _topic_roll(user_id, K, db, exclude_topics=used_topics)
+        selected_topic = _topic_roll(user_id, k_value, db, exclude_topics=used_topics)
         blue_entries = _fetch_blue_words(user_id, study_phase, db, condition=ConditionType.ADAPTIVE)
         yellow_entries = _fetch_yellow_words(user_id, study_phase, db)
         if yellow_entries:
@@ -266,7 +281,7 @@ def _next_reading_number(user_id: str, study_phase: int, db: Session) -> int:
 
 def _topic_roll(
     user_id: str,
-    K: float,
+    k_value: float,
     db: Session,
     exclude_topics: set[str] | None = None,
 ) -> str:
@@ -281,7 +296,7 @@ def _topic_roll(
 
     r = random.random()
 
-    if r < K:
+    if r < k_value:
         candidates = [
             t.topic_name
             for t in db.query(UserTopic)
@@ -414,11 +429,7 @@ def _generate_story_content(
     city = user.city or getattr(user, "location", None) or ""
     job = user.job or ""
     academic = user.academic_background or "not specified"
-    languages = user.other_languages or "none specified"
-    mother_l = user.mother_language or getattr(user, "native_language", None) or "not specified"
-    gender = user.gender or "not specified"
 
-    import random
     profile_pool = []
     if city: profile_pool.append(f"Location: {city}")
     if job: profile_pool.append(f"Occupation: {job}")
@@ -534,7 +545,7 @@ Return ONLY valid JSON:
             text = response.text.strip()
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
-            result = json.loads(text)
+            result = _clean_generated_text(json.loads(text))
             logger.info("[SessionGen] generated title=%r", result.get("title"))
             return result
         except Exception as e:
@@ -622,7 +633,7 @@ Return ONLY a valid JSON object:
             text = response.text.strip()
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
-            result = json.loads(text)
+            result = _clean_generated_text(json.loads(text))
             logger.info("[SessionGen] BASELINE title=%r", result.get("title"))
             return result
         except Exception as e:
@@ -732,12 +743,10 @@ def generate_continuation(
     subtopics_used = mem.get("subtopics_used", [prev_topic])
     concepts_explained = mem.get("concepts_explained", [])
     vocab_already_used = mem.get("vocabulary_used", [])
-    entities = mem.get("entities", [])
 
     subtopics_str = ", ".join(subtopics_used) if subtopics_used else "(none yet)"
     concepts_str = ", ".join(concepts_explained) if concepts_explained else "(none recorded)"
     vocab_used_str = ", ".join(vocab_already_used) if vocab_already_used else "(none)"
-    entities_str = ", ".join(entities) if entities else "(none recorded)"
 
     new_blue_str = ", ".join(
         w["word"] for w in blue_words if w["word"] not in vocab_already_used
@@ -857,7 +866,7 @@ Return ONLY valid JSON:
             text = response.text.strip()
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
-            story_json = json.loads(text)
+            story_json = _clean_generated_text(json.loads(text))
             logger.info("[SessionGen] continuation title=%r", story_json.get("title"))
 
             new_content_chunk = story_json.get("content", "")

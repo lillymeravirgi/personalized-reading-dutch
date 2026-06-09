@@ -14,6 +14,7 @@ import {
 } from "../services/api";
 import type { FlashcardItem } from "../types";
 import SpeakButton from "../components/SpeakButton";
+import ErrorBanner from "../components/ErrorBanner";
 
 type Mode = "review" | "discover";
 const DEFAULT_REVIEW_DAYS = 1;
@@ -27,18 +28,18 @@ export default function FlashcardsPage() {
 
   const [mode, setMode] = useState<Mode>("review");
 
-  const [reviewData,    setReviewData]    = useState<FlashcardsResponse | null>(null);
+  const [reviewData, setReviewData] = useState<FlashcardsResponse | null>(null);
   const [reviewLoading, setReviewLoading] = useState(true);
-  const [reviewError,   setReviewError]   = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewedCount, setReviewedCount] = useState(0);
 
-  const [discoverCards,   setDiscoverCards]   = useState<DiscoverCard[]>([]);
-  const [discoverFetched, setDiscoverFetched] = useState(false);
+  const [discoverCards, setDiscoverCards] = useState<DiscoverCard[]>([]);
+  const [hasLoadedDiscoverCards, setHasLoadedDiscoverCards] = useState(false);
 
   const fetchReview = useCallback(() => {
     if (!userId) return;
     setReviewLoading(true);
-    getFlashcards(null, userId, studyPhase)
+    getFlashcards(userId, studyPhase)
       .then((res) => {
         if (res.success) setReviewData(res.data);
         else setReviewError(res.error ?? "Could not load word review.");
@@ -56,21 +57,21 @@ export default function FlashcardsPage() {
     discoverPrefetch(userId, studyPhase)
       .then(({ words }) => {
         setDiscoverCards(words);
-        setDiscoverFetched(true);
+        setHasLoadedDiscoverCards(true);
       })
-      .catch(() => { setDiscoverFetched(true); });
+      .catch(() => { setHasLoadedDiscoverCards(true); });
 
     return () => {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
       navigator.sendBeacon(`${baseUrl}/flashcards/refill-check?user_id=${userId}`);
     };
-  }, [userId]);
+  }, [userId, studyPhase]);
 
   function openDiscover() {
     setMode("discover");
-    if (!discoverFetched && user) {
+    if (!hasLoadedDiscoverCards && user) {
       discoverPrefetch(user.id, studyPhase)
-        .then(({ words }) => { setDiscoverCards(words); setDiscoverFetched(true); })
+        .then(({ words }) => { setDiscoverCards(words); setHasLoadedDiscoverCards(true); })
         .catch(() => undefined);
     }
   }
@@ -138,7 +139,7 @@ export default function FlashcardsPage() {
             <DiscoverMode
               cards={discoverCards}
               userId={user.id}
-              onCardConsumed={(wordId) =>
+              onCardDone={(wordId) =>
                 setDiscoverCards((prev) => prev.filter((c) => c.wordId !== wordId))
               }
               onRefreshReview={fetchReview}
@@ -161,12 +162,12 @@ function ReviewMode({
   onHome: () => void;
   onReviewedChange: (n: number) => void;
 }) {
-  const [stack,      setStack]      = useState<FlashcardItem[]>([]);
+  const [stack, setStack] = useState<FlashcardItem[]>([]);
   const [stackReady, setStackReady] = useState(false);
-  const [reviewed,   setReviewed]   = useState(0);
-  const [flipped,    setFlipped]    = useState(false);
-  const [saving,     setSaving]     = useState(false);
-  const [done,       setDone]       = useState(false);
+  const [reviewed, setReviewed] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
     if (data) {
@@ -184,7 +185,7 @@ function ReviewMode({
   const totalReviewed = serverReviewed + reviewed;
 
   const progress = totalDailyTask === 0 ? 1 : Math.min(1, totalReviewed / totalDailyTask);
-  const barPct   = Math.round(progress * 100);
+  const barPct = Math.round(progress * 100);
   const barColor = totalDailyTask === 0 || barPct === 100
     ? "#10b981"
     : barPct <= 10
@@ -226,8 +227,8 @@ function ReviewMode({
   );
 
   if (error) return (
-    <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-8 text-center">
-      <p className="text-sm font-heading font-semibold text-red-700 mb-4">{error}</p>
+    <div className="space-y-4 text-center">
+      <ErrorBanner message={error} />
       <button type="button" onClick={onHome} className="rounded-xl border border-red-200 px-4 py-2 text-xs font-heading font-semibold text-red-700 hover:bg-red-100">Back home</button>
     </div>
   );
@@ -362,15 +363,15 @@ function ReviewMode({
 }
 
 function DiscoverMode({
-  cards, userId, onCardConsumed, onRefreshReview, onNavigate,
+  cards, userId, onCardDone, onRefreshReview, onNavigate,
 }: {
   cards: DiscoverCard[];
   userId: string;
-  onCardConsumed: (wordId: string) => void;
+  onCardDone: (wordId: string) => void;
   onRefreshReview: () => void;
   onNavigate: (path: string) => void;
 }) {
-  const [saving,    setSaving]    = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const card = cards[0] ?? null;
 
@@ -379,7 +380,7 @@ function DiscoverMode({
     setSaving(true);
     await markKnownFlashcard(userId, card.wordId).catch(() => undefined);
     setSaving(false);
-    onCardConsumed(card.wordId);
+    onCardDone(card.wordId);
   }
 
   async function handleAddToLearn() {
@@ -387,7 +388,7 @@ function DiscoverMode({
     setSaving(true);
     await addDiscoveredToLearn(userId, card.wordId, DEFAULT_REVIEW_DAYS).catch(() => undefined);
     setSaving(false);
-    onCardConsumed(card.wordId);
+    onCardDone(card.wordId);
     onRefreshReview();
   }
 

@@ -1,18 +1,17 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, RefreshCcw } from "lucide-react";
 
 import { apiClient } from "../services/api";
+import { easeOut } from "../constants/animation";
 import { useStore } from "../store";
 
 export default function SystemTransitionPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const user = useStore((s) => s.user);
   const [loading, setLoading] = useState(false);
-  const phaseParam = Number.parseInt(searchParams.get("phase") ?? "2", 10);
-  const nextPhase = Number.isFinite(phaseParam) ? Math.min(2, Math.max(2, phaseParam)) : 2;
+  const nextPhase = 2;
 
   useEffect(() => {
     if (!user) return;
@@ -31,14 +30,14 @@ export default function SystemTransitionPage() {
     <motion.div
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.55, ease: easeOut }}
       className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 px-6"
     >
       <div className="w-full max-w-lg">
         <motion.div
           initial={{ scale: 0.7, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ delay: 0.15, duration: 0.5, ease: easeOut }}
           className="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-full"
           style={{ background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)" }}
         >

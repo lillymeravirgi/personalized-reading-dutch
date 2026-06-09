@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { KeyRound, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { AlertCircle, KeyRound, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { registerUser } from "../services/api";
 import { useStore } from "../store";
 import ConsentDetailsModal from "../components/ConsentDetailsModal";
+import ErrorBanner from "../components/ErrorBanner";
+import { easeOut } from "../constants/animation";
 
 function validateStudyId(value: string) {
   return value.trim().length >= 2
@@ -28,14 +30,14 @@ function validateConfirm(password: string, confirm: string) {
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const setUser  = useStore((s) => s.setUser);
+  const setUser = useStore((s) => s.setUser);
 
   const startCondition = searchParams.get("start") ?? undefined;
 
   const initialStudyCode = (searchParams.get("code") || "").trim().toUpperCase();
   const [studyId, setStudyId] = useState(initialStudyCode);
   const [password, setPassword] = useState("");
-  const [confirm,  setConfirm]  = useState("");
+  const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [showConsentDetails, setShowConsentDetails] = useState(false);
@@ -43,13 +45,13 @@ export default function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const studyIdError  = touched.studyId  ? validateStudyId(studyId)              : null;
-  const passwordError = touched.password ? validatePassword(password)            : null;
-  const confirmError  = touched.confirm  ? validateConfirm(password, confirm)    : null;
-  const consentError  = touched.consent && !consentAccepted
+  const studyIdError = touched.studyId ? validateStudyId(studyId) : null;
+  const passwordError = touched.password ? validatePassword(password) : null;
+  const confirmError = touched.confirm ? validateConfirm(password, confirm) : null;
+  const consentError = touched.consent && !consentAccepted
     ? "Please accept the study consent to create an account."
     : null;
-  const isFormValid   =
+  const isFormValid =
     !validateStudyId(studyId) &&
     !validatePassword(password) &&
     !validateConfirm(password, confirm) &&
@@ -80,7 +82,7 @@ export default function RegisterPage() {
     <motion.div
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.45, ease: easeOut }}
       className="bg-white rounded-2xl shadow-xl shadow-black/8 px-8 py-9"
     >
       <div className="mb-7">
@@ -94,10 +96,9 @@ export default function RegisterPage() {
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: "auto" }}
-          className="mb-5 flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-200 px-4 py-3"
+          className="mb-5"
         >
-          <AlertCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
-          <p className="text-sm text-red-700 font-body">{serverError}</p>
+          <ErrorBanner message={serverError} />
         </motion.div>
       )}
 

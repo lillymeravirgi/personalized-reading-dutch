@@ -4,7 +4,6 @@ import { motion } from "framer-motion";
 import {
   CheckCircle2,
   Clock,
-  AlertCircle,
   BookPlus,
   Loader2,
 } from "lucide-react";
@@ -17,6 +16,8 @@ import {
   continueSession,
   logInteraction,
 } from "../services/api";
+import { easeOut } from "../constants/animation";
+import ErrorBanner from "../components/ErrorBanner";
 import { useStore } from "../store";
 import { useReadingTimer } from "../hooks/useReadingTimer";
 import HighlightedText from "../components/reading/HighlightedText";
@@ -51,18 +52,18 @@ export default function ReadingSessionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const currentSession    = useStore((s) => s.currentSession);
-  const isLoading         = useStore((s) => s.isLoadingSession);
+  const currentSession = useStore((s) => s.currentSession);
+  const isLoading = useStore((s) => s.isLoadingSession);
   const setCurrentSession = useStore((s) => s.setCurrentSession);
   const setLoadingSession = useStore((s) => s.setLoadingSession);
-  const clearSession      = useStore((s) => s.clearSession);
-  const user              = useStore((s) => s.user);
+  const clearSession = useStore((s) => s.clearSession);
+  const user = useStore((s) => s.user);
 
-  const [error,         setError]         = useState<string | null>(null);
-  const [continuing,    setContinuing]    = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [continuing, setContinuing] = useState(false);
   const [continueError, setContinueError] = useState<string | null>(null);
 
-  const [tooltip,      setTooltip]      = useState<TooltipWord | null>(null);
+  const [tooltip, setTooltip] = useState<TooltipWord | null>(null);
   const [markingKnown, setMarkingKnown] = useState(false);
   const [knownOverride, setKnownOverride] = useState<Set<string>>(new Set());
 
@@ -187,13 +188,13 @@ export default function ReadingSessionPage() {
     const localEntry = findLocalEntry(token.text, wordId);
     const canLookup = canLookUpWord(token.text);
     setTooltip({
-      word:          token.text,
-      english:       localEntry?.english || null,
-      loading:       !localEntry?.english && canLookup,
-      anchor:        { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-      wordId:        localEntry?.wordId ?? wordId,
-      status:        wordId && knownOverride.has(wordId) ? "known" : token.status,
-      message:       canLookup ? undefined : "This looks like a name, so it is not added to vocabulary.",
+      word: token.text,
+      english: localEntry?.english || null,
+      loading: !localEntry?.english && canLookup,
+      anchor: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+      wordId: localEntry?.wordId ?? wordId,
+      status: wordId && knownOverride.has(wordId) ? "known" : token.status,
+      message: canLookup ? undefined : "This looks like a name, so it is not added to vocabulary.",
     });
     if (!localEntry?.english && canLookup) void fetchMissingTranslation(token.text, wordId);
   }
@@ -206,13 +207,13 @@ export default function ReadingSessionPage() {
     const token = currentSession?.tokens.find(t => wordKey(t.text) === key && t.type === "word");
     const localEntry = findLocalEntry(word, token?.wordId);
 
-    setTooltip({ 
-      word, 
+    setTooltip({
+      word,
       english: localEntry?.english || null,
       loading: !localEntry?.english,
       anchor: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
       wordId: localEntry?.wordId ?? token?.wordId ?? undefined,
-      status: (token?.wordId && knownOverride.has(token.wordId)) ? "known" : token?.status
+      status: (token?.wordId && knownOverride.has(token.wordId)) ? "known" : token?.status,
     });
 
     if (!localEntry?.english) await fetchMissingTranslation(word, token?.wordId);
@@ -227,10 +228,10 @@ export default function ReadingSessionPage() {
       setKnownOverride((prev) => new Set([...prev, tooltip.wordId!]));
       if (currentSession) {
         logInteraction({
-          wordId:    tooltip.wordId,
+          wordId: tooltip.wordId,
           sessionId: currentSession.sessionId,
-          action:    "WORD_AVOIDANCE",
-          weight:    1,
+          action: "word_avoidance",
+          weight: 1,
           timestamp: new Date().toISOString(),
         }).catch(() => undefined);
       }
@@ -246,10 +247,10 @@ export default function ReadingSessionPage() {
     if (!tooltip?.wordId) return;
     if (currentSession && !isReadOnly) {
       logInteraction({
-        wordId:    tooltip.wordId,
+        wordId: tooltip.wordId,
         sessionId: currentSession.sessionId,
-        action:    "DEEP_PROCESSING",
-        weight:    5,
+        action: "deep_processing",
+        weight: 5,
         timestamp: new Date().toISOString(),
       }).catch(() => undefined);
     }
@@ -265,8 +266,8 @@ export default function ReadingSessionPage() {
       logInteraction({
         wordId,
         sessionId: currentSession.sessionId,
-        action:    "ACQUISITION_INTENT",
-        weight:    2,
+        action: "acquisition_intent",
+        weight: 2,
         timestamp: new Date().toISOString(),
       }).catch(() => undefined);
       setCurrentSession({
@@ -319,6 +320,7 @@ export default function ReadingSessionPage() {
 
     const de = Object.values(definedEntries).find(e => String(e.word_id) === modalWordId);
     if (de) {
+      const examples = cleanExamples(de.examples);
       return {
         wordId: String(de.word_id),
         dutch: de.word,
@@ -326,8 +328,8 @@ export default function ReadingSessionPage() {
         startIndex: 0,
         endIndex: 0,
         highlightType: "unknown",
-        exampleSentences: cleanExamples(de.examples).length > 0
-          ? cleanExamples(de.examples)
+        exampleSentences: examples.length > 0
+          ? examples
           : contextExamplesFor(de.word, String(de.word_id)),
         usageFrequency: "common",
       };
@@ -449,31 +451,25 @@ export default function ReadingSessionPage() {
   if (error) {
     return (
       <div className="max-w-3xl mx-auto py-10">
-        <div className="flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-5 py-4">
-          <AlertCircle size={18} className="text-red-500 mt-0.5 shrink-0" />
-          <div>
-            <h2 className="font-heading font-semibold text-red-700">Couldn't load the session</h2>
-            <p className="text-sm text-red-700/80 font-body mt-0.5">{error}</p>
-            <button type="button" onClick={() => navigate("/reading")}
-              className="mt-3 text-sm font-heading font-semibold text-red-700 underline">
-              Back to Reading
-            </button>
-          </div>
-        </div>
+        <ErrorBanner message={error} title="Couldn't load the session" />
+        <button type="button" onClick={() => navigate("/reading")}
+          className="mt-3 text-sm font-heading font-semibold text-red-700 underline">
+          Back to Reading
+        </button>
       </div>
     );
   }
 
   if (!currentSession) return null;
 
-  const blueCount   = effectiveTokens.filter((t) => t.status === "new").length;
+  const blueCount = effectiveTokens.filter((t) => t.status === "new").length;
   const yellowCount = effectiveTokens.filter((t) => t.status === "learning").length;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.35, ease: easeOut }}
       className="max-w-3xl mx-auto"
     >
       <header className="mb-6">
@@ -581,7 +577,7 @@ export default function ReadingSessionPage() {
             logInteraction({
               wordId: tooltip.wordId,
               sessionId: currentSession.sessionId,
-              action: "WORD_AVOIDANCE",
+              action: "word_avoidance",
               weight: 1,
               timestamp: new Date().toISOString(),
             }).catch(() => undefined);

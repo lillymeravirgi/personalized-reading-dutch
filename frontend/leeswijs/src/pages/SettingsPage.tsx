@@ -7,12 +7,13 @@ import {
   Award,
   Tags,
   Check,
-  AlertCircle,
   Save,
   RefreshCw,
 } from "lucide-react";
 
 import { saveProfile } from "../services/api";
+import { easeOut } from "../constants/animation";
+import ErrorBanner from "../components/ErrorBanner";
 import { useStore } from "../store";
 import {
   INTERESTS,
@@ -23,13 +24,13 @@ import {
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const user     = useStore((s) => s.user);
-  const setUser  = useStore((s) => s.setUser);
+  const user = useStore((s) => s.user);
+  const setUser = useStore((s) => s.setUser);
 
-  const [interests,    setInterestsSet] = useState<Set<InterestId>>(new Set());
-  const [saving,       setSaving]       = useState(false);
-  const [toast,        setToast]        = useState<string | null>(null);
-  const [error,        setError]        = useState<string | null>(null);
+  const [interests, setInterestsSet] = useState<Set<InterestId>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -81,7 +82,7 @@ export default function SettingsPage() {
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.35, ease: easeOut }}
       className="mx-auto max-w-3xl space-y-4"
     >
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -120,10 +121,9 @@ export default function SettingsPage() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mb-4 flex items-start gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 font-body"
+            className="mb-4"
           >
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            {error}
+            <ErrorBanner message={error} />
           </motion.div>
         )}
       </AnimatePresence>

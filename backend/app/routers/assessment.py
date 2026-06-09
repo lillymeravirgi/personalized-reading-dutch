@@ -94,11 +94,11 @@ def generate_batch(
     payload: dict,
     db: Session = Depends(get_db),
 ):
-    user_id      = payload.get("user_id", "")
+    user_id = payload.get("user_id", "")
     batch_number = int(payload.get("batch_number", 1))
-    cefr_level   = payload.get("self_reported_cefr", "B1")
-    known_words  = payload.get("known_words", [])
-    all_words    = payload.get("all_words", [])
+    cefr_level = payload.get("self_reported_cefr", "B1")
+    known_words = payload.get("known_words", [])
+    all_words = payload.get("all_words", [])
 
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -124,17 +124,17 @@ def generate_batch(
 
         for lex in lex_words[:100]:
             word_objects.append({
-                "word_id":   str(lex.word_id),
-                "dutch":     lex.word,
-                "english":   lex.translation,
+                "word_id": str(lex.word_id),
+                "dutch": lex.word,
+                "english": lex.translation,
                 "is_pseudo": False,
             })
 
         for pw in PSEUDO_WORDS[:5]:
             word_objects.append({
-                "word_id":   f"pseudo-{pw}",
-                "dutch":     pw,
-                "english":   None,
+                "word_id": f"pseudo-{pw}",
+                "dutch": pw,
+                "english": None,
                 "is_pseudo": True,
             })
 
@@ -149,24 +149,24 @@ def generate_batch(
                 continue
             lex = db.query(Lexicon).filter(Lexicon.word == word.lower()).first()
             word_objects.append({
-                "word_id":   str(lex.word_id) if lex else f"gen-{word}",
-                "dutch":     word,
-                "english":   w.get("translation") or (lex.translation if lex else None),
+                "word_id": str(lex.word_id) if lex else f"gen-{word}",
+                "dutch": word,
+                "english": w.get("translation") or (lex.translation if lex else None),
                 "is_pseudo": False,
             })
 
         for pw in PSEUDO_WORDS[5:10]:
             word_objects.append({
-                "word_id":   f"pseudo-{pw}",
-                "dutch":     pw,
-                "english":   None,
+                "word_id": f"pseudo-{pw}",
+                "dutch": pw,
+                "english": None,
                 "is_pseudo": True,
             })
 
     return {
-        "batch_number":  batch_number,
+        "batch_number": batch_number,
         "total_batches": 2,
-        "words":         word_objects,
+        "words": word_objects,
     }
 
 
@@ -200,7 +200,7 @@ def submit_assessment(payload: AssessmentSubmitRequest, db: Session = Depends(ge
                 .first()
             )
             if existing:
-                existing.status        = VocabStatus.MASTERED
+                existing.status = VocabStatus.MASTERED
                 existing.mastery_score = max(existing.mastery_score, 0.9)
             else:
                 db.add(UserVocabularyVector(

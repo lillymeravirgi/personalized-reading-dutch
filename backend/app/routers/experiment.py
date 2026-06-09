@@ -41,7 +41,7 @@ TEAM_ACCOUNTS = (
 
 
 EXPORT_TABLES = (
-    ("users", User, {"password_hash", "email"}),
+    ("users", User, {"password_hash", "email", "gender"}),
     ("user_topics", UserTopic, set()),
     ("assessment_batches", AssessmentBatch, set()),
     ("onboarding_words", OnboardingWords, set()),
@@ -55,18 +55,18 @@ EXPORT_TABLES = (
 )
 
 
-def verify_export_token(provided_token: str | None, configured_token: str) -> None:
-    if not configured_token:
+def verify_export_token(token: str | None, expected_token: str) -> None:
+    if not expected_token:
         raise HTTPException(status_code=503, detail="Export is not configured")
-    if not provided_token or not secrets.compare_digest(provided_token, configured_token):
+    if not token or not secrets.compare_digest(token, expected_token):
         raise HTTPException(status_code=401, detail="Invalid export token")
 
 
-def _serialize_csv_value(value: Any) -> Any:
+def _csv_value(value: Any) -> Any:
     if value is None:
         return ""
     if isinstance(value, enum.Enum):
-        return value.value
+        return value.value.lower()
     if isinstance(value, (datetime.datetime, datetime.date)):
         return value.isoformat()
     if isinstance(value, (dict, list)):
@@ -74,24 +74,24 @@ def _serialize_csv_value(value: Any) -> Any:
     return value
 
 
-def _csv_for_model(db: Session, model: type[Any], excluded_fields: set[str]) -> str:
+def _table_to_csv(db: Session, table_model: type[Any], excluded_fields: set[str]) -> str:
     columns = [
         column.name
-        for column in model.__table__.columns
+        for column in table_model.__table__.columns
         if column.name not in excluded_fields
     ]
     output = io.StringIO(newline="")
     writer = csv.DictWriter(output, fieldnames=columns)
     writer.writeheader()
 
-    query = db.query(model)
-    primary_key_columns = list(model.__mapper__.primary_key)
+    query = db.query(table_model)
+    primary_key_columns = list(table_model.__mapper__.primary_key)
     if primary_key_columns:
         query = query.order_by(*primary_key_columns)
 
     for row in query.all():
         writer.writerow({
-            column: _serialize_csv_value(getattr(row, column))
+            column: _csv_value(getattr(row, column))
             for column in columns
         })
 
@@ -258,7 +258,7 @@ def _study_phase_summary_csv(db: Session) -> str:
             ]
             condition = ""
             if phase_sessions:
-                condition = _serialize_csv_value(phase_sessions[0].condition)
+                condition = _csv_value(phase_sessions[0].condition)
 
             writer.writerow({
                 "user_id": user.user_id,
@@ -306,7 +306,7 @@ def build_export_archive(db: Session) -> bytes:
         for table_name, model, excluded_fields in EXPORT_TABLES:
             zf.writestr(
                 f"{table_name}.csv",
-                _csv_for_model(db, model, excluded_fields),
+                _table_to_csv(db, model, excluded_fields),
             )
     return archive.getvalue()
 

@@ -10,18 +10,18 @@ type Props = {
 };
 
 export default function FlashcardDeck({ onComplete }: Props) {
-  const flashcards  = useStore((s) => s.flashcards);
-  const currentIdx  = useStore((s) => s.currentIndex);
+  const flashcards = useStore((s) => s.flashcards);
+  const currentIdx = useStore((s) => s.currentIndex);
   const reviewedIds = useStore((s) => s.reviewedIds);
   const markReviewed = useStore((s) => s.markReviewed);
   const user = useStore((s) => s.user);
 
-  const [flipped,     setFlipped]     = useState(false);
-  const [remembered,  setRemembered]  = useState<Set<string>>(new Set());
+  const [flipped, setFlipped] = useState(false);
+  const [remembered, setRemembered] = useState<Set<string>>(new Set());
 
-  const card  = flashcards[currentIdx];
+  const card = flashcards[currentIdx];
   const total = flashcards.length;
-  const done  = reviewedIds.size;
+  const done = reviewedIds.size;
 
   const handleRate = useCallback((didRemember: boolean) => {
     if (!card) return;

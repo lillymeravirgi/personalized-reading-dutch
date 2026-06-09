@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, Home } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { easeOut } from "../constants/animation";
 
 export default function ThankYouPage() {
   const navigate = useNavigate();
@@ -9,14 +10,14 @@ export default function ThankYouPage() {
     <motion.div
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.55, ease: easeOut }}
       className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-900 via-teal-900 to-slate-900 px-6"
     >
       <div className="w-full max-w-lg text-center">
         <motion.div
           initial={{ scale: 0.6, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ delay: 0.15, duration: 0.5, ease: easeOut }}
           className="mx-auto mb-8 flex h-24 w-24 items-center justify-center rounded-full"
           style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
         >

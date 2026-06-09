@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   BookOpen,
   BrainCircuit,
@@ -10,7 +9,6 @@ import {
   RefreshCw,
   Sparkles,
   Trophy,
-  X,
 } from "lucide-react";
 import {
   RadialBarChart,
@@ -25,6 +23,7 @@ import {
   Cell,
   ReferenceLine,
 } from "recharts";
+import { easeOut } from "../constants/animation";
 import { useStore } from "../store";
 import { apiClient } from "../services/api";
 
@@ -32,12 +31,11 @@ import type { DashboardStats } from "../types";
 
 
 export default function HomePage() {
-  const user     = useStore((s) => s.user);
+  const user = useStore((s) => s.user);
   const navigate = useNavigate();
 
-  const [stats,   setStats]   = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showReadingIntro, setShowReadingIntro] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -51,57 +49,16 @@ export default function HomePage() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    if (loading) return;
-
-    const hasStartedReading = (stats?.readings_completed ?? 0) > 0;
-    const seenThisSession = window.sessionStorage.getItem(readingIntroKey(user.id)) === "true";
-    setShowReadingIntro(!hasStartedReading && !seenThisSession);
-  }, [user?.id, loading, stats?.readings_completed]);
-
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent("leeswijs-reading-intro-visibility", {
-      detail: { open: showReadingIntro },
-    }));
-    return () => {
-      window.dispatchEvent(new CustomEvent("leeswijs-reading-intro-visibility", {
-        detail: { open: false },
-      }));
-    };
-  }, [showReadingIntro]);
-
   if (!user) return null;
 
   const name = user.display_name || user.name || "there";
 
-  function closeReadingIntro() {
-    if (!user) return;
-    window.sessionStorage.setItem(readingIntroKey(user.id), "true");
-    setShowReadingIntro(false);
-  }
-
-  function goToReading() {
-    closeReadingIntro();
-    navigate("/reading");
-  }
-
   return (
     <>
-      {typeof document !== "undefined"
-        ? createPortal(
-            <ReadingIntroDialog
-              open={showReadingIntro}
-              onClose={closeReadingIntro}
-              onGoToReading={goToReading}
-            />,
-            document.body,
-          )
-        : null}
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.4, ease: easeOut }}
         className="mx-auto max-w-4xl space-y-6"
       >
       <div className="flex items-end justify-between flex-wrap gap-3">
@@ -133,90 +90,6 @@ export default function HomePage() {
       )}
       </motion.div>
     </>
-  );
-}
-
-function readingIntroKey(userId: string) {
-  return `leeswijs-reading-intro-v3-seen-${userId}`;
-}
-
-function ReadingIntroDialog({
-  open,
-  onClose,
-  onGoToReading,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onGoToReading: () => void;
-}) {
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/35 px-4 py-6"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="home-reading-intro-title"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full max-w-md rounded-2xl bg-white px-6 py-6 shadow-2xl shadow-black/20"
-          >
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <BookOpen size={22} />
-              </div>
-              <button
-                type="button"
-                aria-label="Close reading introduction"
-                onClick={onClose}
-                className="rounded-lg p-1.5 text-text/35 hover:bg-black/5 hover:text-text"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <h2 id="home-reading-intro-title" className="mb-2 font-heading text-xl font-bold text-text">
-              Welcome to LeesWijs
-            </h2>
-            <p className="text-sm font-body leading-6 text-text/60">
-              You will complete two reading phases. In each phase, you first prepare a small word set,
-              read three short Dutch texts, answer a few questions after each text, and then complete
-              an immediate vocabulary check.
-            </p>
-            <p className="mt-3 text-sm font-body leading-6 text-text/60">
-              There will also be a short follow-up vocabulary check about 24 hours later. If possible,
-              please come back after 24 hours to complete it, as this helps us understand what you
-              remember over time.
-            </p>
-            <p className="mt-3 text-sm font-body leading-6 text-text/60">
-              Please take your time. Your progress is saved as you move through the study.
-            </p>
-            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-heading font-semibold text-text/65 hover:bg-black/[0.03]"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={onGoToReading}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-heading font-semibold text-white hover:opacity-90"
-              >
-                Go to Reading <ArrowRight size={15} />
-              </button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
   );
 }
 
@@ -488,7 +361,7 @@ function StatCard({
 
 function ProductivityChart({ stats }: { stats: DashboardStats }) {
   const data = stats.productivity_data || [];
-  const avg  = stats.avg_duration_min || 0;
+  const avg = stats.avg_duration_min || 0;
 
   if (data.length === 0) {
     return (

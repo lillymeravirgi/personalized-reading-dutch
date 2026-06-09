@@ -1,23 +1,25 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowRight, AlertCircle, CheckCircle2, ClipboardList, BookPlus,
+  ArrowRight, CheckCircle2, ClipboardList, BookPlus,
 } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { submitSurvey } from "../services/api";
+import { easeOut } from "../constants/animation";
+import ErrorBanner from "../components/ErrorBanner";
 import LikertQuestion from "../components/survey/LikertQuestion";
-import TLXQuestion    from "../components/survey/TLXQuestion";
+import TLXQuestion from "../components/survey/TLXQuestion";
 import type { LikertScale, TLXScale, SurveyResponse } from "../types";
 
-const Q_WORTH_MY_TIME       = "The reading felt worth my time and effort.";
+const Q_WORTH_MY_TIME = "The reading felt worth my time and effort.";
 const Q_APPROPRIATE_CHALLENGE = "The reading difficulty felt appropriate for my Dutch level.";
 const Q_COMPREHENSION = "I understood the main idea of the reading.";
-const Q_FOCUSED_ATTENTION   = "I was so involved in this text that I lost track of time.";
-const Q_REWARD              = "I would want to read more texts similar to this one.";
+const Q_FOCUSED_ATTENTION = "I was so involved in this text that I lost track of time.";
+const Q_REWARD = "I would want to read more texts similar to this one.";
 const Q_PERCEIVED_RELEVANCE = "The content of this text felt personally meaningful to me.";
-const Q_MENTAL_EFFORT       = "How much mental effort did it take to read this text?";
-const Q_MANIPULATION_CHECK  = "This text felt specifically tailored to my interests and Dutch level.";
+const Q_MENTAL_EFFORT = "How much mental effort did it take to read this text?";
+const Q_MANIPULATION_CHECK = "This text felt specifically tailored to my interests and Dutch level.";
 
 const TOTAL_QUESTIONS = 8;
 
@@ -27,18 +29,18 @@ export default function SurveyPage() {
   const { search } = useLocation();
   const durationSeconds = parseInt(new URLSearchParams(search).get("duration") || "0", 10);
 
-  const [worthMyTime,           setWorthMyTime]           = useState<LikertScale | null>(null);
-  const [appropriateChallenge,  setAppropriateChallenge]  = useState<LikertScale | null>(null);
-  const [comprehension,         setComprehension]         = useState<LikertScale | null>(null);
-  const [focusedAttention,      setFocusedAttention]      = useState<LikertScale | null>(null);
-  const [reward,                setReward]                = useState<LikertScale | null>(null);
-  const [perceivedRelevance,    setPerceivedRelevance]    = useState<LikertScale | null>(null);
-  const [mentalEffort,          setMentalEffort]          = useState<TLXScale    | null>(null);
+  const [worthMyTime, setWorthMyTime] = useState<LikertScale | null>(null);
+  const [appropriateChallenge, setAppropriateChallenge] = useState<LikertScale | null>(null);
+  const [comprehension, setComprehension] = useState<LikertScale | null>(null);
+  const [focusedAttention, setFocusedAttention] = useState<LikertScale | null>(null);
+  const [reward, setReward] = useState<LikertScale | null>(null);
+  const [perceivedRelevance, setPerceivedRelevance] = useState<LikertScale | null>(null);
+  const [mentalEffort, setMentalEffort] = useState<TLXScale | null>(null);
   const [perceivedPersonalization, setPerceivedPersonalization] = useState<LikertScale | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-  const [done,       setDone]       = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
 
   const answers = [
     worthMyTime,
@@ -50,7 +52,7 @@ export default function SurveyPage() {
     mentalEffort,
     perceivedPersonalization,
   ];
-  const answered      = answers.every((v) => v !== null);
+  const answered = answers.every((v) => v !== null);
   const answeredCount = answers.filter((v) => v !== null).length;
 
   async function handleSubmit() {
@@ -58,21 +60,21 @@ export default function SurveyPage() {
     setSubmitting(true);
     setError(null);
 
-    const payload: SurveyResponse = {
+    const surveyAnswers: SurveyResponse = {
       sessionId,
-      worthMyTime:              worthMyTime!,
-      appropriateChallenge:     appropriateChallenge!,
-      comprehension:            comprehension!,
-      focusedAttention:         focusedAttention!,
-      reward:                   reward!,
-      perceivedRelevance:       perceivedRelevance!,
-      mentalEffort:             mentalEffort!,
+      worthMyTime: worthMyTime!,
+      appropriateChallenge: appropriateChallenge!,
+      comprehension: comprehension!,
+      focusedAttention: focusedAttention!,
+      reward: reward!,
+      perceivedRelevance: perceivedRelevance!,
+      mentalEffort: mentalEffort!,
       perceivedPersonalization: perceivedPersonalization!,
-      duration_seconds:         durationSeconds,
+      duration_seconds: durationSeconds,
     };
 
     try {
-      const res = await submitSurvey(payload);
+      const res = await submitSurvey(surveyAnswers);
       if (!res.success) throw new Error(res.error ?? "Could not submit survey.");
       setDone(true);
     } catch (err) {
@@ -94,7 +96,7 @@ export default function SurveyPage() {
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.35, ease: easeOut }}
       className="max-w-2xl mx-auto"
     >
       <div className="flex items-center gap-3 mb-2">
@@ -126,10 +128,9 @@ export default function SurveyPage() {
         {error && (
           <motion.div
             initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-            className="mb-5 flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-200 px-4 py-3"
+            className="mb-5"
           >
-            <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-500" />
-            <p className="text-sm text-red-700 font-body">{error}</p>
+            <ErrorBanner message={error} />
           </motion.div>
         )}
       </AnimatePresence>

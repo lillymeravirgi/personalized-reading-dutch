@@ -55,7 +55,7 @@ You need:
 
 - Python 3.11 or newer
 - Node 20 or newer
-- A Google AI Studio / Gemini API key for reading generation
+- A Gemini API key for reading generation
 
 ### 1. Pull the Latest Code
 
@@ -96,16 +96,22 @@ EXPORT_API_BASE_URL=
 EXPORT_TOKEN=
 ```
 
-Create the local database, load the lexicon, and create local test accounts:
+Create the local database and load the lexicon:
 
 ```bash
 python seed.py
 ```
 
+create 10 fully-onboarded local flow-test accounts:
+
+```bash
+python seed_local_test_accounts.py
+```
+
 Start the backend:
 
 ```bash
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Useful backend URLs:
@@ -138,25 +144,9 @@ VITE_API_BASE_URL=http://localhost:8000/api
 
 ## Local Test Accounts
 
-If `SEED_TEST_ACCOUNTS=true`, `python seed.py` creates these local Study IDs:
+`python seed.py` creates local team/demo Study IDs when `SEED_TEST_ACCOUNTS=true`:
 
-```text
-KIM
-KIKI
-JULIAN
-TJ
-EVIE
-JY
-```
 
-Use the password you set in `SEED_TEST_PASSWORD`.
-
-To reset local test data:
-
-1. Stop the backend server.
-2. Delete `backend/dev.db`.
-3. Run `python seed.py` again from `backend`.
-4. Restart the backend server.
 
 ## Online Deployment Policy
 

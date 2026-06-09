@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user_id
-from app.models import Lexicon, ReadingSession, TopicStatus, User, UserTopic, UserVocabularyVector, VocabStatus
+from app.models import ReadingSession, TopicStatus, User, UserTopic, UserVocabularyVector, VocabStatus
 from app.schemas import ProfileUpdateRequest
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -17,25 +17,24 @@ def _display_user(user: User, db: Session) -> dict:
         for row in db.query(UserTopic).filter(UserTopic.user_id == user.user_id).all()
     ]
     return {
-        "id":                   user.user_id,
-        "user_id":              user.user_id,
-        "email":                user.email or "",
-        "display_name":         user.display_name or "",
-        "name":                 user.display_name or user.email or user.user_id,
-        "interests":            interests,
-        "cefrLevel":            user.estimated_cefr,
-        "estimated_cefr":       user.estimated_cefr,
+        "id": user.user_id,
+        "user_id": user.user_id,
+        "email": user.email or "",
+        "display_name": user.display_name or "",
+        "name": user.display_name or user.email or user.user_id,
+        "interests": interests,
+        "cefrLevel": user.estimated_cefr,
+        "estimated_cefr": user.estimated_cefr,
         "onboarding_completed": user.onboarding_completed,
-        "age":                  user.age,
-        "city":                 user.city,
-        "gender":               user.gender,
-        "job":                  user.job,
-        "academic_background":  user.academic_background,
-        "mother_language":      user.mother_language,
-        "other_languages":      user.other_languages,
-        "purpose":              user.purpose,
-        "assessedAt":           None,
-        "createdAt":            user.created_at.isoformat() if user.created_at else None,
+        "age": user.age,
+        "city": user.city,
+        "job": user.job,
+        "academic_background": user.academic_background,
+        "mother_language": user.mother_language,
+        "other_languages": user.other_languages,
+        "purpose": user.purpose,
+        "assessedAt": None,
+        "createdAt": user.created_at.isoformat() if user.created_at else None,
     }
 
 
@@ -44,12 +43,12 @@ def list_users(db: Session = Depends(get_db)):
     users = db.query(User).all()
     return [
         {
-            "user_id":      user.user_id,
+            "user_id": user.user_id,
             "display_name": user.display_name or user.email or user.user_id,
-            "email":        user.email,
-            "cefr":         user.estimated_cefr,
-            "purpose":      user.purpose,
-            "city":         user.city,
+            "email": user.email,
+            "cefr": user.estimated_cefr,
+            "purpose": user.purpose,
+            "city": user.city,
         }
         for user in users
     ]
@@ -76,16 +75,15 @@ def update_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if payload.display_name  is not None: user.display_name  = payload.display_name
-    if payload.age           is not None: user.age           = payload.age
-    if payload.city          is not None: user.city          = payload.city
-    if payload.gender        is not None: user.gender        = payload.gender
-    if payload.job           is not None: user.job           = payload.job
+    if payload.display_name is not None: user.display_name = payload.display_name
+    if payload.age is not None: user.age = payload.age
+    if payload.city is not None: user.city = payload.city
+    if payload.job is not None: user.job = payload.job
     if payload.academic_background is not None: user.academic_background = payload.academic_background
-    if payload.mother_language     is not None: user.mother_language     = payload.mother_language
-    if payload.other_languages     is not None: user.other_languages     = payload.other_languages
-    if payload.purpose             is not None: user.purpose             = payload.purpose
-    if payload.estimated_cefr      is not None: user.estimated_cefr      = payload.estimated_cefr
+    if payload.mother_language is not None: user.mother_language = payload.mother_language
+    if payload.other_languages is not None: user.other_languages = payload.other_languages
+    if payload.purpose is not None: user.purpose = payload.purpose
+    if payload.estimated_cefr is not None: user.estimated_cefr = payload.estimated_cefr
 
     if payload.interests is not None:
         db.query(UserTopic).filter(UserTopic.user_id == user_id).delete()
@@ -132,7 +130,7 @@ def get_dashboard_stats(
 
     total_learning = sum(1 for v in vectors if v.status == VocabStatus.LEARNING)
     total_mastered = sum(1 for v in vectors if v.status == VocabStatus.MASTERED)
-    total_known    = total_mastered
+    total_known = total_mastered
 
     to_review = sum(
         1 for v in vectors
@@ -147,7 +145,7 @@ def get_dashboard_stats(
     )
 
     total_daily_task = reviewed_today + to_review
-    daily_progress   = (reviewed_today / total_daily_task * 100) if total_daily_task > 0 else 0
+    daily_progress = (reviewed_today / total_daily_task * 100) if total_daily_task > 0 else 0
 
     sessions = db.query(ReadingSession).filter(
         ReadingSession.user_id == user_id
@@ -155,17 +153,17 @@ def get_dashboard_stats(
 
     completed_sessions_all = [s for s in sessions if s.survey_completed]
     readings_completed = len(completed_sessions_all)
-    readings_total     = len(sessions)
+    readings_total = len(sessions)
 
-    AVG_READING_MIN = 6
+    avg_reading_min = 6
 
-    week_start  = today_start - datetime.timedelta(days=today_start.weekday())
+    week_start = today_start - datetime.timedelta(days=today_start.weekday())
     month_start = today_start.replace(day=1)
 
     def session_minutes(session: ReadingSession) -> float:
         if session.duration_seconds is not None:
             return session.duration_seconds / 60
-        return AVG_READING_MIN
+        return avg_reading_min
 
     time_today_min = sum(
         session_minutes(s) for s in completed_sessions_all
@@ -195,26 +193,24 @@ def get_dashboard_stats(
     ]
     avg_duration_min = sum(d["duration_min"] for d in productivity_data) / len(productivity_data) if productivity_data else 0
 
-    ACQUISITION_GOAL = 1000
-    acquisition_score = int((total_mastered / ACQUISITION_GOAL) * 100) if ACQUISITION_GOAL > 0 else 0
+    acquisition_goal = 1000
+    acquisition_score = int((total_mastered / acquisition_goal) * 100) if acquisition_goal > 0 else 0
 
     return {
-        "cefr_level":          user.estimated_cefr or "—",
-        "acquisition_score":   acquisition_score,
-        "total_known":         total_known,
-        "total_learning":      total_learning,
-        "total_mastered":      total_mastered,
-        "to_review":           to_review,
-        "reviewed_today":      reviewed_today,
-        "daily_progress":      daily_progress,
-        "readings_completed":  readings_completed,
-        "readings_total":      readings_total,
-
-        "productivity_data":   productivity_data,
-        "avg_duration_min":    round(avg_duration_min, 1),
-
-        "time_today_min":      round(time_today_min, 1),
-        "time_week_min":       round(time_week_min, 1),
-        "time_month_min":      round(time_month_min, 1),
-        "is_new":              readings_total == 0 and total_mastered == 0,
+        "cefr_level": user.estimated_cefr or "—",
+        "acquisition_score": acquisition_score,
+        "total_known": total_known,
+        "total_learning": total_learning,
+        "total_mastered": total_mastered,
+        "to_review": to_review,
+        "reviewed_today": reviewed_today,
+        "daily_progress": daily_progress,
+        "readings_completed": readings_completed,
+        "readings_total": readings_total,
+        "productivity_data": productivity_data,
+        "avg_duration_min": round(avg_duration_min, 1),
+        "time_today_min": round(time_today_min, 1),
+        "time_week_min": round(time_week_min, 1),
+        "time_month_min": round(time_month_min, 1),
+        "is_new": readings_total == 0 and total_mastered == 0,
     }

@@ -1,10 +1,10 @@
 from __future__ import annotations
 from typing import Any, Literal, Optional, List
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 from app.models import IntentTagType
 
 LikertScale = Literal[1, 2, 3, 4, 5]
-TLXScale    = Literal[1, 2, 3, 4, 5, 6, 7]
+TLXScale = Literal[1, 2, 3, 4, 5, 6, 7]
 
 class RegisterRequest(BaseModel):
     email: str
@@ -30,9 +30,9 @@ class SurveyResponse(BaseModel):
 
     worth_my_time: LikertScale = Field(alias="worthMyTime")
     appropriate_challenge: LikertScale = Field(alias="appropriateChallenge", default=3)
-    comprehension:         LikertScale = Field(alias="comprehension",         default=3)
-    focused_attention:   LikertScale = Field(alias="focusedAttention")
-    reward:              LikertScale = Field(alias="reward")
+    comprehension: LikertScale = Field(alias="comprehension", default=3)
+    focused_attention: LikertScale = Field(alias="focusedAttention")
+    reward: LikertScale = Field(alias="reward")
     perceived_relevance: LikertScale = Field(alias="perceivedRelevance")
     mental_effort: TLXScale = Field(alias="mentalEffort")
     perceived_personalization: LikertScale = Field(alias="perceivedPersonalization")
@@ -42,9 +42,11 @@ class SurveyResponse(BaseModel):
 
 class GenerateSessionRequest(BaseModel):
     user_id: str
-    K: float = 0.7
+    k: float = Field(default=0.7, validation_alias=AliasChoices("k", "K"))
     narrative_style: str = "Informative Educational Semi-Narrative Article"
     word_count_range: str = "150-200"
+
+    model_config = {"populate_by_name": True}
 
 class WordInfo(BaseModel):
     word_id: int
@@ -97,6 +99,13 @@ class LogTelemetryRequest(BaseModel):
     intent_tag: IntentTagType
     engagement_weight: int
 
+    @field_validator("intent_tag", mode="before")
+    @classmethod
+    def normalize_intent_tag(cls, value):
+        if isinstance(value, str):
+            return value.strip().replace("-", "_").upper()
+        return value
+
 class LogTelemetryResponse(BaseModel):
     log_id: int
     message: str
@@ -120,7 +129,7 @@ class LexiconEntry(BaseModel):
 class KRSRunResponse(BaseModel):
     user_id: str
     words_recommended: int
-    words_matched_in_lexicon: int
+    words_matched: int
     new_entries_saved: int
 
 class AssessmentBatchResponse(BaseModel):
@@ -142,7 +151,6 @@ class OnboardingPersonalInfoRequest(BaseModel):
     display_name: Optional[str] = None
     age: Optional[int] = None
     city: Optional[str] = None
-    gender: Optional[str] = None
     job: Optional[str] = None
     academic_background: Optional[str] = None
     mother_language: Optional[str] = None
@@ -157,7 +165,6 @@ class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     age: Optional[int] = None
     city: Optional[str] = None
-    gender: Optional[str] = None
     job: Optional[str] = None
     academic_background: Optional[str] = None
     mother_language: Optional[str] = None

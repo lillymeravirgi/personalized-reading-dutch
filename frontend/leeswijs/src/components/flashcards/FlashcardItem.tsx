@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, RotateCcw, RotateCw } from "lucide-react";
 import type { FlashcardItem as FlashcardItemType } from "../../types";
+import { easeOut } from "../../constants/animation";
 import SpeakButton from "../SpeakButton";
 
 type Props = {
@@ -28,7 +29,7 @@ export default function FlashcardItem({ card, flipped, onFlip, onRate }: Props) 
       >
         <motion.div
           animate={{ rotateY: flipped ? 180 : 0 }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.55, ease: easeOut }}
           className="relative w-full h-full"
           style={{ transformStyle: "preserve-3d" }}
         >
@@ -137,7 +138,7 @@ function ModeBadge({ mode }: { mode: "learning" | "review" }) {
   const meta =
     mode === "learning"
       ? { label: "Learning", color: "#F2A541", bg: "#FEF6E7" }
-      : { label: "Review",   color: "#0D7377", bg: "#E0F2F1" };
+      : { label: "Review", color: "#0D7377", bg: "#E0F2F1" };
   return (
     <div
       className="self-start ml-4 rounded-full px-2.5 py-0.5 text-xs font-heading font-semibold"

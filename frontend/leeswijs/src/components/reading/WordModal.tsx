@@ -4,6 +4,7 @@ import { BookOpenText, X, Check } from "lucide-react";
 import type { HighlightedWord } from "../../types";
 import SpeakButton from "../SpeakButton";
 import { addDiscoveredToLearn, submitFlashcardReview } from "../../services/api";
+import { easeOut } from "../../constants/animation";
 import { useStore } from "../../store";
 
 type Props = {
@@ -26,7 +27,7 @@ export default function WordModal({ word, onClose, onWordStatusChange, readOnly 
 
   if (!word) return null;
 
-  const isNew    = word.highlightType === "unknown";
+  const isNew = word.highlightType === "unknown";
   const examples = word.exampleSentences.filter((s) => s.nl?.trim());
 
   async function handleSaveWord() {
@@ -59,7 +60,7 @@ export default function WordModal({ word, onClose, onWordStatusChange, readOnly 
           initial={{ opacity: 0, y: 24, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.97 }}
-          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.22, ease: easeOut }}
           className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl shadow-black/20 flex flex-col"
           style={{ maxHeight: "calc(100vh - 32px)" }}
           onClick={(e) => e.stopPropagation()}
